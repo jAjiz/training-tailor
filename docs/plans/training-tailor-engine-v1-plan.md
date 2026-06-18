@@ -83,7 +83,7 @@ Run from `C:\Dev\training-tailor` (directory already exists, is empty except `do
 
 ```bash
 git init
-pnpm create next-app@latest . --ts --app --tailwind --eslint --src-dir --import-alias "@/*" --no-turbopack --use-pnpm
+pnpm create next-app@latest . --ts --app --tailwind --eslint --src-dir --import-alias "@/*" --use-pnpm
 ```
 
 When prompted that the directory is not empty, choose to proceed (the `docs/` folder is unrelated). Accept defaults for any remaining prompts.
