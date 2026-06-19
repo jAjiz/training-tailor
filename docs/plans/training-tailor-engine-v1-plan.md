@@ -288,9 +288,9 @@ model TailoredWorkout {
   id            String   @id @default(cuid())
   userId        String
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  originalWod   Json     // StructuredWod
+  originalWod   Json     // StructuredWod (multi-block session; verbatim rawText preserved)
   request       Json     // TailorRequest
-  tailoredWod   Json     // StructuredWod
+  tailoredWod   Json     // StructuredWod (multi-block session; verbatim rawText preserved)
   changes       Json     // ChangeItem[]
   rationale     String
   safetyNote    String?
@@ -298,6 +298,14 @@ model TailoredWorkout {
   createdAt     DateTime @default(now())
 }
 ```
+
+> **Why workouts stay in `Json` columns:** a real training day is a sequence of blocks with
+> different formats (strength piece, conditioning AMRAP, partner WOD), each carrying load-bearing
+> prose (tempo, intensity cues, Rx+/Rx/Int scaling tiers). Modeling that relationally (a table per
+> block format) is over-engineering against open-ended programming. Instead the workout is one
+> `StructuredWod` JSON value — verbatim `rawText` as the durable source of truth plus a derived
+> `blocks[]` extraction the engine reasons over (see Task 3.1). No migration is needed to support
+> new formats; the schema absorbs them.
 
 - [ ] **Step 3: Add Prisma scripts to `package.json`**
 
@@ -734,15 +742,52 @@ import { describe, it, expect } from "vitest";
 import { StructuredWodSchema, StimulusClassificationSchema, TailoredWodSchema, StimulusTag } from "@/lib/engine/types";
 
 describe("engine schemas", () => {
-  it("parses a structured workout", () => {
+  it("parses a single-block session", () => {
     const wod = StructuredWodSchema.parse({
-      name: "Fran", scheme: "21-15-9 for time", timeDomainMinutes: 5, notes: null, source: "adhoc",
-      components: [
-        { movement: "Thruster", reps: 21, load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-        { movement: "Pull-up", reps: 21, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+      name: "Fran",
+      rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
+      source: "adhoc",
+      blocks: [
+        {
+          title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
+          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
+          components: [
+            { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+            { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+          ],
+        },
       ],
     });
-    expect(wod.components).toHaveLength(2);
+    expect(wod.blocks[0].components).toHaveLength(2);
+  });
+
+  it("parses a multi-block session (strength + conditioning) and preserves coaching prose", () => {
+    const wod = StructuredWodSchema.parse({
+      name: "Planificación RX",
+      rawText: "Power Snatch\n8 sets every 2 min...\n\nConditioning barbell\nAMRAP 10 min\n3 burpee pull-up / 6 power clean @61/43kg / 9 box jump over",
+      source: "adhoc",
+      blocks: [
+        {
+          title: "Power Snatch", rawText: "Power Snatch\n8 sets every 2 min...",
+          format: "strength", scheme: "8 sets every 2 min", timeDomainMinutes: 16,
+          coachingNotes: "Técnica: mantener buena posición en las pausas; recibir la barra lo más alta posible.",
+          components: [{ movement: "Power Snatch", reps: "2-5", load: "54–65 kg", distanceMeters: null, calories: null, durationSeconds: null, notes: "tempo with pauses" }],
+        },
+        {
+          title: "Conditioning barbell", rawText: "AMRAP 10 min\n3 burpee pull-up / 6 power clean @61/43kg / 9 box jump over",
+          format: "amrap", scheme: "AMRAP 10 min", timeDomainMinutes: 10,
+          coachingNotes: "Ritmo sostenido. Marca objetivo: Rx+ +7 rondas / Rx +6 / Int +5. Int load 52/35 kg.",
+          components: [
+            { movement: "Burpee Pull-up", reps: 3, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+            { movement: "Power Clean", reps: 6, load: "61/43 kg", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+            { movement: "Box Jump Over", reps: 9, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+          ],
+        },
+      ],
+    });
+    expect(wod.blocks).toHaveLength(2);
+    expect(wod.blocks[1].format).toBe("amrap");
+    expect(wod.blocks[0].coachingNotes).toContain("pausas");
   });
 
   it("parses a stimulus classification with valid tags", () => {
@@ -754,8 +799,14 @@ describe("engine schemas", () => {
 
   it("parses a tailored workout", () => {
     const t = TailoredWodSchema.parse({
-      wod: { name: "Fran (mod)", scheme: "21-15-9 for time", timeDomainMinutes: 6, notes: null, source: "adhoc",
-        components: [{ movement: "Goblet Squat", reps: 21, load: "35 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] },
+      wod: {
+        name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
+        blocks: [{
+          title: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows",
+          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
+          components: [{ movement: "Goblet Squat", reps: "21-15-9", load: "35 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }],
+        }],
+      },
       changes: [{ original: "Thruster 95 lb", modified: "Goblet Squat 35 lb", reason: "Avoid overhead due to shoulder." }],
       rationale: "Preserves the short anaerobic couplet stimulus.",
       safetyNote: "Stop if pain increases.",
@@ -781,10 +832,15 @@ export const StimulusTag = z.enum([
 ]);
 export type StimulusTag = z.infer<typeof StimulusTag>;
 
+export const BlockFormat = z.enum([
+  "amrap", "for_time", "emom", "intervals", "strength", "skill", "partner", "rest", "other",
+]);
+export type BlockFormat = z.infer<typeof BlockFormat>;
+
 export const WodComponentSchema = z.object({
-  movement: z.string().min(1),
-  reps: z.union([z.number(), z.string()]).nullable(),
-  load: z.string().nullable(),
+  movement: z.string().min(1),                          // canonical name, resolvable to Movement library
+  reps: z.union([z.number(), z.string()]).nullable(),   // 21, "21-15-9", "AMRAP", ...
+  load: z.string().nullable(),                          // raw string incl. tiers e.g. "61/43 kg"
   distanceMeters: z.number().nullable(),
   calories: z.number().nullable(),
   durationSeconds: z.number().nullable(),
@@ -792,13 +848,24 @@ export const WodComponentSchema = z.object({
 });
 export type WodComponent = z.infer<typeof WodComponentSchema>;
 
+// One training block within a session (a day can hold several with different formats).
+export const WorkoutBlockSchema = z.object({
+  title: z.string().nullable(),
+  rawText: z.string().min(1),                           // verbatim slice — source of truth for this block
+  format: BlockFormat,
+  scheme: z.string().nullable(),                        // e.g. "AMRAP 10 min", "21-15-9 for time", "8 sets every 2 min"
+  timeDomainMinutes: z.number().nullable(),
+  components: z.array(WodComponentSchema),              // extracted movements (may be empty for rest/unparseable blocks)
+  coachingNotes: z.string().nullable(),                 // intensity/tempo/scaling tiers kept as prose, not modeled into columns
+});
+export type WorkoutBlock = z.infer<typeof WorkoutBlockSchema>;
+
+// A training SESSION (one day). Raw text is the durable source of truth; the rest is a derived extraction.
 export const StructuredWodSchema = z.object({
   name: z.string().nullable(),
-  scheme: z.string().min(1),
-  timeDomainMinutes: z.number().nullable(),
-  notes: z.string().nullable(),
+  rawText: z.string().min(1),                           // verbatim paste of the whole session
+  blocks: z.array(WorkoutBlockSchema).min(1),
   source: z.literal("adhoc"),
-  components: z.array(WodComponentSchema).min(1),
 });
 export type StructuredWod = z.infer<typeof StructuredWodSchema>;
 
@@ -1087,16 +1154,20 @@ describe("parseWod", () => {
   it("parses raw text into a StructuredWod via the provider", async () => {
     const provider = new FakeProvider({
       StructuredWod: {
-        name: "Fran", scheme: "21-15-9 for time", timeDomainMinutes: 5, notes: null, source: "adhoc",
-        components: [
-          { movement: "Thruster", reps: 21, load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-          { movement: "Pull-up", reps: 21, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-        ],
+        name: "Fran", rawText: "21-15-9 Thrusters 95lb / Pull-ups", source: "adhoc",
+        blocks: [{
+          title: "Fran", rawText: "21-15-9 Thrusters 95lb / Pull-ups",
+          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
+          components: [
+            { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+            { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+          ],
+        }],
       },
     });
     const wod = await parseWod(provider, "21-15-9 Thrusters 95lb / Pull-ups");
     expect(wod.name).toBe("Fran");
-    expect(wod.components[0].movement).toBe("Thruster");
+    expect(wod.blocks[0].components[0].movement).toBe("Thruster");
   });
 });
 ```
@@ -1112,10 +1183,20 @@ Expected: FAIL — module not found.
 import type { LlmProvider } from "@/lib/ai/provider";
 import { StructuredWodSchema, type StructuredWod } from "@/lib/engine/types";
 
-const SYSTEM = `You are a functional fitness coach's assistant that converts a raw workout description into structured JSON.
-Identify the rep/round scheme, each movement with its prescribed reps/load/distance/calories/duration, and an
-estimated time domain in minutes. Use null for any field that does not apply. Set "source" to "adhoc".
-Use canonical movement names (e.g., "Thruster", "Pull-up", "Row (Erg)").`;
+const SYSTEM = `You convert a raw functional-fitness training session into structured JSON.
+A session often contains SEVERAL blocks with different formats (e.g., a strength piece, a conditioning
+AMRAP, a partner WOD). Rules:
+- Preserve the athlete's text VERBATIM: set the session "rawText" to the full input, and each block
+  "rawText" to that block's exact slice. Never paraphrase rawText.
+- Split the session into ordered "blocks". For each block set a "format"
+  (amrap | for_time | emom | intervals | strength | skill | partner | rest | other), a "scheme" string
+  if present, and an estimated "timeDomainMinutes".
+- Extract "components" (movements with reps/load/distance/calories/duration) using canonical movement
+  names (e.g., "Thruster", "Pull-up", "Row (Erg)"). Leave "components" empty for a block with no discrete
+  movements (e.g., a rest block).
+- Put intensity cues, tempo/pause prescriptions, and scaling tiers (Rx+/Rx/Int, M/F loads) into
+  "coachingNotes" as prose — do NOT discard them. Use null for any field that does not apply.
+Set "source" to "adhoc".`;
 
 export async function parseWod(provider: LlmProvider, rawText: string): Promise<StructuredWod> {
   return provider.generateStructured({
@@ -1156,11 +1237,15 @@ import { FakeProvider } from "@/lib/ai/fake-provider";
 import type { StructuredWod } from "@/lib/engine/types";
 
 const fran: StructuredWod = {
-  name: "Fran", scheme: "21-15-9 for time", timeDomainMinutes: 5, notes: null, source: "adhoc",
-  components: [
-    { movement: "Thruster", reps: 21, load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-    { movement: "Pull-up", reps: 21, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-  ],
+  name: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups", source: "adhoc",
+  blocks: [{
+    title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
+    format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
+    components: [
+      { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+      { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+    ],
+  }],
 };
 
 describe("classifyStimulus", () => {
@@ -1237,11 +1322,15 @@ import type { StructuredWod, StimulusClassification, AthleteProfileInput, Tailor
 import type { Movement, InjuryContraindication } from "@/lib/domain/types";
 
 const fran: StructuredWod = {
-  name: "Fran", scheme: "21-15-9 for time", timeDomainMinutes: 5, notes: null, source: "adhoc",
-  components: [
-    { movement: "Thruster", reps: 21, load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-    { movement: "Pull-up", reps: 21, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-  ],
+  name: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups", source: "adhoc",
+  blocks: [{
+    title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
+    format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
+    components: [
+      { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+      { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+    ],
+  }],
 };
 const classification: StimulusClassification = { primary: "anaerobic_capacity", secondary: ["muscular_endurance"], rationale: "Short couplet." };
 const profile: AthleteProfileInput = {
@@ -1253,11 +1342,15 @@ describe("tailor", () => {
   it("returns a tailored workout with changes and rationale", async () => {
     const provider = new FakeProvider({
       TailoredWod: {
-        wod: { name: "Fran (mod)", scheme: "21-15-9 for time", timeDomainMinutes: 6, notes: null, source: "adhoc",
-          components: [
-            { movement: "Goblet Squat", reps: 21, load: "35 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-            { movement: "Ring Row", reps: 21, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-          ] },
+        wod: { name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
+          blocks: [{
+            title: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows",
+            format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
+            components: [
+              { movement: "Goblet Squat", reps: "21-15-9", load: "35 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+              { movement: "Ring Row", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+            ],
+          }] },
         changes: [
           { original: "Thruster 95 lb", modified: "Goblet Squat 35 lb", reason: "Removes overhead pressing for shoulder impingement." },
           { original: "Pull-up", modified: "Ring Row", reason: "Lower shoulder demand while keeping pulling volume." },
@@ -1272,7 +1365,7 @@ describe("tailor", () => {
     ];
     const result = await tailor(provider, { wod: fran, classification, profile, request, movements, contraindications });
     expect(result.changes.length).toBeGreaterThan(0);
-    expect(result.wod.components[0].movement).toBe("Goblet Squat");
+    expect(result.wod.blocks[0].components[0].movement).toBe("Goblet Squat");
   });
 });
 ```
@@ -1301,13 +1394,17 @@ export interface TailorInput {
   contraindications: InjuryContraindication[];
 }
 
-const SYSTEM = `You are an expert functional fitness coach. Modify the given workout for one athlete so it fits their constraint
-WHILE PRESERVING THE PRIMARY TRAINING STIMULUS identified in the classification. Rules:
+const SYSTEM = `You are an expert functional fitness coach. Modify the given training session for one athlete so it fits their
+constraint WHILE PRESERVING THE PRIMARY TRAINING STIMULUS identified in the classification. Rules:
+- Keep the session's BLOCK structure: return the same ordered blocks, preserving each block's intended format unless a
+  block must be dropped (explain any dropped block in "changes"). Modify within blocks.
 - Respect every contraindication: never prescribe a movement listed in avoidMovements or matching an avoided pattern.
 - Prefer substitutions from the provided movement library; keep the same stimulus (time domain, intensity, modality balance).
 - Scale loads to the athlete's benchmarks and equipment; fit the athlete's time budget if provided.
+- Carry over each block's coachingNotes (tempo, intensity, scaling tiers); update them only where the change requires it.
 - If a movement-improvement goal is requested, bias the modification toward that movement without breaking the stimulus.
 - Be conservative with injuries: when unsure, choose the lower-risk option and add a safetyNote.
+- For the modified "wod", set the session and per-block "rawText" to a clean text rendering of the MODIFIED workout.
 Return JSON with: the modified "wod", a "changes" list (original/modified/reason per change), a "rationale" explaining how the
 stimulus is preserved, and a "safetyNote" (or null).`;
 
@@ -1375,11 +1472,13 @@ const contraindications: InjuryContraindication[] = [];
 describe("runTailorPipeline (from raw text)", () => {
   it("parses, classifies, and tailors using the provider", async () => {
     const provider = new FakeProvider({
-      StructuredWod: { name: "Fran", scheme: "21-15-9 for time", timeDomainMinutes: 5, notes: null, source: "adhoc",
-        components: [{ movement: "Thruster", reps: 21, load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] },
+      StructuredWod: { name: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", source: "adhoc",
+        blocks: [{ title: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
+          components: [{ movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
       StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoredWod: { wod: { name: "Fran (mod)", scheme: "15-12-9 for time", timeDomainMinutes: 4, notes: null, source: "adhoc",
-          components: [{ movement: "Thruster", reps: 15, load: "75 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] },
+      TailoredWod: { wod: { name: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", source: "adhoc",
+          blocks: [{ title: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", format: "for_time", scheme: "15-12-9 for time", timeDomainMinutes: 4, coachingNotes: null,
+            components: [{ movement: "Thruster", reps: "15-12-9", load: "75 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [{ original: "21-15-9", modified: "15-12-9", reason: "Fit 20-minute cap." }],
         rationale: "Condensed but same anaerobic stimulus.", safetyNote: null },
     });
@@ -1397,13 +1496,15 @@ describe("runTailorPipeline (from raw text)", () => {
   it("accepts an already-structured workout and skips parsing", async () => {
     const provider = new FakeProvider({
       StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoredWod: { wod: { name: "Manual", scheme: "AMRAP 10", timeDomainMinutes: 10, notes: null, source: "adhoc",
-          components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] },
+      TailoredWod: { wod: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
+          blocks: [{ title: "Manual", rawText: "AMRAP 10\n10 Burpees", format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null,
+            components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [], rationale: "No change needed.", safetyNote: null },
     });
     const result = await runTailorPipeline(provider, {
-      input: { kind: "structured", wod: { name: "Manual", scheme: "AMRAP 10", timeDomainMinutes: 10, notes: null, source: "adhoc",
-        components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] } },
+      input: { kind: "structured", wod: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
+        blocks: [{ title: "Manual", rawText: "AMRAP 10\n10 Burpees", format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null,
+          components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] } },
       profile, request: { constraintType: "none", details: "", timeCapMinutes: null, targetMovement: null },
       taxonomy, movements, contraindications,
     });
@@ -1927,11 +2028,13 @@ import type { AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
 describe("runTailorForAthlete", () => {
   it("runs the pipeline with injected domain data and provider", async () => {
     const provider = new FakeProvider({
-      StructuredWod: { name: "Cindy", scheme: "AMRAP 20", timeDomainMinutes: 20, notes: null, source: "adhoc",
-        components: [{ movement: "Pull-up", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] },
+      StructuredWod: { name: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", source: "adhoc",
+        blocks: [{ title: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
+          components: [{ movement: "Pull-up", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
       StimulusClassification: { primary: "muscular_endurance", secondary: [], rationale: "Bodyweight grind." },
-      TailoredWod: { wod: { name: "Cindy (mod)", scheme: "AMRAP 20", timeDomainMinutes: 20, notes: null, source: "adhoc",
-          components: [{ movement: "Ring Row", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] },
+      TailoredWod: { wod: { name: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", source: "adhoc",
+          blocks: [{ title: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
+            components: [{ movement: "Ring Row", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [{ original: "Pull-up", modified: "Ring Row", reason: "Shoulder-friendly pull." }],
         rationale: "Keeps muscular-endurance stimulus.", safetyNote: null },
     });
@@ -2091,19 +2194,33 @@ export function WodView({ wod, title }: { wod: StructuredWod; title: string }) {
   return (
     <div className="rounded border p-4">
       <div className="text-xs uppercase tracking-wide text-gray-500">{title}</div>
-      <div className="font-semibold">{wod.name ?? "Workout"} — {wod.scheme}</div>
-      {wod.timeDomainMinutes != null && <div className="text-sm text-gray-600">~{wod.timeDomainMinutes} min</div>}
-      <ul className="mt-2 list-disc pl-5 text-sm">
-        {wod.components.map((c, i) => (
-          <li key={i}>
-            {c.reps != null ? `${c.reps} ` : ""}{c.movement}
-            {c.load ? ` @ ${c.load}` : ""}
-            {c.distanceMeters ? ` ${c.distanceMeters} m` : ""}
-            {c.calories ? ` ${c.calories} cal` : ""}
-            {c.durationSeconds ? ` ${c.durationSeconds}s` : ""}
-          </li>
+      <div className="font-semibold">{wod.name ?? "Workout"}</div>
+      <div className="mt-2 flex flex-col gap-3">
+        {wod.blocks.map((b, bi) => (
+          <div key={bi} className="border-l-2 border-gray-200 pl-3">
+            {b.title && <div className="text-sm font-medium">{b.title}</div>}
+            <div className="text-xs uppercase tracking-wide text-gray-400">
+              {b.format.replaceAll("_", " ")}
+              {b.scheme ? ` · ${b.scheme}` : ""}
+              {b.timeDomainMinutes != null ? ` · ~${b.timeDomainMinutes} min` : ""}
+            </div>
+            {b.components.length > 0 && (
+              <ul className="mt-1 list-disc pl-5 text-sm">
+                {b.components.map((c, i) => (
+                  <li key={i}>
+                    {c.reps != null ? `${c.reps} ` : ""}{c.movement}
+                    {c.load ? ` @ ${c.load}` : ""}
+                    {c.distanceMeters ? ` ${c.distanceMeters} m` : ""}
+                    {c.calories ? ` ${c.calories} cal` : ""}
+                    {c.durationSeconds ? ` ${c.durationSeconds}s` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {b.coachingNotes && <p className="mt-1 text-xs text-gray-600">{b.coachingNotes}</p>}
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
@@ -2337,12 +2454,15 @@ git commit -m "docs: add README and finalize v1 verification"
 - **Free-text + manual ingestion** → `WodInput` union (`raw` | `structured`); pipeline branches in Task 4.4; UI uses raw paste (manual entry of a structured workout is supported by the API/types and can be surfaced in a later UI iteration). ✔
 - **Athlete profile incl. availability** → Prisma `AthleteProfile.availability`, `AthleteProfileSchema`, profile form. ✔
 - **Constraints: injury / time / missed days / movement goal / none** → `ConstraintType`, surfaced in `TailorClient`. ✔
-- **Result: side-by-side + rationale + what-changed + safety disclaimer** → Task 6.4 + layout footer. ✔
+- **Dynamic multi-block workout formats** → `StructuredWod` is a session of ordered `blocks[]`, each with its own `format`, `scheme`, `components[]`, and `coachingNotes`; verbatim `rawText` is preserved at session and block level as the source of truth, with structure as a derived extraction (Task 3.1, parse prompt in Task 4.1). Stored in `Json` columns — no per-format tables. ✔
+- **Result: side-by-side + rationale + what-changed + safety disclaimer** → Task 6.4 (block-by-block `WodView`) + layout footer. ✔
 - **Auth + Postgres persistence** → Phase 1 + Phase 5. ✔
 - **Out of scope (coach portal, OCR, integrations)** → not present. ✔
 
 ## Open follow-ups (not blocking v1)
 
 - Refine loop ("still hurts / too easy") — the API already accepts a free-text `details`; a conversational refine UI is a fast follow.
+- **Movement-name → library resolution:** `components[].movement` is a canonical name string with no enforced FK to the `Movement` library, so an extracted movement may have no grounding row (no contraindications/substitutes). v1 relies on the parse prompt emitting canonical names; a fuzzy/normalization pass (and surfacing "unrecognized movement") is a follow-up.
+- **`blocks[].rawText` reconstruction:** the parser splits the session into per-block slices; if a split is lossy, the session-level `rawText` remains the complete source of truth and the block can fall back to it.
 - Manual structured-entry form (the data path exists; only the UI is deferred).
 - Confirm the exact current Gemini model id at build time; `gemini-2.5-flash` is the default.
