@@ -66,8 +66,11 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 
 ## Engine pipeline (core)
 
-1. **Ingest → normalize:** free-text or manual entry → structured workout (movements,
-   rep scheme, time domain, loads). LLM-powered parse for free text.
+1. **Ingest → normalize:** free-text or manual entry → structured workout. The raw text
+   is preserved **verbatim** as the source of truth; the LLM splits it into ordered
+   **blocks** (each tagged with a format) and extracts the thin structured layer
+   (movements, scheme, time domain, loads) the engine reasons over. The structure is a
+   *derived cache* over the raw text, not a replacement for it.
 2. **Classify stimulus:** tag the workout's training intent(s) from the stimulus
    taxonomy (e.g., aerobic capacity, heavy strength, gymnastics skill, mixed-modal
    conditioning).
@@ -98,8 +101,26 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 - **Movement:** name, plane, jointStress, loadType, skill, substitutes[]
 - **InjuryContraindication:** injury → avoided patterns/movements
 - **StimulusTag:** taxonomy of training intents
-- **Workout (structured):** movements[], scheme, timeDomain, loads, source (adhoc in v1)
-- **TailoredWorkout:** original workout, the request/constraint, modified workout, rationale,
+- **Workout (structured):** a training **session**, not a single block — one day routinely
+  contains several blocks with different formats (a strength piece + a conditioning AMRAP +
+  a partner WOD). The verbatim **rawText** is preserved as the durable source of truth (at
+  session and per-block level); the structured fields are a *derived, regenerable extraction*
+  layered on top — only what the engine must reason over programmatically:
+  - **session:** name?, rawText (verbatim paste), blocks[], source (adhoc in v1)
+  - **block:** title?, rawText (verbatim slice), format (`amrap | for_time | emom | intervals
+    | strength | skill | partner | rest | other`), scheme?, timeDomainMinutes?, components[]
+    (extracted movements, resolvable to the Movement library), coachingNotes? (intensity cues,
+    tempo/pause prescriptions, and scaling tiers like Rx+/Rx/Int and M/F loads — kept as prose,
+    **not** modeled into columns)
+  - **component:** movement (canonical name), reps?, load? (raw string incl. tiers such as
+    "61/43 kg"), distanceMeters?, calories?, durationSeconds?, notes?
+
+  Stored in a Prisma **`Json`** column — deliberately **no** relational table per block format
+  (that would be over-engineering against open-ended programming, and the structure would keep
+  breaking on the next format). A parse failure **degrades gracefully**: fall back to the
+  block's rawText handed to the LLM.
+- **TailoredWorkout:** original session, the request/constraint, modified session (same
+  structured shape), per-change list, rationale, safety note, stimulus classification,
   timestamp, link to athlete
 
 ## Athlete-facing flow
