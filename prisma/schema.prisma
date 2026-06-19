@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---- Auth.js (NextAuth) models ----
+model User {
+  id            String            @id @default(cuid())
+  email         String            @unique
+  emailVerified DateTime?
+  name          String?
+  accounts      Account[]
+  sessions      Session[]
+  profile       AthleteProfile?
+  tailored      TailoredWorkout[]
+  createdAt     DateTime          @default(now())
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---- Athlete profile ----
+model AthleteProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  injuries     Json     @default("[]")
+  benchmarks   Json     @default("{}")
+  equipment    Json     @default("[]")
+  goals        Json     @default("[]")
+  availability Json     @default("{}")
+  updatedAt    DateTime @updatedAt
+}
+
+// ---- Domain knowledge (seeded, product-owned) ----
+model Movement {
+  id          String @id @default(cuid())
+  name        String @unique
+  plane       String
+  jointStress Json
+  loadType    String
+  skill       String
+  substitutes Json
+}
+
+model InjuryContraindication {
+  id             String  @id @default(cuid())
+  injuryKey      String  @unique
+  label          String
+  avoidPatterns  Json
+  avoidMovements Json
+  notes          String?
+}
+
+model StimulusDef {
+  id          String @id @default(cuid())
+  key         String @unique
+  label       String
+  description String
+}
+
+model TailoredWorkout {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalWod Json
+  request     Json
+  tailoredWod Json
+  changes     Json
+  rationale   String
+  safetyNote  String?
+  stimulus    Json
+  createdAt   DateTime @default(now())
+}
