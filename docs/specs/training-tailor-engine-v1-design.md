@@ -2,7 +2,7 @@
 
 ## Problem
 
-Amateur and competitive CrossFit athletes follow standardized, non-individualized
+Amateur and competitive functional fitness athletes follow standardized, non-individualized
 training templates (e.g., Mayhem, Training Think Tank). When an athlete faces a
 physical limitation (injury/pain), a time constraint, a missed training day, or
 wants to bias work toward a specific weakness, they often don't know how to scale
@@ -17,12 +17,12 @@ intent.
 
 The full product vision has three sub-systems:
 
-- **A. Modification engine** — structured WOD + athlete profile + constraint →
-  tailored WOD with rationale. The novel, hard, valuable core. LLM-driven.
+- **A. Modification engine** — structured workout + athlete profile + constraint →
+  tailored workout with rationale. The novel, hard, valuable core. LLM-driven.
 - **B. Athlete-side essentials** — profile management + ingestion (free-text parse →
-  structured WOD; manual entry). Needed to run the engine end-to-end.
-- **C. Coach/program side** — coaches author programs, schedule daily WODs, athletes
-  link to a program and fetch "today's WOD." Substantial, fairly standard multi-user
+  structured workout; manual entry). Needed to run the engine end-to-end.
+- **C. Coach/program side** — coaches author programs, schedule daily workouts, athletes
+  link to a program and fetch "today's workout." Substantial, fairly standard multi-user
   SaaS. **Not** where the individualization magic lives.
 
 **v1 scope = A + B** (athlete self-serve). The engine proves out end-to-end without
@@ -66,14 +66,14 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 
 ## Engine pipeline (core)
 
-1. **Ingest → normalize:** free-text or manual entry → structured WOD (movements,
+1. **Ingest → normalize:** free-text or manual entry → structured workout (movements,
    rep scheme, time domain, loads). LLM-powered parse for free text.
-2. **Classify stimulus:** tag the WOD's training intent(s) from the stimulus
+2. **Classify stimulus:** tag the workout's training intent(s) from the stimulus
    taxonomy (e.g., aerobic capacity, heavy strength, gymnastics skill, mixed-modal
    conditioning).
 3. **Resolve constraints:** combine athlete profile + today's request; pull relevant
    contraindications and substitution candidates from the domain data.
-4. **Tailor:** the AI service generates the modified WOD, instructed to *preserve the
+4. **Tailor:** the AI service generates the modified workout, instructed to *preserve the
    classified stimulus*, respect contraindications, scale to benchmarks, fit
    equipment and time budget. Structured JSON output (validated against a schema).
 5. **Rationale:** plain-language "what changed and why the stimulus is preserved,"
@@ -98,8 +98,8 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 - **Movement:** name, plane, jointStress, loadType, skill, substitutes[]
 - **InjuryContraindication:** injury → avoided patterns/movements
 - **StimulusTag:** taxonomy of training intents
-- **WOD (structured):** movements[], scheme, timeDomain, loads, source (adhoc in v1)
-- **TailoredWorkout:** original WOD, the request/constraint, modified WOD, rationale,
+- **Workout (structured):** movements[], scheme, timeDomain, loads, source (adhoc in v1)
+- **TailoredWorkout:** original workout, the request/constraint, modified workout, rationale,
   timestamp, link to athlete
 
 ## Athlete-facing flow
