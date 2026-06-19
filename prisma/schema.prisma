@@ -98,9 +98,9 @@ model TailoredWorkout {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  originalWod Json
+  originalWorkout Json
   request     Json
-  tailoredWod Json
+  tailoredWorkout Json
   changes     Json
   rationale   String
   safetyNote  String?

@@ -34,10 +34,10 @@ training-tailor/
 │  │  │  ├─ fake-provider.ts     # Test double: scripted/echo responses
 │  │  │  └─ index.ts             # getProvider() factory (reads env, returns provider)
 │  │  ├─ engine/
-│  │  │  ├─ types.ts             # StructuredWod, StimulusTag, TailoredWod, etc. + Zod schemas
-│  │  │  ├─ parse-wod.ts         # raw text -> StructuredWod
-│  │  │  ├─ classify-stimulus.ts # StructuredWod -> StimulusClassification
-│  │  │  ├─ tailor.ts            # (wod + profile + request + domain) -> TailoredWod
+│  │  │  ├─ types.ts             # StructuredWorkout, StimulusTag, TailoredWorkout, etc. + Zod schemas
+│  │  │  ├─ parse-workout.ts         # raw text -> StructuredWorkout
+│  │  │  ├─ classify-stimulus.ts # StructuredWorkout -> StimulusClassification
+│  │  │  ├─ tailor.ts            # (workout + profile + request + domain) -> TailoredWorkout
 │  │  │  └─ pipeline.ts          # orchestrates parse/classify/tailor
 │  │  ├─ domain/
 │  │  │  ├─ types.ts             # Movement, InjuryContraindication, StimulusDef domain types
@@ -288,9 +288,9 @@ model TailoredWorkout {
   id            String   @id @default(cuid())
   userId        String
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  originalWod   Json     // StructuredWod (multi-block session; verbatim rawText preserved)
+  originalWorkout   Json     // StructuredWorkout (multi-block session; verbatim rawText preserved)
   request       Json     // TailorRequest
-  tailoredWod   Json     // StructuredWod (multi-block session; verbatim rawText preserved)
+  tailoredWorkout   Json     // StructuredWorkout (multi-block session; verbatim rawText preserved)
   changes       Json     // ChangeItem[]
   rationale     String
   safetyNote    String?
@@ -303,7 +303,7 @@ model TailoredWorkout {
 > different formats (strength piece, conditioning AMRAP, partner WOD), each carrying load-bearing
 > prose (tempo, intensity cues, Rx+/Rx/Int scaling tiers). Modeling that relationally (a table per
 > block format) is over-engineering against open-ended programming. Instead the workout is one
-> `StructuredWod` JSON value — verbatim `rawText` as the durable source of truth plus a derived
+> `StructuredWorkout` JSON value — verbatim `rawText` as the durable source of truth plus a derived
 > `blocks[]` extraction the engine reasons over (see Task 3.1). No migration is needed to support
 > new formats; the schema absorbs them.
 
@@ -739,11 +739,11 @@ git commit -m "feat: domain seed script and repository reads"
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { StructuredWodSchema, StimulusClassificationSchema, TailoredWodSchema, StimulusTag } from "@/lib/engine/types";
+import { StructuredWorkoutSchema, StimulusClassificationSchema, TailoredWorkoutSchema, StimulusTag } from "@/lib/engine/types";
 
 describe("engine schemas", () => {
   it("parses a single-block session", () => {
-    const wod = StructuredWodSchema.parse({
+    const workout = StructuredWorkoutSchema.parse({
       name: "Fran",
       rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
       source: "adhoc",
@@ -758,11 +758,11 @@ describe("engine schemas", () => {
         },
       ],
     });
-    expect(wod.blocks[0].components).toHaveLength(2);
+    expect(workout.blocks[0].components).toHaveLength(2);
   });
 
   it("parses a multi-block session (strength + conditioning) and preserves coaching prose", () => {
-    const wod = StructuredWodSchema.parse({
+    const workout = StructuredWorkoutSchema.parse({
       name: "Planificación RX",
       rawText: "Power Snatch\n8 sets every 2 min...\n\nConditioning barbell\nAMRAP 10 min\n3 burpee pull-up / 6 power clean @61/43kg / 9 box jump over",
       source: "adhoc",
@@ -785,9 +785,9 @@ describe("engine schemas", () => {
         },
       ],
     });
-    expect(wod.blocks).toHaveLength(2);
-    expect(wod.blocks[1].format).toBe("amrap");
-    expect(wod.blocks[0].coachingNotes).toContain("pausas");
+    expect(workout.blocks).toHaveLength(2);
+    expect(workout.blocks[1].format).toBe("amrap");
+    expect(workout.blocks[0].coachingNotes).toContain("pausas");
   });
 
   it("parses a stimulus classification with valid tags", () => {
@@ -798,8 +798,8 @@ describe("engine schemas", () => {
   });
 
   it("parses a tailored workout", () => {
-    const t = TailoredWodSchema.parse({
-      wod: {
+    const t = TailoredWorkoutSchema.parse({
+      workout: {
         name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
         blocks: [{
           title: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows",
@@ -837,7 +837,7 @@ export const BlockFormat = z.enum([
 ]);
 export type BlockFormat = z.infer<typeof BlockFormat>;
 
-export const WodComponentSchema = z.object({
+export const WorkoutComponentSchema = z.object({
   movement: z.string().min(1),                          // canonical name, resolvable to Movement library
   reps: z.union([z.number(), z.string()]).nullable(),   // 21, "21-15-9", "AMRAP", ...
   load: z.string().nullable(),                          // raw string incl. tiers e.g. "61/43 kg"
@@ -846,7 +846,7 @@ export const WodComponentSchema = z.object({
   durationSeconds: z.number().nullable(),
   notes: z.string().nullable(),
 });
-export type WodComponent = z.infer<typeof WodComponentSchema>;
+export type WorkoutComponent = z.infer<typeof WorkoutComponentSchema>;
 
 // One training block within a session (a day can hold several with different formats).
 export const WorkoutBlockSchema = z.object({
@@ -855,19 +855,19 @@ export const WorkoutBlockSchema = z.object({
   format: BlockFormat,
   scheme: z.string().nullable(),                        // e.g. "AMRAP 10 min", "21-15-9 for time", "8 sets every 2 min"
   timeDomainMinutes: z.number().nullable(),
-  components: z.array(WodComponentSchema),              // extracted movements (may be empty for rest/unparseable blocks)
+  components: z.array(WorkoutComponentSchema),              // extracted movements (may be empty for rest/unparseable blocks)
   coachingNotes: z.string().nullable(),                 // intensity/tempo/scaling tiers kept as prose, not modeled into columns
 });
 export type WorkoutBlock = z.infer<typeof WorkoutBlockSchema>;
 
 // A training SESSION (one day). Raw text is the durable source of truth; the rest is a derived extraction.
-export const StructuredWodSchema = z.object({
+export const StructuredWorkoutSchema = z.object({
   name: z.string().nullable(),
   rawText: z.string().min(1),                           // verbatim paste of the whole session
   blocks: z.array(WorkoutBlockSchema).min(1),
   source: z.literal("adhoc"),
 });
-export type StructuredWod = z.infer<typeof StructuredWodSchema>;
+export type StructuredWorkout = z.infer<typeof StructuredWorkoutSchema>;
 
 export const StimulusClassificationSchema = z.object({
   primary: StimulusTag,
@@ -883,13 +883,13 @@ export const ChangeItemSchema = z.object({
 });
 export type ChangeItem = z.infer<typeof ChangeItemSchema>;
 
-export const TailoredWodSchema = z.object({
-  wod: StructuredWodSchema,
+export const TailoredWorkoutSchema = z.object({
+  workout: StructuredWorkoutSchema,
   changes: z.array(ChangeItemSchema),
   rationale: z.string().min(1),
   safetyNote: z.string().nullable(),
 });
-export type TailoredWod = z.infer<typeof TailoredWodSchema>;
+export type TailoredWorkout = z.infer<typeof TailoredWorkoutSchema>;
 
 // Athlete profile (mirrors AthleteProfile JSON columns)
 export const AvailabilitySchema = z.object({
@@ -1135,25 +1135,25 @@ git commit -m "feat: Gemini provider adapter and provider factory"
 
 ## Phase 4 — Engine pipeline
 
-### Task 4.1: `parseWod`
+### Task 4.1: `parseWorkout`
 
 **Files:**
-- Create: `src/lib/engine/parse-wod.ts`
-- Test: `tests/engine/parse-wod.test.ts`
+- Create: `src/lib/engine/parse-workout.ts`
+- Test: `tests/engine/parse-workout.test.ts`
 
 - [ ] **Step 1: Write the failing test (uses FakeProvider)**
 
-`tests/engine/parse-wod.test.ts`:
+`tests/engine/parse-workout.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { parseWod } from "@/lib/engine/parse-wod";
+import { parseWorkout } from "@/lib/engine/parse-workout";
 import { FakeProvider } from "@/lib/ai/fake-provider";
 
-describe("parseWod", () => {
-  it("parses raw text into a StructuredWod via the provider", async () => {
+describe("parseWorkout", () => {
+  it("parses raw text into a StructuredWorkout via the provider", async () => {
     const provider = new FakeProvider({
-      StructuredWod: {
+      StructuredWorkout: {
         name: "Fran", rawText: "21-15-9 Thrusters 95lb / Pull-ups", source: "adhoc",
         blocks: [{
           title: "Fran", rawText: "21-15-9 Thrusters 95lb / Pull-ups",
@@ -1165,23 +1165,23 @@ describe("parseWod", () => {
         }],
       },
     });
-    const wod = await parseWod(provider, "21-15-9 Thrusters 95lb / Pull-ups");
-    expect(wod.name).toBe("Fran");
-    expect(wod.blocks[0].components[0].movement).toBe("Thruster");
+    const workout = await parseWorkout(provider, "21-15-9 Thrusters 95lb / Pull-ups");
+    expect(workout.name).toBe("Fran");
+    expect(workout.blocks[0].components[0].movement).toBe("Thruster");
   });
 });
 ```
 
 - [ ] **Step 2: Run it, verify it fails**
 
-Run: `pnpm exec vitest run tests/engine/parse-wod.test.ts`
+Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `src/lib/engine/parse-wod.ts`**
+- [ ] **Step 3: Implement `src/lib/engine/parse-workout.ts`**
 
 ```ts
 import type { LlmProvider } from "@/lib/ai/provider";
-import { StructuredWodSchema, type StructuredWod } from "@/lib/engine/types";
+import { StructuredWorkoutSchema, type StructuredWorkout } from "@/lib/engine/types";
 
 const SYSTEM = `You convert a raw functional-fitness training session into structured JSON.
 A session often contains SEVERAL blocks with different formats (e.g., a strength piece, a conditioning
@@ -1198,26 +1198,26 @@ AMRAP, a partner WOD). Rules:
   "coachingNotes" as prose — do NOT discard them. Use null for any field that does not apply.
 Set "source" to "adhoc".`;
 
-export async function parseWod(provider: LlmProvider, rawText: string): Promise<StructuredWod> {
+export async function parseWorkout(provider: LlmProvider, rawText: string): Promise<StructuredWorkout> {
   return provider.generateStructured({
     systemPrompt: SYSTEM,
     prompt: `Raw workout:\n"""\n${rawText}\n"""\nReturn the structured workout as JSON.`,
-    schema: StructuredWodSchema,
-    schemaName: "StructuredWod",
+    schema: StructuredWorkoutSchema,
+    schemaName: "StructuredWorkout",
   });
 }
 ```
 
 - [ ] **Step 4: Run it, verify it passes**
 
-Run: `pnpm exec vitest run tests/engine/parse-wod.test.ts`
+Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: engine parseWod (raw text -> StructuredWod)"
+git commit -m "feat: engine parseWorkout (raw text -> StructuredWorkout)"
 ```
 
 ### Task 4.2: `classifyStimulus`
@@ -1234,9 +1234,9 @@ git commit -m "feat: engine parseWod (raw text -> StructuredWod)"
 import { describe, it, expect } from "vitest";
 import { classifyStimulus } from "@/lib/engine/classify-stimulus";
 import { FakeProvider } from "@/lib/ai/fake-provider";
-import type { StructuredWod } from "@/lib/engine/types";
+import type { StructuredWorkout } from "@/lib/engine/types";
 
-const fran: StructuredWod = {
+const fran: StructuredWorkout = {
   name: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups", source: "adhoc",
   blocks: [{
     title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
@@ -1271,7 +1271,7 @@ Expected: FAIL — module not found.
 
 ```ts
 import type { LlmProvider } from "@/lib/ai/provider";
-import { StimulusClassificationSchema, type StimulusClassification, type StructuredWod } from "@/lib/engine/types";
+import { StimulusClassificationSchema, type StimulusClassification, type StructuredWorkout } from "@/lib/engine/types";
 import type { StimulusDef } from "@/lib/domain/types";
 
 const SYSTEM = `You classify a functional fitness workout by its primary training stimulus, choosing from the provided taxonomy keys only.
@@ -1279,13 +1279,13 @@ Pick exactly one "primary" key and zero or more "secondary" keys. Explain briefl
 
 export async function classifyStimulus(
   provider: LlmProvider,
-  wod: StructuredWod,
+  workout: StructuredWorkout,
   taxonomy: StimulusDef[],
 ): Promise<StimulusClassification> {
   const taxonomyText = taxonomy.map((t) => `- ${t.key}: ${t.label} — ${t.description}`).join("\n");
   return provider.generateStructured({
     systemPrompt: SYSTEM,
-    prompt: `Taxonomy:\n${taxonomyText}\n\nWorkout JSON:\n${JSON.stringify(wod)}\n\nReturn the classification as JSON. Use only keys from the taxonomy.`,
+    prompt: `Taxonomy:\n${taxonomyText}\n\nWorkout JSON:\n${JSON.stringify(workout)}\n\nReturn the classification as JSON. Use only keys from the taxonomy.`,
     schema: StimulusClassificationSchema,
     schemaName: "StimulusClassification",
   });
@@ -1318,10 +1318,10 @@ git commit -m "feat: engine classifyStimulus (workout -> stimulus classification
 import { describe, it, expect } from "vitest";
 import { tailor } from "@/lib/engine/tailor";
 import { FakeProvider } from "@/lib/ai/fake-provider";
-import type { StructuredWod, StimulusClassification, AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
+import type { StructuredWorkout, StimulusClassification, AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
 import type { Movement, InjuryContraindication } from "@/lib/domain/types";
 
-const fran: StructuredWod = {
+const fran: StructuredWorkout = {
   name: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups", source: "adhoc",
   blocks: [{
     title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
@@ -1341,8 +1341,8 @@ const request: TailorRequest = { constraintType: "injury", details: "Sore right 
 describe("tailor", () => {
   it("returns a tailored workout with changes and rationale", async () => {
     const provider = new FakeProvider({
-      TailoredWod: {
-        wod: { name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
+      TailoredWorkout: {
+        workout: { name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
           blocks: [{
             title: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows",
             format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
@@ -1363,9 +1363,9 @@ describe("tailor", () => {
     const contraindications: InjuryContraindication[] = [
       { injuryKey: "shoulder_impingement", label: "Shoulder impingement", avoidPatterns: ["overhead_press"], avoidMovements: ["Thruster"], notes: null },
     ];
-    const result = await tailor(provider, { wod: fran, classification, profile, request, movements, contraindications });
+    const result = await tailor(provider, { workout: fran, classification, profile, request, movements, contraindications });
     expect(result.changes.length).toBeGreaterThan(0);
-    expect(result.wod.blocks[0].components[0].movement).toBe("Goblet Squat");
+    expect(result.workout.blocks[0].components[0].movement).toBe("Goblet Squat");
   });
 });
 ```
@@ -1380,13 +1380,13 @@ Expected: FAIL — module not found.
 ```ts
 import type { LlmProvider } from "@/lib/ai/provider";
 import {
-  TailoredWodSchema, type TailoredWod, type StructuredWod,
+  TailoredWorkoutSchema, type TailoredWorkout, type StructuredWorkout,
   type StimulusClassification, type AthleteProfileInput, type TailorRequest,
 } from "@/lib/engine/types";
 import type { Movement, InjuryContraindication } from "@/lib/domain/types";
 
 export interface TailorInput {
-  wod: StructuredWod;
+  workout: StructuredWorkout;
   classification: StimulusClassification;
   profile: AthleteProfileInput;
   request: TailorRequest;
@@ -1404,17 +1404,17 @@ constraint WHILE PRESERVING THE PRIMARY TRAINING STIMULUS identified in the clas
 - Carry over each block's coachingNotes (tempo, intensity, scaling tiers); update them only where the change requires it.
 - If a movement-improvement goal is requested, bias the modification toward that movement without breaking the stimulus.
 - Be conservative with injuries: when unsure, choose the lower-risk option and add a safetyNote.
-- For the modified "wod", set the session and per-block "rawText" to a clean text rendering of the MODIFIED workout.
-Return JSON with: the modified "wod", a "changes" list (original/modified/reason per change), a "rationale" explaining how the
+- For the modified "workout", set the session and per-block "rawText" to a clean text rendering of the MODIFIED workout.
+Return JSON with: the modified "workout", a "changes" list (original/modified/reason per change), a "rationale" explaining how the
 stimulus is preserved, and a "safetyNote" (or null).`;
 
-export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoredWod> {
+export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoredWorkout> {
   const avoid = input.contraindications.flatMap((c) => c.avoidMovements);
   const avoidPatterns = input.contraindications.flatMap((c) => c.avoidPatterns);
   const library = input.movements.map((m) => `${m.name} [${m.loadType}, ${m.skill}, stress: ${m.jointStress.join("/")}, subs: ${m.substitutes.join(", ") || "none"}]`).join("\n");
 
   const prompt = [
-    `Original workout JSON:\n${JSON.stringify(input.wod)}`,
+    `Original workout JSON:\n${JSON.stringify(input.workout)}`,
     `Stimulus classification:\n${JSON.stringify(input.classification)}`,
     `Athlete profile:\n${JSON.stringify(input.profile)}`,
     `Today's request:\n${JSON.stringify(input.request)}`,
@@ -1427,8 +1427,8 @@ export async function tailor(provider: LlmProvider, input: TailorInput): Promise
   return provider.generateStructured({
     systemPrompt: SYSTEM,
     prompt,
-    schema: TailoredWodSchema,
-    schemaName: "TailoredWod",
+    schema: TailoredWorkoutSchema,
+    schemaName: "TailoredWorkout",
   });
 }
 ```
@@ -1472,11 +1472,11 @@ const contraindications: InjuryContraindication[] = [];
 describe("runTailorPipeline (from raw text)", () => {
   it("parses, classifies, and tailors using the provider", async () => {
     const provider = new FakeProvider({
-      StructuredWod: { name: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", source: "adhoc",
+      StructuredWorkout: { name: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", source: "adhoc",
         blocks: [{ title: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
           components: [{ movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
       StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoredWod: { wod: { name: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", source: "adhoc",
+      TailoredWorkout: { workout: { name: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", source: "adhoc",
           blocks: [{ title: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", format: "for_time", scheme: "15-12-9 for time", timeDomainMinutes: 4, coachingNotes: null,
             components: [{ movement: "Thruster", reps: "15-12-9", load: "75 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [{ original: "21-15-9", modified: "15-12-9", reason: "Fit 20-minute cap." }],
@@ -1496,13 +1496,13 @@ describe("runTailorPipeline (from raw text)", () => {
   it("accepts an already-structured workout and skips parsing", async () => {
     const provider = new FakeProvider({
       StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoredWod: { wod: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
+      TailoredWorkout: { workout: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
           blocks: [{ title: "Manual", rawText: "AMRAP 10\n10 Burpees", format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null,
             components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [], rationale: "No change needed.", safetyNote: null },
     });
     const result = await runTailorPipeline(provider, {
-      input: { kind: "structured", wod: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
+      input: { kind: "structured", workout: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
         blocks: [{ title: "Manual", rawText: "AMRAP 10\n10 Burpees", format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null,
           components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] } },
       profile, request: { constraintType: "none", details: "", timeCapMinutes: null, targetMovement: null },
@@ -1522,20 +1522,20 @@ Expected: FAIL — module not found.
 
 ```ts
 import type { LlmProvider } from "@/lib/ai/provider";
-import { parseWod } from "@/lib/engine/parse-wod";
+import { parseWorkout } from "@/lib/engine/parse-workout";
 import { classifyStimulus } from "@/lib/engine/classify-stimulus";
 import { tailor } from "@/lib/engine/tailor";
 import type {
-  StructuredWod, StimulusClassification, TailoredWod, AthleteProfileInput, TailorRequest,
+  StructuredWorkout, StimulusClassification, TailoredWorkout, AthleteProfileInput, TailorRequest,
 } from "@/lib/engine/types";
 import type { Movement, InjuryContraindication, StimulusDef } from "@/lib/domain/types";
 
-export type WodInput =
+export type WorkoutInput =
   | { kind: "raw"; rawText: string }
-  | { kind: "structured"; wod: StructuredWod };
+  | { kind: "structured"; workout: StructuredWorkout };
 
 export interface PipelineArgs {
-  input: WodInput;
+  input: WorkoutInput;
   profile: AthleteProfileInput;
   request: TailorRequest;
   taxonomy: StimulusDef[];
@@ -1544,20 +1544,20 @@ export interface PipelineArgs {
 }
 
 export interface PipelineResult {
-  original: StructuredWod;
+  original: StructuredWorkout;
   classification: StimulusClassification;
-  tailored: TailoredWod;
+  tailored: TailoredWorkout;
 }
 
 export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
   const original = args.input.kind === "raw"
-    ? await parseWod(provider, args.input.rawText)
-    : args.input.wod;
+    ? await parseWorkout(provider, args.input.rawText)
+    : args.input.workout;
 
   const classification = await classifyStimulus(provider, original, args.taxonomy);
 
   const tailored = await tailor(provider, {
-    wod: original,
+    workout: original,
     classification,
     profile: args.profile,
     request: args.request,
@@ -2028,11 +2028,11 @@ import type { AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
 describe("runTailorForAthlete", () => {
   it("runs the pipeline with injected domain data and provider", async () => {
     const provider = new FakeProvider({
-      StructuredWod: { name: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", source: "adhoc",
+      StructuredWorkout: { name: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", source: "adhoc",
         blocks: [{ title: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
           components: [{ movement: "Pull-up", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
       StimulusClassification: { primary: "muscular_endurance", secondary: [], rationale: "Bodyweight grind." },
-      TailoredWod: { wod: { name: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", source: "adhoc",
+      TailoredWorkout: { workout: { name: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", source: "adhoc",
           blocks: [{ title: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
             components: [{ movement: "Ring Row", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [{ original: "Pull-up", modified: "Ring Row", reason: "Shoulder-friendly pull." }],
@@ -2070,7 +2070,7 @@ Expected: FAIL — module not found.
 
 ```ts
 import type { LlmProvider } from "@/lib/ai/provider";
-import { runTailorPipeline, type WodInput, type PipelineResult } from "@/lib/engine/pipeline";
+import { runTailorPipeline, type WorkoutInput, type PipelineResult } from "@/lib/engine/pipeline";
 import type { AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
 import type { Movement, InjuryContraindication, StimulusDef } from "@/lib/domain/types";
 import { getAllMovements, getContraindicationsForInjuries, getStimulusDefs } from "@/lib/domain/repository";
@@ -2083,7 +2083,7 @@ export interface DomainData {
 
 export interface RunTailorArgs {
   provider: LlmProvider;
-  input: WodInput;
+  input: WorkoutInput;
   profile: AthleteProfileInput;
   request: TailorRequest;
   domain?: DomainData; // injectable for tests; defaults to DB-backed
@@ -2122,13 +2122,13 @@ import { prisma } from "@/lib/db";
 import { getProvider } from "@/lib/ai";
 import { normalizeProfile } from "@/lib/profile";
 import { runTailorForAthlete } from "@/lib/tailor-service";
-import { StructuredWodSchema, TailorRequestSchema } from "@/lib/engine/types";
+import { StructuredWorkoutSchema, TailorRequestSchema } from "@/lib/engine/types";
 import { z } from "zod";
 
 const BodySchema = z.object({
   input: z.union([
     z.object({ kind: z.literal("raw"), rawText: z.string().min(1) }),
-    z.object({ kind: z.literal("structured"), wod: StructuredWodSchema }),
+    z.object({ kind: z.literal("structured"), workout: StructuredWorkoutSchema }),
   ]),
   request: TailorRequestSchema,
   save: z.boolean().optional(),
@@ -2161,8 +2161,8 @@ export async function POST(req: Request) {
     await prisma.tailoredWorkout.create({
       data: {
         userId: session.user.id,
-        originalWod: result.original, request: body.request,
-        tailoredWod: result.tailored.wod, changes: result.tailored.changes,
+        originalWorkout: result.original, request: body.request,
+        tailoredWorkout: result.tailored.workout, changes: result.tailored.changes,
         rationale: result.tailored.rationale, safetyNote: result.tailored.safetyNote,
         stimulus: result.classification,
       },
@@ -2183,20 +2183,20 @@ git commit -m "feat: tailor service and POST /api/tailor endpoint"
 ### Task 6.4: Tailor page (ingest → constraint → result)
 
 **Files:**
-- Create: `src/app/tailor/page.tsx`, `src/app/tailor/TailorClient.tsx`, `src/components/WodView.tsx`
+- Create: `src/app/tailor/page.tsx`, `src/app/tailor/TailorClient.tsx`, `src/components/WorkoutView.tsx`
 
-- [ ] **Step 1: Implement `src/components/WodView.tsx`** (renders a StructuredWod)
+- [ ] **Step 1: Implement `src/components/WorkoutView.tsx`** (renders a StructuredWorkout)
 
 ```tsx
-import type { StructuredWod } from "@/lib/engine/types";
+import type { StructuredWorkout } from "@/lib/engine/types";
 
-export function WodView({ wod, title }: { wod: StructuredWod; title: string }) {
+export function WorkoutView({ workout, title }: { workout: StructuredWorkout; title: string }) {
   return (
     <div className="rounded border p-4">
       <div className="text-xs uppercase tracking-wide text-gray-500">{title}</div>
-      <div className="font-semibold">{wod.name ?? "Workout"}</div>
+      <div className="font-semibold">{workout.name ?? "Workout"}</div>
       <div className="mt-2 flex flex-col gap-3">
-        {wod.blocks.map((b, bi) => (
+        {workout.blocks.map((b, bi) => (
           <div key={bi} className="border-l-2 border-gray-200 pl-3">
             {b.title && <div className="text-sm font-medium">{b.title}</div>}
             <div className="text-xs uppercase tracking-wide text-gray-400">
@@ -2233,7 +2233,7 @@ export function WodView({ wod, title }: { wod: StructuredWod; title: string }) {
 import { useState } from "react";
 import type { PipelineResult } from "@/lib/engine/pipeline";
 import type { TailorRequest } from "@/lib/engine/types";
-import { WodView } from "@/components/WodView";
+import { WorkoutView } from "@/components/WorkoutView";
 
 const CONSTRAINTS: { value: TailorRequest["constraintType"]; label: string }[] = [
   { value: "none", label: "No constraint" },
@@ -2307,8 +2307,8 @@ export default function TailorClient() {
       {result && (
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <WodView wod={result.original} title="Original" />
-            <WodView wod={result.tailored.wod} title="Tailored for you" />
+            <WorkoutView workout={result.original} title="Original" />
+            <WorkoutView workout={result.tailored.workout} title="Tailored for you" />
           </div>
           <div className="rounded border p-4">
             <div className="text-xs uppercase tracking-wide text-gray-500">Stimulus</div>
@@ -2374,8 +2374,8 @@ git commit -m "feat: tailor page with ingest, constraint selection, and result v
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { WodView } from "@/components/WodView";
-import type { StructuredWod } from "@/lib/engine/types";
+import { WorkoutView } from "@/components/WorkoutView";
+import type { StructuredWorkout } from "@/lib/engine/types";
 
 export default async function HistoryPage() {
   const session = await auth();
@@ -2392,8 +2392,8 @@ export default async function HistoryPage() {
           <div key={it.id} className="flex flex-col gap-2">
             <div className="text-xs text-gray-500">{new Date(it.createdAt).toLocaleString()}</div>
             <div className="grid gap-4 md:grid-cols-2">
-              <WodView wod={it.originalWod as unknown as StructuredWod} title="Original" />
-              <WodView wod={it.tailoredWod as unknown as StructuredWod} title="Tailored" />
+              <WorkoutView workout={it.originalWorkout as unknown as StructuredWorkout} title="Original" />
+              <WorkoutView workout={it.tailoredWorkout as unknown as StructuredWorkout} title="Tailored" />
             </div>
             <p className="text-sm">{it.rationale}</p>
           </div>
@@ -2451,11 +2451,11 @@ git commit -m "docs: add README and finalize v1 verification"
 
 - **Engine + domain-grounding** → Phases 2–4 (domain seed, types, parse/classify/tailor with contraindications + stimulus). ✔
 - **AI service abstraction (Gemini behind interface)** → Task 3.2/3.3; only `gemini-provider.ts` imports the SDK; `getProvider()` factory keyed by `AI_PROVIDER`. ✔
-- **Free-text + manual ingestion** → `WodInput` union (`raw` | `structured`); pipeline branches in Task 4.4; UI uses raw paste (manual entry of a structured workout is supported by the API/types and can be surfaced in a later UI iteration). ✔
+- **Free-text + manual ingestion** → `WorkoutInput` union (`raw` | `structured`); pipeline branches in Task 4.4; UI uses raw paste (manual entry of a structured workout is supported by the API/types and can be surfaced in a later UI iteration). ✔
 - **Athlete profile incl. availability** → Prisma `AthleteProfile.availability`, `AthleteProfileSchema`, profile form. ✔
 - **Constraints: injury / time / missed days / movement goal / none** → `ConstraintType`, surfaced in `TailorClient`. ✔
-- **Dynamic multi-block workout formats** → `StructuredWod` is a session of ordered `blocks[]`, each with its own `format`, `scheme`, `components[]`, and `coachingNotes`; verbatim `rawText` is preserved at session and block level as the source of truth, with structure as a derived extraction (Task 3.1, parse prompt in Task 4.1). Stored in `Json` columns — no per-format tables. ✔
-- **Result: side-by-side + rationale + what-changed + safety disclaimer** → Task 6.4 (block-by-block `WodView`) + layout footer. ✔
+- **Dynamic multi-block workout formats** → `StructuredWorkout` is a session of ordered `blocks[]`, each with its own `format`, `scheme`, `components[]`, and `coachingNotes`; verbatim `rawText` is preserved at session and block level as the source of truth, with structure as a derived extraction (Task 3.1, parse prompt in Task 4.1). Stored in `Json` columns — no per-format tables. ✔
+- **Result: side-by-side + rationale + what-changed + safety disclaimer** → Task 6.4 (block-by-block `WorkoutView`) + layout footer. ✔
 - **Auth + Postgres persistence** → Phase 1 + Phase 5. ✔
 - **Out of scope (coach portal, OCR, integrations)** → not present. ✔
 

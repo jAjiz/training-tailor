@@ -52,7 +52,7 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 - **Server:** route handlers / server actions that invoke the engine server-side
   (API key never reaches the browser).
 - **AI service abstraction layer:** a provider-agnostic interface (e.g., a
-  `LlmProvider` contract with methods like `parseWod`, `classifyStimulus`, `tailor`)
+  `LlmProvider` contract with methods like `parseWorkout`, `classifyStimulus`, `tailor`)
   that the engine depends on. v1 ships a **Gemini** implementation; adding Claude/
   OpenAI later means writing a new adapter, not changing the engine. Provider is
   chosen via config/env.
