@@ -34,10 +34,10 @@ training-tailor/
 │  │  │  ├─ fake-provider.ts     # Test double: scripted/echo responses
 │  │  │  └─ index.ts             # getProvider() factory (reads env, returns provider)
 │  │  ├─ engine/
-│  │  │  ├─ types.ts             # StructuredWorkout, StimulusTag, TailoredWorkout, etc. + Zod schemas
+│  │  │  ├─ types.ts             # StructuredWorkout, StimulusTag, TailoringResult, etc. + Zod schemas
 │  │  │  ├─ parse-workout.ts         # raw text -> StructuredWorkout
 │  │  │  ├─ classify-stimulus.ts # StructuredWorkout -> StimulusClassification
-│  │  │  ├─ tailor.ts            # (workout + profile + request + domain) -> TailoredWorkout
+│  │  │  ├─ tailor.ts            # (workout + profile + request + domain) -> TailoringResult
 │  │  │  └─ pipeline.ts          # orchestrates parse/classify/tailor
 │  │  ├─ domain/
 │  │  │  ├─ types.ts             # Movement, InjuryContraindication, StimulusDef domain types
@@ -739,7 +739,7 @@ git commit -m "feat: domain seed script and repository reads"
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { StructuredWorkoutSchema, StimulusClassificationSchema, TailoredWorkoutSchema, StimulusTag } from "@/lib/engine/types";
+import { StructuredWorkoutSchema, StimulusClassificationSchema, TailoringResultSchema, StimulusTag } from "@/lib/engine/types";
 
 describe("engine schemas", () => {
   it("parses a single-block session", () => {
@@ -798,7 +798,7 @@ describe("engine schemas", () => {
   });
 
   it("parses a tailored workout", () => {
-    const t = TailoredWorkoutSchema.parse({
+    const t = TailoringResultSchema.parse({
       workout: {
         name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
         blocks: [{
@@ -883,13 +883,13 @@ export const ChangeItemSchema = z.object({
 });
 export type ChangeItem = z.infer<typeof ChangeItemSchema>;
 
-export const TailoredWorkoutSchema = z.object({
+export const TailoringResultSchema = z.object({
   workout: StructuredWorkoutSchema,
   changes: z.array(ChangeItemSchema),
   rationale: z.string().min(1),
   safetyNote: z.string().nullable(),
 });
-export type TailoredWorkout = z.infer<typeof TailoredWorkoutSchema>;
+export type TailoringResult = z.infer<typeof TailoringResultSchema>;
 
 // Athlete profile (mirrors AthleteProfile JSON columns)
 export const AvailabilitySchema = z.object({
@@ -1341,7 +1341,7 @@ const request: TailorRequest = { constraintType: "injury", details: "Sore right 
 describe("tailor", () => {
   it("returns a tailored workout with changes and rationale", async () => {
     const provider = new FakeProvider({
-      TailoredWorkout: {
+      TailoringResult: {
         workout: { name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
           blocks: [{
             title: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows",
@@ -1380,7 +1380,7 @@ Expected: FAIL — module not found.
 ```ts
 import type { LlmProvider } from "@/lib/ai/provider";
 import {
-  TailoredWorkoutSchema, type TailoredWorkout, type StructuredWorkout,
+  TailoringResultSchema, type TailoringResult, type StructuredWorkout,
   type StimulusClassification, type AthleteProfileInput, type TailorRequest,
 } from "@/lib/engine/types";
 import type { Movement, InjuryContraindication } from "@/lib/domain/types";
@@ -1408,7 +1408,7 @@ constraint WHILE PRESERVING THE PRIMARY TRAINING STIMULUS identified in the clas
 Return JSON with: the modified "workout", a "changes" list (original/modified/reason per change), a "rationale" explaining how the
 stimulus is preserved, and a "safetyNote" (or null).`;
 
-export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoredWorkout> {
+export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoringResult> {
   const avoid = input.contraindications.flatMap((c) => c.avoidMovements);
   const avoidPatterns = input.contraindications.flatMap((c) => c.avoidPatterns);
   const library = input.movements.map((m) => `${m.name} [${m.loadType}, ${m.skill}, stress: ${m.jointStress.join("/")}, subs: ${m.substitutes.join(", ") || "none"}]`).join("\n");
@@ -1427,8 +1427,8 @@ export async function tailor(provider: LlmProvider, input: TailorInput): Promise
   return provider.generateStructured({
     systemPrompt: SYSTEM,
     prompt,
-    schema: TailoredWorkoutSchema,
-    schemaName: "TailoredWorkout",
+    schema: TailoringResultSchema,
+    schemaName: "TailoringResult",
   });
 }
 ```
@@ -1476,7 +1476,7 @@ describe("runTailorPipeline (from raw text)", () => {
         blocks: [{ title: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
           components: [{ movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
       StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoredWorkout: { workout: { name: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", source: "adhoc",
+      TailoringResult: { workout: { name: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", source: "adhoc",
           blocks: [{ title: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", format: "for_time", scheme: "15-12-9 for time", timeDomainMinutes: 4, coachingNotes: null,
             components: [{ movement: "Thruster", reps: "15-12-9", load: "75 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [{ original: "21-15-9", modified: "15-12-9", reason: "Fit 20-minute cap." }],
@@ -1496,7 +1496,7 @@ describe("runTailorPipeline (from raw text)", () => {
   it("accepts an already-structured workout and skips parsing", async () => {
     const provider = new FakeProvider({
       StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoredWorkout: { workout: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
+      TailoringResult: { workout: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
           blocks: [{ title: "Manual", rawText: "AMRAP 10\n10 Burpees", format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null,
             components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [], rationale: "No change needed.", safetyNote: null },
@@ -1526,7 +1526,7 @@ import { parseWorkout } from "@/lib/engine/parse-workout";
 import { classifyStimulus } from "@/lib/engine/classify-stimulus";
 import { tailor } from "@/lib/engine/tailor";
 import type {
-  StructuredWorkout, StimulusClassification, TailoredWorkout, AthleteProfileInput, TailorRequest,
+  StructuredWorkout, StimulusClassification, TailoringResult, AthleteProfileInput, TailorRequest,
 } from "@/lib/engine/types";
 import type { Movement, InjuryContraindication, StimulusDef } from "@/lib/domain/types";
 
@@ -1546,7 +1546,7 @@ export interface PipelineArgs {
 export interface PipelineResult {
   original: StructuredWorkout;
   classification: StimulusClassification;
-  tailored: TailoredWorkout;
+  tailored: TailoringResult;
 }
 
 export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
@@ -2032,7 +2032,7 @@ describe("runTailorForAthlete", () => {
         blocks: [{ title: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
           components: [{ movement: "Pull-up", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
       StimulusClassification: { primary: "muscular_endurance", secondary: [], rationale: "Bodyweight grind." },
-      TailoredWorkout: { workout: { name: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", source: "adhoc",
+      TailoringResult: { workout: { name: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", source: "adhoc",
           blocks: [{ title: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
             components: [{ movement: "Ring Row", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
         changes: [{ original: "Pull-up", modified: "Ring Row", reason: "Shoulder-friendly pull." }],
