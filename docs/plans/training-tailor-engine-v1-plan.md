@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the athlete self-serve v1 of Training Tailor — an athlete sets up a profile, supplies a CrossFit workout (paste or manual entry), states today's constraint, and gets an individualized, stimulus-preserving modification with rationale.
+**Goal:** Build the athlete self-serve v1 of Training Tailor — an athlete sets up a profile, supplies a functional fitness workout (paste or manual entry), states today's constraint, and gets an individualized, stimulus-preserving modification with rationale.
 
 **Architecture:** Next.js (App Router, TypeScript) full-stack app. A server-side **engine pipeline** (parse → classify stimulus → tailor) depends only on a provider-agnostic **AI service abstraction** (`LlmProvider`); v1 ships a **Gemini** adapter. Domain knowledge (movement library, injury→contraindication map, stimulus taxonomy) is owned data seeded into **Postgres** via **Prisma**. Auth is Auth.js (NextAuth v5) email magic-link.
 
@@ -524,7 +524,7 @@ Expected: FAIL — cannot find the JSON files.
 ]
 ```
 
-- [ ] **Step 4: Create `data/movements.json`** (≥25 common CrossFit movements; each substitute MUST also appear as a `name`)
+- [ ] **Step 4: Create `data/movements.json`** (≥25 common functional fitness movements; each substitute MUST also appear as a `name`)
 
 ```json
 [
@@ -734,7 +734,7 @@ import { describe, it, expect } from "vitest";
 import { StructuredWodSchema, StimulusClassificationSchema, TailoredWodSchema, StimulusTag } from "@/lib/engine/types";
 
 describe("engine schemas", () => {
-  it("parses a structured WOD", () => {
+  it("parses a structured workout", () => {
     const wod = StructuredWodSchema.parse({
       name: "Fran", scheme: "21-15-9 for time", timeDomainMinutes: 5, notes: null, source: "adhoc",
       components: [
@@ -752,7 +752,7 @@ describe("engine schemas", () => {
     expect(StimulusTag.options).toContain(c.primary);
   });
 
-  it("parses a tailored WOD", () => {
+  it("parses a tailored workout", () => {
     const t = TailoredWodSchema.parse({
       wod: { name: "Fran (mod)", scheme: "21-15-9 for time", timeDomainMinutes: 6, notes: null, source: "adhoc",
         components: [{ movement: "Goblet Squat", reps: 21, load: "35 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] },
@@ -859,7 +859,7 @@ Expected: PASS (3 tests).
 
 ```bash
 git add -A
-git commit -m "feat: engine types and Zod schemas (WOD, stimulus, tailored, profile, request)"
+git commit -m "feat: engine types and Zod schemas (workout, stimulus, tailored, profile, request)"
 ```
 
 ### Task 3.2: The `LlmProvider` interface + fake provider
@@ -1112,7 +1112,7 @@ Expected: FAIL — module not found.
 import type { LlmProvider } from "@/lib/ai/provider";
 import { StructuredWodSchema, type StructuredWod } from "@/lib/engine/types";
 
-const SYSTEM = `You are a CrossFit coach's assistant that converts a raw workout description into structured JSON.
+const SYSTEM = `You are a functional fitness coach's assistant that converts a raw workout description into structured JSON.
 Identify the rep/round scheme, each movement with its prescribed reps/load/distance/calories/duration, and an
 estimated time domain in minutes. Use null for any field that does not apply. Set "source" to "adhoc".
 Use canonical movement names (e.g., "Thruster", "Pull-up", "Row (Erg)").`;
@@ -1120,7 +1120,7 @@ Use canonical movement names (e.g., "Thruster", "Pull-up", "Row (Erg)").`;
 export async function parseWod(provider: LlmProvider, rawText: string): Promise<StructuredWod> {
   return provider.generateStructured({
     systemPrompt: SYSTEM,
-    prompt: `Raw workout:\n"""\n${rawText}\n"""\nReturn the structured WOD as JSON.`,
+    prompt: `Raw workout:\n"""\n${rawText}\n"""\nReturn the structured workout as JSON.`,
     schema: StructuredWodSchema,
     schemaName: "StructuredWod",
   });
@@ -1189,7 +1189,7 @@ import type { LlmProvider } from "@/lib/ai/provider";
 import { StimulusClassificationSchema, type StimulusClassification, type StructuredWod } from "@/lib/engine/types";
 import type { StimulusDef } from "@/lib/domain/types";
 
-const SYSTEM = `You classify a CrossFit workout by its primary training stimulus, choosing from the provided taxonomy keys only.
+const SYSTEM = `You classify a functional fitness workout by its primary training stimulus, choosing from the provided taxonomy keys only.
 Pick exactly one "primary" key and zero or more "secondary" keys. Explain briefly in "rationale".`;
 
 export async function classifyStimulus(
@@ -1216,7 +1216,7 @@ Expected: PASS.
 
 ```bash
 git add -A
-git commit -m "feat: engine classifyStimulus (WOD -> stimulus classification)"
+git commit -m "feat: engine classifyStimulus (workout -> stimulus classification)"
 ```
 
 ### Task 4.3: `tailor`
@@ -1250,7 +1250,7 @@ const profile: AthleteProfileInput = {
 const request: TailorRequest = { constraintType: "injury", details: "Sore right shoulder, no overhead.", timeCapMinutes: null, targetMovement: null };
 
 describe("tailor", () => {
-  it("returns a tailored WOD with changes and rationale", async () => {
+  it("returns a tailored workout with changes and rationale", async () => {
     const provider = new FakeProvider({
       TailoredWod: {
         wod: { name: "Fran (mod)", scheme: "21-15-9 for time", timeDomainMinutes: 6, notes: null, source: "adhoc",
@@ -1301,7 +1301,7 @@ export interface TailorInput {
   contraindications: InjuryContraindication[];
 }
 
-const SYSTEM = `You are an expert CrossFit coach. Modify the given workout for one athlete so it fits their constraint
+const SYSTEM = `You are an expert functional fitness coach. Modify the given workout for one athlete so it fits their constraint
 WHILE PRESERVING THE PRIMARY TRAINING STIMULUS identified in the classification. Rules:
 - Respect every contraindication: never prescribe a movement listed in avoidMovements or matching an avoided pattern.
 - Prefer substitutions from the provided movement library; keep the same stimulus (time domain, intensity, modality balance).
@@ -1317,7 +1317,7 @@ export async function tailor(provider: LlmProvider, input: TailorInput): Promise
   const library = input.movements.map((m) => `${m.name} [${m.loadType}, ${m.skill}, stress: ${m.jointStress.join("/")}, subs: ${m.substitutes.join(", ") || "none"}]`).join("\n");
 
   const prompt = [
-    `Original WOD JSON:\n${JSON.stringify(input.wod)}`,
+    `Original workout JSON:\n${JSON.stringify(input.wod)}`,
     `Stimulus classification:\n${JSON.stringify(input.classification)}`,
     `Athlete profile:\n${JSON.stringify(input.profile)}`,
     `Today's request:\n${JSON.stringify(input.request)}`,
@@ -1394,7 +1394,7 @@ describe("runTailorPipeline (from raw text)", () => {
     expect(result.tailored.changes[0].reason).toContain("cap");
   });
 
-  it("accepts an already-structured WOD and skips parsing", async () => {
+  it("accepts an already-structured workout and skips parsing", async () => {
     const provider = new FakeProvider({
       StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
       TailoredWod: { wod: { name: "Manual", scheme: "AMRAP 10", timeDomainMinutes: 10, notes: null, source: "adhoc",
@@ -1658,7 +1658,7 @@ export default function SignIn() {
 import "./globals.css";
 import Link from "next/link";
 
-export const metadata = { title: "Training Tailor", description: "Individualized CrossFit workout modifications" };
+export const metadata = { title: "Training Tailor", description: "Individualized functional fitness workout modifications" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -1691,7 +1691,7 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-2xl p-6">
       <h1 className="text-3xl font-bold">Training Tailor</h1>
-      <p className="mt-2 text-gray-600">Individualize any CrossFit workout to your body, your gear, and your day.</p>
+      <p className="mt-2 text-gray-600">Individualize any functional fitness workout to your body, your gear, and your day.</p>
       {session?.user ? (
         <div className="mt-6 flex gap-3">
           <Link href="/tailor" className="rounded bg-black px-4 py-2 text-white">Tailor a workout</Link>
@@ -2334,7 +2334,7 @@ git commit -m "docs: add README and finalize v1 verification"
 
 - **Engine + domain-grounding** → Phases 2–4 (domain seed, types, parse/classify/tailor with contraindications + stimulus). ✔
 - **AI service abstraction (Gemini behind interface)** → Task 3.2/3.3; only `gemini-provider.ts` imports the SDK; `getProvider()` factory keyed by `AI_PROVIDER`. ✔
-- **Free-text + manual ingestion** → `WodInput` union (`raw` | `structured`); pipeline branches in Task 4.4; UI uses raw paste (manual entry of a structured WOD is supported by the API/types and can be surfaced in a later UI iteration). ✔
+- **Free-text + manual ingestion** → `WodInput` union (`raw` | `structured`); pipeline branches in Task 4.4; UI uses raw paste (manual entry of a structured workout is supported by the API/types and can be surfaced in a later UI iteration). ✔
 - **Athlete profile incl. availability** → Prisma `AthleteProfile.availability`, `AthleteProfileSchema`, profile form. ✔
 - **Constraints: injury / time / missed days / movement goal / none** → `ConstraintType`, surfaced in `TailorClient`. ✔
 - **Result: side-by-side + rationale + what-changed + safety disclaimer** → Task 6.4 + layout footer. ✔
