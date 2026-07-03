@@ -31,7 +31,8 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 ### v1 must handle (general engine — any impediment or priority)
 - Physical limitation (injury/pain) — modify around it, preserve stimulus, avoid aggravation
 - Time constraint — condense while keeping the key stimulus
-- Missed days — help prioritize/merge when rejoining
+- Missed days — help prioritize/merge when rejoining (the paste may span several
+  missed days; the engine merges them into one session that fits today)
 - Movement-improvement goal — bias the workout toward a chosen weakness
 - "No constraint" — pass-through or light personalization
 
@@ -43,7 +44,8 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 | Stack | **Next.js + TypeScript** (full-stack; App Router) |
 | Engine approach | **LLM + domain-grounding layer** (the AI service reasons, grounded by owned domain data) |
 | AI provider | **Gemini (Google) API** for v1, accessed only through an internal **AI service abstraction layer** (provider-agnostic interface) so other providers (e.g., Claude, OpenAI) can be added without touching engine code. Server-side only. |
-| Auth / storage | **Simple accounts** (e.g., NextAuth email magic link) + **Postgres via Prisma** |
+| Auth / storage | **Simple accounts** (e.g., NextAuth email magic link) + **Postgres via Prisma** for user data (accounts, profiles, saved tailored workouts) |
+| Domain data storage | **Versioned JSON in the repo**, validated with schemas and loaded through a small repository interface. Moves into the DB later, when it becomes runtime-editable (coach-facing, Phase C) — a contained change behind the same interface. |
 | Ingestion (v1) | Free-text paste (LLM parse) + structured manual entry. Program-based ingestion deferred to Phase C. |
 
 ## Architecture
@@ -58,11 +60,11 @@ the coach portal. **C is a later phase** that plugs into the same engine.
   chosen via config/env.
 - **Engine module:** server-side domain-grounded pipeline (below), depends only on
   the AI service abstraction — never on a concrete provider SDK.
-- **Domain data:** seeded assets the product owns — movement library,
-  injury→contraindication map, stimulus taxonomy — stored in DB, seeded from
-  versioned JSON in the repo.
-- **Database:** Postgres (Prisma) — athlete profiles + saved tailored workouts +
-  domain data.
+- **Domain data:** owned assets — movement library, injury→contraindication map,
+  stimulus taxonomy — shipped as **versioned JSON in the repo**, schema-validated at
+  load time, and accessed only through a repository module. Nothing outside that
+  module knows where the data lives, so a later move to the DB is contained.
+- **Database:** Postgres (Prisma) — athlete profiles + saved tailored workouts.
 
 ## Engine pipeline (core)
 
@@ -94,6 +96,10 @@ the coach portal. **C is a later phase** that plugs into the same engine.
   preserve stimulus.
 
 ## Data model (core entities)
+
+Persistence note: **AthleteProfile** and **TailoredWorkout** are DB entities
+(Postgres/Prisma). **Movement**, **InjuryContraindication**, and **StimulusTag**
+are versioned JSON in the repo (see Domain data above) — same shapes, no tables.
 
 - **AthleteProfile:** injuries[], benchmarks{} (1RMs, skills, benchmark scores),
   equipment[], goals[], availability{} (hours per day, days per week, which specific
@@ -146,13 +152,18 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 - Photo/OCR ingestion
 - Native mobile app / offline
 
-## Open items to confirm at planning time
+## Open items — resolved at planning time
 
-- Exact Gemini model id and SDK for the v1 provider adapter.
-- Whether to seed domain data manually vs. LLM-assisted generation + human review.
-- Minimum viable size of the seed movement library / injury map for a credible demo.
+- **Gemini model id / SDK:** `@google/genai`, model configurable via `GEMINI_MODEL`
+  (default `gemini-flash-latest`).
+- **Domain data authoring:** manually authored, enforced by schema-validation and
+  referential-integrity tests (every substitute / avoided movement must exist in
+  the movement library).
+- **Minimum viable seed size:** ~35 movements, 7 injury contraindications,
+  7 stimulus tags.
 
 ## Next steps
 
-1. User reviews this spec.
-2. On approval → invoke the `writing-plans` skill to produce the implementation plan.
+1. ~~User reviews this spec.~~ Done.
+2. ~~Produce the implementation plan.~~ Done — `docs/plans/training-tailor-engine-v1-plan.md`.
+3. Execute the plan (Phases 0–1 are already committed).

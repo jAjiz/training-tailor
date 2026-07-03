@@ -2,25 +2,31 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the athlete self-serve v1 of Training Tailor — an athlete sets up a profile, supplies a functional fitness workout (paste or manual entry), states today's constraint, and gets an individualized, stimulus-preserving modification with rationale.
+**Goal:** Build the athlete self-serve v1 of Training Tailor — an athlete sets up a profile, supplies a functional fitness workout (paste or manual entry), states today's constraint, gets an individualized, stimulus-preserving modification with rationale, and can refine it with feedback.
 
-**Architecture:** Next.js (App Router, TypeScript) full-stack app. A server-side **engine pipeline** (parse → classify stimulus → tailor) depends only on a provider-agnostic **AI service abstraction** (`LlmProvider`); v1 ships a **Gemini** adapter. Domain knowledge (movement library, injury→contraindication map, stimulus taxonomy) is owned data seeded into **Postgres** via **Prisma**. Auth is Auth.js (NextAuth v5) email magic-link.
+**Architecture:** Next.js (App Router, TypeScript) full-stack app. A server-side **engine pipeline** (parse → classify stimulus → tailor → refine) depends only on a provider-agnostic **AI service abstraction** (`LlmProvider`); v1 ships a **Gemini** adapter. Domain knowledge (movement library, injury→contraindication map, stimulus taxonomy) is **versioned JSON in the repo**, schema-validated and read through a repository module. **Postgres** via **Prisma** holds user data only (auth, profiles, saved tailored workouts). Auth is Auth.js (NextAuth v5) email magic-link.
 
-**Tech Stack:** Next.js 15 (App Router) · TypeScript · Prisma + PostgreSQL · Zod · Vitest · `@google/genai` (Gemini) · Auth.js v5 · Tailwind CSS.
+**Tech Stack:** Next.js 16 (App Router) · TypeScript · Prisma 7 (driver adapter `@prisma/adapter-pg`, generated client at `src/generated/prisma`) + PostgreSQL · Zod 4 · Vitest · `@google/genai` (Gemini) · Auth.js v5 · Tailwind CSS 4.
 
 ---
 
 ## Reference spec
 
-`docs/training-tailor-engine-v1-design.md`
+`docs/specs/training-tailor-engine-v1-design.md`
+
+## Status
+
+**Phases 0–1 are already implemented and committed** (`d5ea79e` scaffold, `eb8937f` Prisma schema + db client, plus fix-ups `822cfe2`, `2513c5d`, `b1350b3`). Their tasks below are marked done and their snippets reflect the committed code. Execution resumes at Phase 2. Note that Task 2.3 removes the domain tables that Task 1.1 originally created — domain data is JSON-backed, not DB-backed.
 
 ## Conventions for the implementing engineer
 
 - **Package manager:** `pnpm`. Platform is Windows; commands are cross-platform unless noted.
-- **Testing:** Vitest. Engine/business logic is unit-tested against a **fake `LlmProvider`** so tests are deterministic and need no network/API key. The real Gemini adapter has one integration test that **skips** when `GEMINI_API_KEY` is unset.
+- **Prisma 7:** the client is generated to `src/generated/prisma` and instantiated with the `@prisma/adapter-pg` driver adapter (see `src/lib/db.ts`). Import Prisma types from `@/generated/prisma`, **not** `@prisma/client`. The datasource URL lives in `prisma.config.ts` (reads `DATABASE_URL`).
+- **Testing:** Vitest. Engine/business logic is unit-tested against a **fake `LlmProvider`** so tests are deterministic and need no network/API key. The domain repository reads in-repo JSON, so its tests need no DB either. The only integration test is the real Gemini adapter, which **skips** when `GEMINI_API_KEY` is unset — `pnpm test` is fully deterministic without any infrastructure.
 - **TDD loop for every code task:** write failing test → run it, see it fail → minimal implementation → run, see it pass → commit.
 - **Commit style:** Conventional Commits (`feat:`, `test:`, `chore:`, `refactor:`).
 - **No secrets in git.** All keys come from `.env` (gitignored). `.env.example` documents required vars.
+- **Error responses:** never return raw exception text (`String(e)`) to the client — log server-side, return a generic error code.
 
 ## File structure (what each unit owns)
 
@@ -35,32 +41,41 @@ training-tailor/
 │  │  │  └─ index.ts             # getProvider() factory (reads env, returns provider)
 │  │  ├─ engine/
 │  │  │  ├─ types.ts             # StructuredWorkout, StimulusTag, TailoringResult, etc. + Zod schemas
-│  │  │  ├─ parse-workout.ts         # raw text -> StructuredWorkout
+│  │  │  ├─ parse-workout.ts     # raw text -> StructuredWorkout (with graceful fallback)
 │  │  │  ├─ classify-stimulus.ts # StructuredWorkout -> StimulusClassification
-│  │  │  ├─ tailor.ts            # (workout + profile + request + domain) -> TailoringResult
+│  │  │  ├─ tailor.ts            # (workout + profile + request + domain [+ previous attempt]) -> TailoringResult
+│  │  │  ├─ render-text.ts       # StructuredWorkout -> plain-text rendering (manual entry rawText)
 │  │  │  └─ pipeline.ts          # orchestrates parse/classify/tailor
 │  │  ├─ domain/
 │  │  │  ├─ types.ts             # Movement, InjuryContraindication, StimulusDef domain types
-│  │  │  └─ repository.ts        # DB reads for domain assets (Prisma)
-│  │  └─ db.ts                   # Prisma client singleton
+│  │  │  └─ repository.ts        # loads + validates versioned JSON from data/ (no DB)
+│  │  ├─ profile.ts              # profile normalization / body parsing helpers
+│  │  ├─ tailor-service.ts       # composes domain data + pipeline (runTailorForAthlete, runRefineForAthlete)
+│  │  └─ db.ts                   # Prisma client singleton (driver adapter)
 │  ├─ app/
 │  │  ├─ layout.tsx, globals.css
 │  │  ├─ page.tsx                # landing / dashboard
-│  │  ├─ profile/page.tsx        # athlete profile form
-│  │  ├─ tailor/page.tsx         # ingest + constraint -> result
+│  │  ├─ signin/page.tsx         # magic-link sign-in
+│  │  ├─ profile/page.tsx + ProfileForm.tsx
+│  │  ├─ tailor/page.tsx + TailorClient.tsx + ManualEntryForm.tsx
 │  │  ├─ history/page.tsx        # saved tailored workouts
 │  │  └─ api/
-│  │     ├─ tailor/route.ts      # POST: run pipeline
-│  │     └─ profile/route.ts     # GET/PUT athlete profile
-│  └─ auth.ts                    # Auth.js config
+│  │     ├─ tailor/route.ts        # POST: run pipeline (no persistence)
+│  │     ├─ tailor/save/route.ts   # POST: persist a reviewed result (no re-run)
+│  │     ├─ tailor/refine/route.ts # POST: re-tailor with athlete feedback
+│  │     └─ profile/route.ts       # GET/PUT athlete profile
+│  ├─ components/WorkoutView.tsx  # renders a StructuredWorkout
+│  ├─ types/next-auth.d.ts        # session.user.id type augmentation
+│  ├─ generated/prisma/           # Prisma 7 generated client (gitignored/generated)
+│  └─ auth.ts                     # Auth.js config
 ├─ prisma/
-│  ├─ schema.prisma
-│  └─ seed.ts                    # seeds movements, contraindications, stimulus defs
-├─ data/                         # versioned domain seed JSON
+│  └─ schema.prisma               # user data only: auth models, AthleteProfile, TailoredWorkout
+├─ prisma.config.ts               # Prisma 7 config (schema path, DATABASE_URL)
+├─ data/                          # versioned domain JSON (the domain source of truth — no DB tables)
 │  ├─ movements.json
 │  ├─ injury-contraindications.json
 │  └─ stimulus-taxonomy.json
-├─ tests/                        # mirrors src/ where useful
+├─ tests/                         # mirrors src/ where useful
 ├─ .env.example
 ├─ vitest.config.ts
 └─ package.json
@@ -72,37 +87,39 @@ training-tailor/
 
 ## Phase 0 — Scaffolding & tooling
 
-### Task 0.1: Initialize repo, Next.js, and Vitest
+### Task 0.1: Initialize repo, Next.js, and Vitest — ✅ DONE
+
+> **Status: completed** in commits `d5ea79e`, `822cfe2`, `2513c5d`, `b1350b3`. Steps below record what was actually done (some details differ from the original draft: Next.js 16 was installed, `vite-tsconfig-paths` was replaced by Vitest's native `resolve.tsconfigPaths`, and the default model is `gemini-flash-latest`).
 
 **Files:**
 - Create: `package.json`, `tsconfig.json`, `next.config.ts`, `vitest.config.ts`, `.gitignore`, `.env.example`, `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`
 
-- [ ] **Step 1: Initialize git and Next.js app**
+- [x] **Step 1: Initialize git and Next.js app**
 
-Run from `C:\Dev\training-tailor` (directory already exists, is empty except `docs/`):
+Run from `C:\Dev\training-tailor`:
 
 ```bash
 git init
 pnpm create next-app@latest . --ts --app --tailwind --eslint --src-dir --import-alias "@/*" --use-pnpm
 ```
 
-When prompted that the directory is not empty, choose to proceed (the `docs/` folder is unrelated). Accept defaults for any remaining prompts.
+(Installed Next.js 16.2, React 19.2.)
 
-- [ ] **Step 2: Add Vitest and supporting dev deps**
+- [x] **Step 2: Add Vitest and supporting dev deps**
 
 ```bash
-pnpm add -D vitest @vitejs/plugin-react vite-tsconfig-paths jsdom @testing-library/react @testing-library/jest-dom
+pnpm add -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing-library/jest-dom
 ```
 
-- [ ] **Step 3: Create `vitest.config.ts`**
+- [x] **Step 3: Create `vitest.config.ts`** (uses Vitest's built-in tsconfig-paths resolution)
 
 ```ts
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [react()],
+  resolve: { tsconfigPaths: true },
   test: {
     environment: "node",
     globals: true,
@@ -112,7 +129,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Add test script to `package.json`**
+- [x] **Step 4: Add test script to `package.json`**
 
 In `package.json` `"scripts"`, add:
 
@@ -121,7 +138,7 @@ In `package.json` `"scripts"`, add:
 "test:watch": "vitest"
 ```
 
-- [ ] **Step 5: Create a smoke test**
+- [x] **Step 5: Create a smoke test**
 
 Create `tests/smoke.test.ts`:
 
@@ -135,12 +152,12 @@ describe("smoke", () => {
 });
 ```
 
-- [ ] **Step 6: Run the test, verify it passes**
+- [x] **Step 6: Run the test, verify it passes**
 
 Run: `pnpm test`
 Expected: 1 passed.
 
-- [ ] **Step 7: Create `.env.example`**
+- [x] **Step 7: Create `.env.example`**
 
 ```
 # PostgreSQL connection string
@@ -149,7 +166,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/training_tailor?sche
 # AI provider selection: "gemini" (v1) — future: "claude", "openai"
 AI_PROVIDER="gemini"
 GEMINI_API_KEY=""
-GEMINI_MODEL="gemini-2.5-flash"
+GEMINI_MODEL="gemini-flash-latest"
 
 # Auth.js
 AUTH_SECRET=""
@@ -158,9 +175,9 @@ EMAIL_SERVER=""
 EMAIL_FROM="noreply@training-tailor.local"
 ```
 
-Ensure `.gitignore` includes `.env` and `.env*.local` (create-next-app adds these; verify).
+`.gitignore` includes `.env` and `.env*.local` (create-next-app adds these; verified).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -171,32 +188,35 @@ git commit -m "chore: scaffold Next.js app with Vitest and env template"
 
 ## Phase 1 — Database & data model
 
-### Task 1.1: Set up Prisma and the schema
+### Task 1.1: Set up Prisma and the schema — ✅ DONE
+
+> **Status: completed** in commit `eb8937f`. Prisma 7 was installed: the client generates to `src/generated/prisma`, connects through the `@prisma/adapter-pg` driver adapter, and the datasource URL lives in `prisma.config.ts`. **Note:** this task created domain tables (`Movement`, `InjuryContraindication`, `StimulusDef`) that a later decision removed — Task 2.3 deletes them from the schema. Snippets below match the committed code.
 
 **Files:**
-- Create: `prisma/schema.prisma`, `src/lib/db.ts`
+- Create: `prisma/schema.prisma`, `prisma.config.ts`, `src/lib/db.ts`
 - Modify: `package.json` (scripts)
 
-- [ ] **Step 1: Install Prisma**
+- [x] **Step 1: Install Prisma**
 
 ```bash
 pnpm add -D prisma
-pnpm add @prisma/client
+pnpm add @prisma/client @prisma/adapter-pg pg
+pnpm add -D @types/pg dotenv
 pnpm exec prisma init --datasource-provider postgresql
 ```
 
-This creates `prisma/schema.prisma` and appends `DATABASE_URL` to `.env`. Set `DATABASE_URL` in `.env` to a reachable Postgres (local Docker or a cloud dev instance).
+This creates `prisma/schema.prisma` and `prisma.config.ts` (which reads `DATABASE_URL` via `dotenv`). Set `DATABASE_URL` in `.env` to a reachable Postgres (local Docker or a cloud dev instance).
 
-- [ ] **Step 2: Write `prisma/schema.prisma`**
+- [x] **Step 2: Write `prisma/schema.prisma`**
 
 ```prisma
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ---- Auth.js (NextAuth) models ----
@@ -307,7 +327,7 @@ model TailoredWorkout {
 > `blocks[]` extraction the engine reasons over (see Task 3.1). No migration is needed to support
 > new formats; the schema absorbs them.
 
-- [ ] **Step 3: Add Prisma scripts to `package.json`**
+- [x] **Step 3: Add Prisma scripts to `package.json`**
 
 ```json
 "db:push": "prisma db push",
@@ -321,24 +341,34 @@ Install `tsx` for running TS scripts:
 pnpm add -D tsx
 ```
 
-- [ ] **Step 4: Push schema to the database**
+(The `db:seed` script is removed again in Task 2.3 — domain data ended up JSON-backed, so no seed script exists.)
+
+- [x] **Step 4: Push schema to the database**
 
 Run: `pnpm db:push`
 Expected: "Your database is now in sync with your Prisma schema." (Requires a reachable Postgres in `DATABASE_URL`.)
 
-- [ ] **Step 5: Create the Prisma client singleton `src/lib/db.ts`**
+- [x] **Step 5: Create the Prisma client singleton `src/lib/db.ts`** (Prisma 7 driver adapter)
 
 ```ts
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+
+function createPrismaClient() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ adapter });
+}
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -347,7 +377,7 @@ git commit -m "feat: add Prisma schema and db client (auth, profile, domain, tai
 
 ---
 
-## Phase 2 — Domain types & seed data
+## Phase 2 — Domain types & versioned domain data (JSON, no DB)
 
 ### Task 2.1: Define domain TypeScript types
 
@@ -445,6 +475,8 @@ Install Zod if not already present:
 pnpm add zod
 ```
 
+> This installs **Zod 4.x**. The project relies on Zod 4's native `z.toJSONSchema()` in the Gemini adapter (Task 3.3) — do **not** add `zod-to-json-schema` (it targets Zod 3 and is incompatible).
+
 - [ ] **Step 4: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/types.test.ts`
@@ -457,7 +489,9 @@ git add -A
 git commit -m "feat: domain types and Zod schemas (movement, injury, stimulus)"
 ```
 
-### Task 2.2: Author the seed data files
+### Task 2.2: Author the versioned domain data JSON
+
+> These files are the domain **source of truth** (nothing gets seeded into a DB — see Task 2.3). "Seed" in the test-file name just means "starting dataset".
 
 **Files:**
 - Create: `data/stimulus-taxonomy.json`, `data/movements.json`, `data/injury-contraindications.json`
@@ -565,6 +599,8 @@ Expected: FAIL — cannot find the JSON files.
   { "name": "Wall Ball", "plane": "sagittal", "jointStress": ["knee","hip","shoulder"], "loadType": "other", "skill": "beginner", "substitutes": ["Thruster","Goblet Squat"] },
   { "name": "Burpee", "plane": "sagittal", "jointStress": ["shoulder","knee","wrist"], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Up-Down","Push-up"] },
   { "name": "Up-Down", "plane": "sagittal", "jointStress": ["knee"], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
+  { "name": "Box Jump", "plane": "sagittal", "jointStress": ["knee","ankle"], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Step-up"] },
+  { "name": "Step-up", "plane": "sagittal", "jointStress": ["knee"], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Air Squat"] },
   { "name": "Row (Erg)", "plane": "sagittal", "jointStress": ["lumbar","knee"], "loadType": "machine", "skill": "beginner", "substitutes": ["Bike (Erg)","Run"] },
   { "name": "Bike (Erg)", "plane": "sagittal", "jointStress": ["knee"], "loadType": "machine", "skill": "beginner", "substitutes": ["Row (Erg)"] },
   { "name": "Run", "plane": "sagittal", "jointStress": ["knee","ankle"], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Row (Erg)","Bike (Erg)"] },
@@ -579,10 +615,10 @@ Expected: FAIL — cannot find the JSON files.
 [
   { "injuryKey": "shoulder_impingement", "label": "Shoulder impingement", "avoidPatterns": ["overhead_press","ballistic_pressing"], "avoidMovements": ["Shoulder Press","Push Press","Handstand Push-up","Power Snatch","Muscle-up"], "notes": "Avoid loaded overhead and ballistic pressing; prefer neutral-grip, below-shoulder work." },
   { "injuryKey": "lower_back_strain", "label": "Lower back strain", "avoidPatterns": ["spinal_loading","ballistic_hip_hinge"], "avoidMovements": ["Deadlift","Power Clean","Power Snatch","Kettlebell Swing"], "notes": "Avoid heavy/ballistic spinal loading; keep hinging light and controlled." },
-  { "injuryKey": "knee_pain", "label": "Knee pain", "avoidPatterns": ["deep_knee_flexion","impact"], "avoidMovements": ["Back Squat","Front Squat","Thruster","Wall Ball","Run"], "notes": "Reduce depth/impact; prefer box squats to a comfortable height and low-impact cardio." },
+  { "injuryKey": "knee_pain", "label": "Knee pain", "avoidPatterns": ["deep_knee_flexion","impact"], "avoidMovements": ["Back Squat","Front Squat","Thruster","Wall Ball","Run","Box Jump"], "notes": "Reduce depth/impact; prefer box squats to a comfortable height and low-impact cardio." },
   { "injuryKey": "wrist_pain", "label": "Wrist pain", "avoidPatterns": ["loaded_wrist_extension"], "avoidMovements": ["Front Squat","Thruster","Handstand Push-up","Push-up","Power Clean"], "notes": "Avoid loaded wrist extension; use dumbbells/neutral grip where possible." },
   { "injuryKey": "elbow_tendinopathy", "label": "Elbow tendinopathy", "avoidPatterns": ["ballistic_pulling"], "avoidMovements": ["Muscle-up","Pull-up","Toes-to-Bar"], "notes": "Avoid ballistic/kipping pulling; substitute supported rows." },
-  { "injuryKey": "ankle_sprain", "label": "Ankle sprain", "avoidPatterns": ["impact","plyometric"], "avoidMovements": ["Run","Double-under","Burpee","Box Squat"], "notes": "Avoid impact/plyometrics; use low-impact monostructural substitutes." },
+  { "injuryKey": "ankle_sprain", "label": "Ankle sprain", "avoidPatterns": ["impact","plyometric"], "avoidMovements": ["Run","Double-under","Burpee","Box Jump"], "notes": "Avoid impact/plyometrics; use low-impact monostructural substitutes." },
   { "injuryKey": "hip_flexor_strain", "label": "Hip flexor strain", "avoidPatterns": ["loaded_hip_flexion","sprinting"], "avoidMovements": ["Toes-to-Bar","Run","Power Clean"], "notes": "Avoid loaded/explosive hip flexion." }
 ]
 ```
@@ -599,56 +635,20 @@ git add -A
 git commit -m "feat: seed domain data (movements, injuries, stimulus taxonomy) with integrity tests"
 ```
 
-### Task 2.3: Seed script + domain repository
+### Task 2.3: JSON-backed domain repository (and drop the domain DB tables)
+
+The domain data (movements, contraindications, stimulus taxonomy) is read-only, tiny, and ships with the code — the versioned JSON in `data/` **is** the source of truth. No DB tables, no seed script, no DB-dependent tests. The repository keeps `Promise`-returning signatures so a later move to the DB (Phase C, when coaches edit domain data at runtime) changes only this file.
 
 **Files:**
-- Create: `prisma/seed.ts`, `src/lib/domain/repository.ts`
+- Create: `src/lib/domain/repository.ts`
+- Modify: `prisma/schema.prisma` (remove `Movement`, `InjuryContraindication`, `StimulusDef`), `package.json` (remove `db:seed` script)
 - Test: `tests/domain/repository.test.ts`
 
-- [ ] **Step 1: Write `prisma/seed.ts`**
+**Interfaces:**
+- Consumes: `MovementSchema`, `InjuryContraindicationSchema`, `StimulusDefSchema` and their types from `@/lib/domain/types` (Task 2.1); the JSON files from Task 2.2.
+- Produces: `getAllMovements(): Promise<Movement[]>`, `getContraindicationsForInjuries(injuryKeys: string[]): Promise<InjuryContraindication[]>`, `getStimulusDefs(): Promise<StimulusDef[]>` — used by `tailor-service.ts` (Task 6.3).
 
-```ts
-import { PrismaClient } from "@prisma/client";
-import movements from "../data/movements.json";
-import injuries from "../data/injury-contraindications.json";
-import stimuli from "../data/stimulus-taxonomy.json";
-
-const prisma = new PrismaClient();
-
-async function main() {
-  for (const m of movements) {
-    await prisma.movement.upsert({
-      where: { name: m.name },
-      update: { plane: m.plane, jointStress: m.jointStress, loadType: m.loadType, skill: m.skill, substitutes: m.substitutes },
-      create: { name: m.name, plane: m.plane, jointStress: m.jointStress, loadType: m.loadType, skill: m.skill, substitutes: m.substitutes },
-    });
-  }
-  for (const i of injuries) {
-    await prisma.injuryContraindication.upsert({
-      where: { injuryKey: i.injuryKey },
-      update: { label: i.label, avoidPatterns: i.avoidPatterns, avoidMovements: i.avoidMovements, notes: i.notes ?? null },
-      create: { injuryKey: i.injuryKey, label: i.label, avoidPatterns: i.avoidPatterns, avoidMovements: i.avoidMovements, notes: i.notes ?? null },
-    });
-  }
-  for (const s of stimuli) {
-    await prisma.stimulusDef.upsert({
-      where: { key: s.key },
-      update: { label: s.label, description: s.description },
-      create: { key: s.key, label: s.label, description: s.description },
-    });
-  }
-  console.log(`Seeded ${movements.length} movements, ${injuries.length} injuries, ${stimuli.length} stimulus defs.`);
-}
-
-main().then(() => prisma.$disconnect()).catch(async (e) => { console.error(e); await prisma.$disconnect(); process.exit(1); });
-```
-
-- [ ] **Step 2: Run the seed**
-
-Run: `pnpm db:seed`
-Expected: console line confirming counts. (Requires `db:push` already applied.)
-
-- [ ] **Step 3: Write the failing repository test**
+- [ ] **Step 1: Write the failing repository test** (pure — no DB)
 
 `tests/domain/repository.test.ts`:
 
@@ -656,15 +656,20 @@ Expected: console line confirming counts. (Requires `db:push` already applied.)
 import { describe, it, expect } from "vitest";
 import { getAllMovements, getContraindicationsForInjuries, getStimulusDefs } from "@/lib/domain/repository";
 
-describe("domain repository", () => {
-  it("loads movements from the database", async () => {
+describe("domain repository (JSON-backed)", () => {
+  it("loads the movement library", async () => {
     const all = await getAllMovements();
     expect(all.find((m) => m.name === "Back Squat")).toBeTruthy();
   });
 
   it("returns contraindications for given injury keys", async () => {
     const c = await getContraindicationsForInjuries(["shoulder_impingement"]);
+    expect(c).toHaveLength(1);
     expect(c[0].avoidMovements).toContain("Shoulder Press");
+  });
+
+  it("returns an empty list for no injury keys", async () => {
+    expect(await getContraindicationsForInjuries([])).toEqual([]);
   });
 
   it("loads the stimulus taxonomy", async () => {
@@ -674,53 +679,70 @@ describe("domain repository", () => {
 });
 ```
 
-> Note: this test hits the seeded DB. Run it only after `db:push` + `db:seed`. It is an integration test; keep it in `tests/domain/`.
-
-- [ ] **Step 4: Run it, verify it fails**
+- [ ] **Step 2: Run it, verify it fails**
 
 Run: `pnpm exec vitest run tests/domain/repository.test.ts`
 Expected: FAIL — module `@/lib/domain/repository` not found.
 
-- [ ] **Step 5: Implement `src/lib/domain/repository.ts`**
+- [ ] **Step 3: Implement `src/lib/domain/repository.ts`**
+
+The JSON is validated once at module load, so a malformed edit to `data/*.json` fails loudly at startup, not silently at tailor time.
 
 ```ts
-import { prisma } from "@/lib/db";
-import type { Movement, InjuryContraindication, StimulusDef } from "@/lib/domain/types";
+import { z } from "zod";
+import movementsJson from "../../../data/movements.json";
+import injuriesJson from "../../../data/injury-contraindications.json";
+import stimuliJson from "../../../data/stimulus-taxonomy.json";
+import {
+  MovementSchema, InjuryContraindicationSchema, StimulusDefSchema,
+  type Movement, type InjuryContraindication, type StimulusDef,
+} from "@/lib/domain/types";
+
+const movements = z.array(MovementSchema).parse(movementsJson);
+const injuries = z.array(InjuryContraindicationSchema).parse(injuriesJson);
+const stimuli = z.array(StimulusDefSchema).parse(stimuliJson);
 
 export async function getAllMovements(): Promise<Movement[]> {
-  const rows = await prisma.movement.findMany({ orderBy: { name: "asc" } });
-  return rows.map((r) => ({
-    name: r.name, plane: r.plane, jointStress: r.jointStress as string[],
-    loadType: r.loadType as Movement["loadType"], skill: r.skill as Movement["skill"],
-    substitutes: r.substitutes as string[],
-  }));
+  return movements;
 }
 
 export async function getContraindicationsForInjuries(injuryKeys: string[]): Promise<InjuryContraindication[]> {
   if (injuryKeys.length === 0) return [];
-  const rows = await prisma.injuryContraindication.findMany({ where: { injuryKey: { in: injuryKeys } } });
-  return rows.map((r) => ({
-    injuryKey: r.injuryKey, label: r.label, avoidPatterns: r.avoidPatterns as string[],
-    avoidMovements: r.avoidMovements as string[], notes: r.notes,
-  }));
+  const wanted = new Set(injuryKeys);
+  return injuries.filter((i) => wanted.has(i.injuryKey));
 }
 
 export async function getStimulusDefs(): Promise<StimulusDef[]> {
-  const rows = await prisma.stimulusDef.findMany({ orderBy: { key: "asc" } });
-  return rows.map((r) => ({ key: r.key, label: r.label, description: r.description }));
+  return stimuli;
 }
 ```
 
-- [ ] **Step 6: Run it, verify it passes**
+- [ ] **Step 4: Run it, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/repository.test.ts`
-Expected: PASS (3 tests).
+Expected: PASS (4 tests).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Remove the domain models from `prisma/schema.prisma`**
+
+Delete the `Movement`, `InjuryContraindication`, and `StimulusDef` models (the whole `// ---- Domain knowledge (seeded, product-owned) ----` block). Keep `User`, `Account`, `Session`, `VerificationToken`, `AthleteProfile`, `TailoredWorkout`.
+
+Run: `pnpm db:push`
+Expected: schema synced; the three domain tables are dropped (they were never seeded, so no data is lost).
+
+- [ ] **Step 6: Remove the dangling `db:seed` script from `package.json`**
+
+Delete the line `"db:seed": "tsx prisma/seed.ts",` from `"scripts"` (no seed file exists; domain data is not seeded).
+
+- [ ] **Step 7: Run the full suite, verify green**
+
+Run: `pnpm test`
+Expected: all tests pass, with no DB required.
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: domain seed script and repository reads"
+git commit -m "feat: JSON-backed domain repository; drop domain DB tables and seed script"
 ```
 
 ---
@@ -740,8 +762,15 @@ git commit -m "feat: domain seed script and repository reads"
 ```ts
 import { describe, it, expect } from "vitest";
 import { StructuredWorkoutSchema, StimulusClassificationSchema, TailoringResultSchema, StimulusTag } from "@/lib/engine/types";
+import stimuli from "../../data/stimulus-taxonomy.json";
 
 describe("engine schemas", () => {
+  it("StimulusTag stays in sync with data/stimulus-taxonomy.json", () => {
+    // The z.enum gives compile-time literal types; this test pins it to the JSON,
+    // which is the single authoritative taxonomy. Add a stimulus in BOTH places.
+    expect([...StimulusTag.options].sort()).toEqual(stimuli.map((s) => s.key).sort());
+  });
+
   it("parses a single-block session", () => {
     const workout = StructuredWorkoutSchema.parse({
       name: "Fran",
@@ -826,6 +855,9 @@ Expected: FAIL — module not found.
 ```ts
 import { z } from "zod";
 
+// Must mirror data/stimulus-taxonomy.json keys — enforced by the sync test above.
+// (Kept as a literal z.enum rather than derived from the JSON so the tags stay
+// compile-time literal types.)
 export const StimulusTag = z.enum([
   "aerobic_capacity", "anaerobic_capacity", "heavy_strength",
   "muscular_endurance", "gymnastics_skill", "olympic_lifting", "mixed_modal",
@@ -920,7 +952,7 @@ export type TailorRequest = z.infer<typeof TailorRequestSchema>;
 - [ ] **Step 4: Run it, verify it passes**
 
 Run: `pnpm exec vitest run tests/engine/types.test.ts`
-Expected: PASS (3 tests).
+Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1026,17 +1058,19 @@ git commit -m "feat: LlmProvider interface and FakeProvider test double"
 - Create: `src/lib/ai/gemini-provider.ts`, `src/lib/ai/index.ts`
 - Test: `tests/ai/gemini-provider.test.ts` (integration, skipped without key)
 
-- [ ] **Step 1: Install the Gemini SDK and schema converter**
+- [ ] **Step 1: Install the Gemini SDK**
 
 ```bash
-pnpm add @google/genai zod-to-json-schema
+pnpm add @google/genai
 ```
+
+No schema-converter dependency: Zod 4 converts natively via `z.toJSONSchema()`. (Do **not** add `zod-to-json-schema` — it targets Zod 3.)
 
 - [ ] **Step 2: Implement `src/lib/ai/gemini-provider.ts`**
 
 ```ts
 import { GoogleGenAI } from "@google/genai";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
 import type { LlmProvider, GenerateStructuredArgs } from "@/lib/ai/provider";
 
 export class GeminiProvider implements LlmProvider {
@@ -1049,14 +1083,14 @@ export class GeminiProvider implements LlmProvider {
   }
 
   async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
-    const jsonSchema = zodToJsonSchema(args.schema, { name: args.schemaName, target: "openApi3" });
+    const jsonSchema = z.toJSONSchema(args.schema);
     const response = await this.client.models.generateContent({
       model: this.model,
       contents: [{ role: "user", parts: [{ text: args.prompt }] }],
       config: {
         systemInstruction: args.systemPrompt,
         responseMimeType: "application/json",
-        responseSchema: jsonSchema as object,
+        responseJsonSchema: jsonSchema,
       },
     });
     const text = response.text;
@@ -1072,7 +1106,7 @@ export class GeminiProvider implements LlmProvider {
 }
 ```
 
-> If `zod-to-json-schema` output is rejected by the Gemini schema validator for a given shape, the fallback is to drop `responseSchema` and instead append the JSON shape description to the prompt while keeping `responseMimeType: "application/json"`; the `args.schema.parse(parsed)` call still guarantees correctness.
+> `responseJsonSchema` accepts standard JSON Schema (what `z.toJSONSchema` emits), unlike the older `responseSchema` field which wants the OpenAPI subset. If the Gemini validator still rejects a given shape (e.g., an exotic union), the fallback is to drop `responseJsonSchema` and instead append the JSON shape description to the prompt while keeping `responseMimeType: "application/json"`; the `args.schema.parse(parsed)` call still guarantees correctness either way.
 
 - [ ] **Step 3: Implement `src/lib/ai/index.ts` (factory)**
 
@@ -1086,7 +1120,7 @@ export function getProvider(): LlmProvider {
     case "gemini": {
       const key = process.env.GEMINI_API_KEY;
       if (!key) throw new Error("GEMINI_API_KEY is not set");
-      return new GeminiProvider(key, process.env.GEMINI_MODEL ?? "gemini-2.5-flash");
+      return new GeminiProvider(key, process.env.GEMINI_MODEL ?? "gemini-flash-latest");
     }
     default:
       throw new Error(`Unknown AI_PROVIDER: ${which}`);
@@ -1108,7 +1142,7 @@ const maybe = key ? describe : describe.skip;
 
 maybe("GeminiProvider (integration)", () => {
   it("returns schema-valid structured output", async () => {
-    const provider = new GeminiProvider(key!, process.env.GEMINI_MODEL ?? "gemini-2.5-flash");
+    const provider = new GeminiProvider(key!, process.env.GEMINI_MODEL ?? "gemini-flash-latest");
     const schema = z.object({ capital: z.string() });
     const result = await provider.generateStructured({
       prompt: "What is the capital of France? Respond as JSON {\"capital\": string}.",
@@ -1149,6 +1183,7 @@ git commit -m "feat: Gemini provider adapter and provider factory"
 import { describe, it, expect } from "vitest";
 import { parseWorkout } from "@/lib/engine/parse-workout";
 import { FakeProvider } from "@/lib/ai/fake-provider";
+import type { LlmProvider } from "@/lib/ai/provider";
 
 describe("parseWorkout", () => {
   it("parses raw text into a StructuredWorkout via the provider", async () => {
@@ -1168,6 +1203,33 @@ describe("parseWorkout", () => {
     const workout = await parseWorkout(provider, "21-15-9 Thrusters 95lb / Pull-ups");
     expect(workout.name).toBe("Fran");
     expect(workout.blocks[0].components[0].movement).toBe("Thruster");
+  });
+
+  it("degrades gracefully to a single raw block when the provider fails", async () => {
+    const failing: LlmProvider = {
+      async generateStructured() { throw new Error("model returned garbage"); },
+    };
+    const workout = await parseWorkout(failing, "some cryptic programming");
+    expect(workout.rawText).toBe("some cryptic programming");
+    expect(workout.blocks).toHaveLength(1);
+    expect(workout.blocks[0].format).toBe("other");
+    expect(workout.blocks[0].rawText).toBe("some cryptic programming");
+    expect(workout.blocks[0].components).toEqual([]);
+  });
+
+  it("enforces verbatim rawText: session rawText is the input, paraphrased block slices fall back to it", async () => {
+    const provider = new FakeProvider({
+      StructuredWorkout: {
+        name: null, rawText: "The model paraphrased this", source: "adhoc",
+        blocks: [{
+          title: null, rawText: "a paraphrase, not a slice",
+          format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null, components: [],
+        }],
+      },
+    });
+    const workout = await parseWorkout(provider, "AMRAP 10 min\n10 Burpees");
+    expect(workout.rawText).toBe("AMRAP 10 min\n10 Burpees");           // session rawText forced to input
+    expect(workout.blocks[0].rawText).toBe("AMRAP 10 min\n10 Burpees"); // non-slice block falls back to session text
   });
 });
 ```
@@ -1198,26 +1260,54 @@ AMRAP, a partner WOD). Rules:
   "coachingNotes" as prose — do NOT discard them. Use null for any field that does not apply.
 Set "source" to "adhoc".`;
 
+/** Spec: a parse failure degrades gracefully — the raw text is still a usable workout. */
+function fallbackWorkout(rawText: string): StructuredWorkout {
+  return {
+    name: null,
+    rawText,
+    source: "adhoc",
+    blocks: [{
+      title: null, rawText, format: "other", scheme: null,
+      timeDomainMinutes: null, components: [], coachingNotes: null,
+    }],
+  };
+}
+
 export async function parseWorkout(provider: LlmProvider, rawText: string): Promise<StructuredWorkout> {
-  return provider.generateStructured({
-    systemPrompt: SYSTEM,
-    prompt: `Raw workout:\n"""\n${rawText}\n"""\nReturn the structured workout as JSON.`,
-    schema: StructuredWorkoutSchema,
-    schemaName: "StructuredWorkout",
-  });
+  let parsed: StructuredWorkout;
+  try {
+    parsed = await provider.generateStructured({
+      systemPrompt: SYSTEM,
+      prompt: `Raw workout:\n"""\n${rawText}\n"""\nReturn the structured workout as JSON.`,
+      schema: StructuredWorkoutSchema,
+      schemaName: "StructuredWorkout",
+    });
+  } catch {
+    return fallbackWorkout(rawText);
+  }
+  // Enforce the verbatim invariant: the model is *asked* to copy text exactly, but
+  // models paraphrase. The session rawText is always the athlete's input; any block
+  // "slice" that is not actually a substring falls back to the full session text.
+  return {
+    ...parsed,
+    rawText,
+    blocks: parsed.blocks.map((b) =>
+      rawText.includes(b.rawText) ? b : { ...b, rawText }
+    ),
+  };
 }
 ```
 
 - [ ] **Step 4: Run it, verify it passes**
 
 Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts`
-Expected: PASS.
+Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: engine parseWorkout (raw text -> StructuredWorkout)"
+git commit -m "feat: engine parseWorkout with graceful fallback and verbatim rawText guard"
 ```
 
 ### Task 4.2: `classifyStimulus`
@@ -1577,7 +1667,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Run the whole suite**
 
 Run: `pnpm test`
-Expected: all suites pass (DB-integration suites require a seeded DB; skip/ignore if not provisioned in this run).
+Expected: all suites pass — no DB or API key needed (the Gemini integration test skips without a key).
 
 - [ ] **Step 6: Commit**
 
@@ -1586,15 +1676,142 @@ git add -A
 git commit -m "feat: tailor pipeline orchestration (parse -> classify -> tailor)"
 ```
 
+### Task 4.5: Refine support in `tailor` (previous attempt + athlete feedback)
+
+The spec's refine loop ("still hurts", "too easy", "no rower today") is a re-run of the **tailor step only** — no re-parse, no re-classify. `tailor()` gains an optional `previousAttempt` describing the rejected modification and the athlete's feedback, which is appended to the prompt. The HTTP endpoint and UI come in Task 6.6.
+
+**Files:**
+- Modify: `src/lib/engine/tailor.ts`
+- Test: `tests/engine/tailor.test.ts` (extend)
+
+**Interfaces:**
+- Consumes: `TailorInput`, `tailor()` from Task 4.3.
+- Produces: `TailorInput.previousAttempt?: { workout: StructuredWorkout; feedback: string } | null` — used by `runRefineForAthlete` (Task 6.6).
+
+- [ ] **Step 1: Write the failing test** (append to `tests/engine/tailor.test.ts`)
+
+The `FakeProvider` can't inspect prompts, so this test uses a small capturing provider inline:
+
+```ts
+import type { LlmProvider, GenerateStructuredArgs } from "@/lib/ai/provider";
+
+class CapturingProvider implements LlmProvider {
+  lastArgs: GenerateStructuredArgs<unknown> | null = null;
+  constructor(private readonly value: unknown) {}
+  async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
+    this.lastArgs = args as GenerateStructuredArgs<unknown>;
+    return args.schema.parse(this.value);
+  }
+}
+
+describe("tailor with previousAttempt (refine)", () => {
+  it("includes the rejected workout and the athlete feedback in the prompt", async () => {
+    const scripted = {
+      workout: { name: "Fran (mod 2)", rawText: "21-15-9 for time\nGoblet Squat 25 lb\nRing Rows", source: "adhoc",
+        blocks: [{ title: "Fran (mod 2)", rawText: "21-15-9 for time\nGoblet Squat 25 lb\nRing Rows",
+          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
+          components: [{ movement: "Goblet Squat", reps: "21-15-9", load: "25 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
+      changes: [{ original: "Goblet Squat 35 lb", modified: "Goblet Squat 25 lb", reason: "Lower load after feedback." }],
+      rationale: "Same stimulus at a load that does not aggravate the shoulder.",
+      safetyNote: "Stop if pain persists.",
+    };
+    const provider = new CapturingProvider(scripted);
+    const previousWorkout = { ...fran, name: "Fran (mod)" };
+
+    const result = await tailor(provider, {
+      workout: fran, classification, profile, request, movements: [], contraindications: [],
+      previousAttempt: { workout: previousWorkout, feedback: "Still hurts my shoulder at 35 lb." },
+    });
+
+    expect(result.changes[0].reason).toContain("feedback");
+    expect(provider.lastArgs?.prompt).toContain("PREVIOUS attempt");
+    expect(provider.lastArgs?.prompt).toContain("Still hurts my shoulder at 35 lb.");
+    expect(provider.lastArgs?.prompt).toContain("Fran (mod)");
+  });
+
+  it("omits the refine section when previousAttempt is absent", async () => {
+    const provider = new CapturingProvider({
+      workout: fran, changes: [], rationale: "No change needed.", safetyNote: null,
+    });
+    await tailor(provider, { workout: fran, classification, profile, request, movements: [], contraindications: [] });
+    expect(provider.lastArgs?.prompt).not.toContain("PREVIOUS attempt");
+  });
+});
+```
+
+(`fran`, `classification`, `profile`, `request` are the fixtures already defined at the top of this test file in Task 4.3.)
+
+- [ ] **Step 2: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/engine/tailor.test.ts`
+Expected: FAIL — `previousAttempt` is not a known property / prompt does not contain the refine section.
+
+- [ ] **Step 3: Extend `src/lib/engine/tailor.ts`**
+
+Add to `TailorInput`:
+
+```ts
+export interface TailorInput {
+  workout: StructuredWorkout;
+  classification: StimulusClassification;
+  profile: AthleteProfileInput;
+  request: TailorRequest;
+  movements: Movement[];
+  contraindications: InjuryContraindication[];
+  /** Refine loop: the modification the athlete rejected, plus their feedback on it. */
+  previousAttempt?: { workout: StructuredWorkout; feedback: string } | null;
+}
+```
+
+In `tailor()`, build the prompt parts array as before, and append the refine section before the final line:
+
+```ts
+  const parts = [
+    `Original workout JSON:\n${JSON.stringify(input.workout)}`,
+    `Stimulus classification:\n${JSON.stringify(input.classification)}`,
+    `Athlete profile:\n${JSON.stringify(input.profile)}`,
+    `Today's request:\n${JSON.stringify(input.request)}`,
+    `Movements to AVOID: ${avoid.join(", ") || "none"}`,
+    `Patterns to AVOID: ${avoidPatterns.join(", ") || "none"}`,
+    `Movement library:\n${library || "(none provided)"}`,
+  ];
+  if (input.previousAttempt) {
+    parts.push(
+      `PREVIOUS attempt (the athlete rejected this modification):\n${JSON.stringify(input.previousAttempt.workout)}\n\n` +
+      `Athlete feedback on it: ${input.previousAttempt.feedback}\n` +
+      `Produce a NEW modification of the ORIGINAL workout that addresses this feedback while still following every rule above.`
+    );
+  }
+  parts.push(`Return the tailored result as JSON.`);
+  const prompt = parts.join("\n\n");
+```
+
+- [ ] **Step 4: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/engine/tailor.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: refine support in tailor (previous attempt + athlete feedback in prompt)"
+```
+
 ---
 
 ## Phase 5 — Auth (Auth.js v5, magic link)
 
 ### Task 5.1: Configure Auth.js with Prisma adapter and dev email
 
+> **No middleware.** Database sessions + the Prisma adapter (and nodemailer) are not Edge-runtime-compatible, so `export { auth as middleware }` would fail at runtime. Route protection lives where it already works: every protected page calls `auth()` and redirects, and every API route returns 401 (Tasks 6.1–6.5). Do not create `src/middleware.ts`.
+
 **Files:**
-- Create: `src/auth.ts`, `src/app/api/auth/[...nextauth]/route.ts`, `src/middleware.ts`
+- Create: `src/auth.ts`, `src/app/api/auth/[...nextauth]/route.ts`, `src/types/next-auth.d.ts`
 - Modify: `.env` (`AUTH_SECRET`)
+
+**Interfaces:**
+- Produces: `auth()`, `signIn()`, `signOut()`, `handlers` from `@/auth`; `session.user.id: string` (typed via the augmentation) — used by every page and API route in Phase 6.
 
 - [ ] **Step 1: Install Auth.js**
 
@@ -1621,6 +1838,14 @@ import { prisma } from "@/lib/db";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
+  callbacks: {
+    // With database sessions the callback receives the DB user; expose its id so
+    // routes can key profile/history queries on session.user.id.
+    session({ session, user }) {
+      session.user.id = user.id;
+      return session;
+    },
+  },
   providers: [
     Nodemailer({
       server: process.env.EMAIL_SERVER || { jsonTransport: true },
@@ -1648,15 +1873,19 @@ import { handlers } from "@/auth";
 export const { GET, POST } = handlers;
 ```
 
-- [ ] **Step 5: Protect app routes with `src/middleware.ts`**
+- [ ] **Step 5: Type `session.user.id` — create `src/types/next-auth.d.ts`**
 
 ```ts
-export { auth as middleware } from "@/auth";
+import type { DefaultSession } from "next-auth";
 
-export const config = {
-  matcher: ["/profile/:path*", "/tailor/:path*", "/history/:path*", "/api/profile/:path*", "/api/tailor/:path*"],
-};
+declare module "next-auth" {
+  interface Session {
+    user: { id: string } & DefaultSession["user"];
+  }
+}
 ```
+
+(Ensure `tsconfig.json` `include` covers `src/types` — the create-next-app default `"src/**/*.ts"` pattern does.)
 
 - [ ] **Step 6: Manual verification**
 
@@ -1895,11 +2124,7 @@ export async function PUT(req: Request) {
 }
 ```
 
-> Note: ensure `session.user.id` is populated. In `src/auth.ts`, add a `session` callback if needed:
-> ```ts
-> callbacks: { session({ session, user }) { session.user.id = user.id; return session; } }
-> ```
-> Add this callback now and re-confirm the auth manual check still works.
+> `session.user.id` is populated by the `session` callback and typed by the augmentation, both set up in Task 5.1.
 
 - [ ] **Step 6: Implement the profile form `src/app/profile/ProfileForm.tsx`** (client component)
 
@@ -2009,11 +2234,17 @@ git add -A
 git commit -m "feat: profile API and profile form with injuries/equipment/availability/goals"
 ```
 
-### Task 6.3: Tailor API endpoint
+### Task 6.3: Tailor API endpoints (run + save)
+
+> **Save never re-runs the pipeline.** The LLM is nondeterministic — re-running on save would persist a *different* workout than the one the athlete reviewed (and pay for three more LLM calls). So `POST /api/tailor` only runs and returns the result; `POST /api/tailor/save` persists the exact reviewed result the client sends back, validated against the Zod schemas.
 
 **Files:**
-- Create: `src/app/api/tailor/route.ts`, `src/lib/tailor-service.ts`
+- Create: `src/app/api/tailor/route.ts`, `src/app/api/tailor/save/route.ts`, `src/lib/tailor-service.ts`
 - Test: `tests/tailor/tailor-service.test.ts`
+
+**Interfaces:**
+- Consumes: `runTailorPipeline` (Task 4.4), domain repository (Task 2.3), `auth()` (Task 5.1).
+- Produces: `runTailorForAthlete(args: RunTailorArgs): Promise<PipelineResult>`; `POST /api/tailor` → `PipelineResult` JSON; `POST /api/tailor/save` → `{ ok: true, id: string }` — used by `TailorClient` (Task 6.4).
 
 - [ ] **Step 1: Write the failing test (service composes repo + pipeline with an injected provider)**
 
@@ -2113,7 +2344,7 @@ export async function runTailorForAthlete(args: RunTailorArgs): Promise<Pipeline
 Run: `pnpm exec vitest run tests/tailor/tailor-service.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Implement `src/app/api/tailor/route.ts`**
+- [ ] **Step 5: Implement `src/app/api/tailor/route.ts`** (run only — no persistence)
 
 ```ts
 import { NextResponse } from "next/server";
@@ -2131,7 +2362,6 @@ const BodySchema = z.object({
     z.object({ kind: z.literal("structured"), workout: StructuredWorkoutSchema }),
   ]),
   request: TailorRequestSchema,
-  save: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -2150,34 +2380,67 @@ export async function POST(req: Request) {
     injuries: row.injuries, benchmarks: row.benchmarks, equipment: row.equipment, goals: row.goals, availability: row.availability,
   } : null);
 
-  let result;
   try {
-    result = await runTailorForAthlete({ provider: getProvider(), input: body.input, profile, request: body.request });
+    const result = await runTailorForAthlete({ provider: getProvider(), input: body.input, profile, request: body.request });
+    return NextResponse.json(result);
   } catch (e) {
-    return NextResponse.json({ error: "engine_failed", detail: String(e) }, { status: 502 });
+    console.error("tailor pipeline failed", e); // never leak exception text to the client
+    return NextResponse.json({ error: "engine_failed" }, { status: 502 });
   }
-
-  if (body.save) {
-    await prisma.tailoredWorkout.create({
-      data: {
-        userId: session.user.id,
-        originalWorkout: result.original, request: body.request,
-        tailoredWorkout: result.tailored.workout, changes: result.tailored.changes,
-        rationale: result.tailored.rationale, safetyNote: result.tailored.safetyNote,
-        stimulus: result.classification,
-      },
-    });
-  }
-
-  return NextResponse.json(result);
 }
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Implement `src/app/api/tailor/save/route.ts`** (persist a reviewed result — no LLM calls)
+
+```ts
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/db";
+import {
+  StructuredWorkoutSchema, StimulusClassificationSchema, TailoringResultSchema, TailorRequestSchema,
+} from "@/lib/engine/types";
+import { z } from "zod";
+
+const SaveBodySchema = z.object({
+  original: StructuredWorkoutSchema,
+  classification: StimulusClassificationSchema,
+  tailored: TailoringResultSchema,
+  request: TailorRequestSchema,
+});
+
+export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  let body;
+  try {
+    body = SaveBodySchema.parse(await req.json());
+  } catch {
+    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+  }
+
+  const saved = await prisma.tailoredWorkout.create({
+    data: {
+      userId: session.user.id,
+      originalWorkout: body.original,
+      request: body.request,
+      tailoredWorkout: body.tailored.workout,
+      changes: body.tailored.changes,
+      rationale: body.tailored.rationale,
+      safetyNote: body.tailored.safetyNote,
+      stimulus: body.classification,
+    },
+  });
+
+  return NextResponse.json({ ok: true, id: saved.id });
+}
+```
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: tailor service and POST /api/tailor endpoint"
+git commit -m "feat: tailor service, POST /api/tailor (run) and POST /api/tailor/save (persist)"
 ```
 
 ### Task 6.4: Tailor page (ingest → constraint → result)
@@ -2252,21 +2515,45 @@ export default function TailorClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<PipelineResult | null>(null);
+  // The request that produced `result` — sent along on save so history records what was asked.
+  const [lastRequest, setLastRequest] = useState<TailorRequest | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
-  async function run(save: boolean) {
-    setLoading(true); setError(""); if (!save) setResult(null);
-    const request: TailorRequest = {
+  function buildRequest(): TailorRequest {
+    return {
       constraintType, details,
       timeCapMinutes: constraintType === "time" && timeCap ? Number(timeCap) : null,
       targetMovement: constraintType === "movement_goal" && target ? target : null,
     };
+  }
+
+  async function run() {
+    setLoading(true); setError(""); setResult(null); setSaveStatus("idle");
+    const request = buildRequest();
     const res = await fetch("/api/tailor", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: { kind: "raw", rawText }, request, save }),
+      body: JSON.stringify({ input: { kind: "raw", rawText }, request }),
     });
     setLoading(false);
     if (!res.ok) { setError("Could not tailor this workout. Try again."); return; }
+    setLastRequest(request);
     setResult(await res.json());
+  }
+
+  // Persists the EXACT result on screen — no pipeline re-run (the LLM is nondeterministic).
+  async function save() {
+    if (!result || !lastRequest) return;
+    setSaveStatus("saving");
+    const res = await fetch("/api/tailor/save", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        original: result.original,
+        classification: result.classification,
+        tailored: result.tailored,
+        request: lastRequest,
+      }),
+    });
+    setSaveStatus(res.ok ? "saved" : "error");
   }
 
   return (
@@ -2298,7 +2585,7 @@ export default function TailorClient() {
       </div>
 
       <div className="flex gap-3">
-        <button disabled={!rawText || loading} onClick={() => run(false)} className="rounded bg-black px-4 py-2 text-white disabled:opacity-40">
+        <button disabled={!rawText || loading} onClick={run} className="rounded bg-black px-4 py-2 text-white disabled:opacity-40">
           {loading ? "Tailoring…" : "Tailor it"}
         </button>
       </div>
@@ -2323,8 +2610,11 @@ export default function TailorClient() {
             <p className="mt-2 text-sm">{result.tailored.rationale}</p>
             {result.tailored.safetyNote && <p className="mt-2 text-sm text-amber-700">⚠ {result.tailored.safetyNote}</p>}
           </div>
-          <div>
-            <button onClick={() => run(true)} className="rounded border px-4 py-2">Save to history</button>
+          <div className="flex items-center gap-3">
+            <button onClick={save} disabled={saveStatus === "saving" || saveStatus === "saved"} className="rounded border px-4 py-2 disabled:opacity-40">
+              {saveStatus === "saved" ? "Saved ✓" : saveStatus === "saving" ? "Saving…" : "Save to history"}
+            </button>
+            {saveStatus === "error" && <span className="text-sm text-red-600">Could not save. Try again.</span>}
           </div>
         </div>
       )}
@@ -2352,7 +2642,7 @@ export default async function TailorPage() {
 }
 ```
 
-- [ ] **Step 4: Manual end-to-end check (requires `GEMINI_API_KEY`, seeded DB)**
+- [ ] **Step 4: Manual end-to-end check (requires `GEMINI_API_KEY` and a pushed schema — `pnpm db:push`)**
 
 Run: `pnpm dev`, sign in, set a profile (e.g., shoulder_impingement), go to `/tailor`, paste a workout, pick "Injury", tailor it. Confirm original vs tailored render, changes avoid contraindicated movements, and a stimulus + rationale appear.
 
@@ -2413,6 +2703,677 @@ git add -A
 git commit -m "feat: history page listing saved tailored workouts"
 ```
 
+### Task 6.6: Refine loop (service + endpoint + UI)
+
+Spec pipeline step 6: the athlete reacts ("still hurts", "too easy", "no rower today") and the engine re-tailors with that feedback. Uses the `previousAttempt` support from Task 4.5 — the refine re-runs **only** the tailor step (one LLM call; no re-parse, no re-classify).
+
+**Files:**
+- Create: `src/app/api/tailor/refine/route.ts`
+- Modify: `src/lib/tailor-service.ts`, `src/app/tailor/TailorClient.tsx`
+- Test: `tests/tailor/tailor-service.test.ts` (extend)
+
+**Interfaces:**
+- Consumes: `tailor()` with `previousAttempt` (Task 4.5), `DomainData` (Task 6.3), `PipelineResult` (Task 4.4).
+- Produces: `runRefineForAthlete(args: RunRefineArgs): Promise<PipelineResult>`; `POST /api/tailor/refine` → `PipelineResult` JSON.
+
+- [ ] **Step 1: Write the failing test** (append to `tests/tailor/tailor-service.test.ts`)
+
+```ts
+import { runRefineForAthlete } from "@/lib/tailor-service";
+import type { StructuredWorkout, StimulusClassification } from "@/lib/engine/types";
+
+describe("runRefineForAthlete", () => {
+  it("re-tailors with the previous attempt and feedback, keeping the original classification", async () => {
+    const original: StructuredWorkout = { name: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", source: "adhoc",
+      blocks: [{ title: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
+        components: [{ movement: "Pull-up", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] };
+    const previousWorkout: StructuredWorkout = { ...original, name: "Cindy (mod)" };
+    const classification: StimulusClassification = { primary: "muscular_endurance", secondary: [], rationale: "Bodyweight grind." };
+
+    const provider = new FakeProvider({
+      TailoringResult: { workout: { ...original, name: "Cindy (mod 2)" },
+        changes: [{ original: "Ring Row", modified: "Bent-over Row", reason: "Rings still bother the shoulder per feedback." }],
+        rationale: "Same pulling volume, more support.", safetyNote: null },
+    });
+
+    const result = await runRefineForAthlete({
+      provider, original, classification, previousWorkout,
+      feedback: "Ring rows still hurt.",
+      profile: { injuries: ["shoulder_impingement"], benchmarks: {}, equipment: [], goals: [], availability: {} },
+      request: { constraintType: "injury", details: "shoulder", timeCapMinutes: null, targetMovement: null },
+      domain: {
+        taxonomy: [{ key: "muscular_endurance", label: "Muscular endurance", description: "..." }],
+        movements: [],
+        contraindicationsFor: async () => [],
+      },
+    });
+
+    expect(result.original.name).toBe("Cindy");
+    expect(result.classification.primary).toBe("muscular_endurance"); // not re-classified
+    expect(result.tailored.workout.name).toBe("Cindy (mod 2)");
+  });
+});
+```
+
+- [ ] **Step 2: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/tailor/tailor-service.test.ts`
+Expected: FAIL — `runRefineForAthlete` not exported.
+
+- [ ] **Step 3: Add `runRefineForAthlete` to `src/lib/tailor-service.ts`**
+
+Extend the imports and append:
+
+```ts
+import { tailor } from "@/lib/engine/tailor";
+import type { StructuredWorkout, StimulusClassification } from "@/lib/engine/types";
+
+export interface RunRefineArgs {
+  provider: LlmProvider;
+  original: StructuredWorkout;
+  classification: StimulusClassification;
+  previousWorkout: StructuredWorkout;
+  feedback: string;
+  profile: AthleteProfileInput;
+  request: TailorRequest;
+  domain?: DomainData; // injectable for tests; defaults to JSON-backed repository
+}
+
+/** Refine = re-run ONLY the tailor step with the rejected attempt + feedback. */
+export async function runRefineForAthlete(args: RunRefineArgs): Promise<PipelineResult> {
+  const domain = args.domain ?? (await defaultDomain());
+  const contraindications = await domain.contraindicationsFor(args.profile.injuries);
+  const tailored = await tailor(args.provider, {
+    workout: args.original,
+    classification: args.classification,
+    profile: args.profile,
+    request: args.request,
+    movements: domain.movements,
+    contraindications,
+    previousAttempt: { workout: args.previousWorkout, feedback: args.feedback },
+  });
+  return { original: args.original, classification: args.classification, tailored };
+}
+```
+
+- [ ] **Step 4: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/tailor/tailor-service.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Implement `src/app/api/tailor/refine/route.ts`**
+
+```ts
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/db";
+import { getProvider } from "@/lib/ai";
+import { normalizeProfile } from "@/lib/profile";
+import { runRefineForAthlete } from "@/lib/tailor-service";
+import {
+  StructuredWorkoutSchema, StimulusClassificationSchema, TailorRequestSchema,
+} from "@/lib/engine/types";
+import { z } from "zod";
+
+const RefineBodySchema = z.object({
+  original: StructuredWorkoutSchema,
+  classification: StimulusClassificationSchema,
+  previousWorkout: StructuredWorkoutSchema,
+  request: TailorRequestSchema,
+  feedback: z.string().min(1),
+});
+
+export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  let body;
+  try {
+    body = RefineBodySchema.parse(await req.json());
+  } catch {
+    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+  }
+
+  const row = await prisma.athleteProfile.findUnique({ where: { userId: session.user.id } });
+  const profile = normalizeProfile(row ? {
+    injuries: row.injuries, benchmarks: row.benchmarks, equipment: row.equipment, goals: row.goals, availability: row.availability,
+  } : null);
+
+  try {
+    const result = await runRefineForAthlete({
+      provider: getProvider(),
+      original: body.original,
+      classification: body.classification,
+      previousWorkout: body.previousWorkout,
+      feedback: body.feedback,
+      profile,
+      request: body.request,
+    });
+    return NextResponse.json(result);
+  } catch (e) {
+    console.error("refine failed", e); // never leak exception text to the client
+    return NextResponse.json({ error: "engine_failed" }, { status: 502 });
+  }
+}
+```
+
+- [ ] **Step 6: Add the refine UI to `src/app/tailor/TailorClient.tsx`**
+
+Add state next to the existing hooks:
+
+```tsx
+const [feedback, setFeedback] = useState("");
+```
+
+Add the handler next to `save()`:
+
+```tsx
+async function refine() {
+  if (!result || !lastRequest || !feedback.trim()) return;
+  setLoading(true); setError("");
+  const res = await fetch("/api/tailor/refine", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      original: result.original,
+      classification: result.classification,
+      previousWorkout: result.tailored.workout,
+      request: lastRequest,
+      feedback,
+    }),
+  });
+  setLoading(false);
+  if (!res.ok) { setError("Could not refine this workout. Try again."); return; }
+  setResult(await res.json());
+  setFeedback("");
+  setSaveStatus("idle"); // the refined result has not been saved yet
+}
+```
+
+In the result JSX, insert a refine card between the "What changed" card and the save button:
+
+```tsx
+<div className="rounded border p-4">
+  <div className="text-xs uppercase tracking-wide text-gray-500">Not quite right?</div>
+  <textarea rows={2} className="mt-2 w-full rounded border p-2" value={feedback}
+    onChange={(e) => setFeedback(e.target.value)}
+    placeholder='e.g., "still hurts my shoulder", "too easy", "no rower available"' />
+  <button disabled={!feedback.trim() || loading} onClick={refine}
+    className="mt-2 rounded bg-black px-4 py-2 text-white disabled:opacity-40">
+    {loading ? "Refining…" : "Refine"}
+  </button>
+</div>
+```
+
+- [ ] **Step 7: Manual check + commit**
+
+Run: `pnpm dev`, tailor a workout, enter feedback like "too easy", refine. Confirm a new tailored version replaces the old one and the stimulus stays the same.
+
+```bash
+git add -A
+git commit -m "feat: refine loop (service, POST /api/tailor/refine, feedback UI)"
+```
+
+### Task 6.7: Benchmarks section in the profile form
+
+The spec's onboarding includes "strength & benchmarks", and the tailor prompt scales loads to them — so athletes must be able to enter them. Free-form key/value rows; values coerce to number/boolean where obvious.
+
+**Files:**
+- Modify: `src/lib/profile.ts`, `src/app/profile/ProfileForm.tsx`
+- Test: `tests/profile/profile-helpers.test.ts` (extend)
+
+**Interfaces:**
+- Produces: `coerceBenchmarkValue(v: string): number | boolean | string` from `@/lib/profile`.
+
+- [ ] **Step 1: Write the failing test** (append to `tests/profile/profile-helpers.test.ts`)
+
+```ts
+import { coerceBenchmarkValue } from "@/lib/profile";
+
+describe("coerceBenchmarkValue", () => {
+  it("coerces numeric strings to numbers", () => {
+    expect(coerceBenchmarkValue("140")).toBe(140);
+    expect(coerceBenchmarkValue("62.5")).toBe(62.5);
+  });
+  it("coerces true/false to booleans", () => {
+    expect(coerceBenchmarkValue("true")).toBe(true);
+    expect(coerceBenchmarkValue("false")).toBe(false);
+  });
+  it("keeps everything else as a trimmed string", () => {
+    expect(coerceBenchmarkValue(" 3:45 Fran ")).toBe("3:45 Fran");
+  });
+});
+```
+
+- [ ] **Step 2: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/profile/profile-helpers.test.ts`
+Expected: FAIL — `coerceBenchmarkValue` not exported.
+
+- [ ] **Step 3: Add `coerceBenchmarkValue` to `src/lib/profile.ts`**
+
+```ts
+export function coerceBenchmarkValue(v: string): number | boolean | string {
+  const t = v.trim();
+  if (t !== "" && !Number.isNaN(Number(t))) return Number(t);
+  if (t === "true") return true;
+  if (t === "false") return false;
+  return t;
+}
+```
+
+- [ ] **Step 4: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/profile/profile-helpers.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Add the benchmarks section to `src/app/profile/ProfileForm.tsx`**
+
+Add the import and state:
+
+```tsx
+import { coerceBenchmarkValue } from "@/lib/profile";
+// inside the component:
+const [newBenchKey, setNewBenchKey] = useState("");
+const [newBenchVal, setNewBenchVal] = useState("");
+```
+
+Insert this section between "Equipment" and "Availability":
+
+```tsx
+<section>
+  <h2 className="font-semibold">Benchmarks</h2>
+  <p className="text-sm text-gray-500">1RMs, benchmark times, skills — e.g. backSquat1RM → 140, canDoMuscleUp → true, fran → 3:45.</p>
+  <div className="mt-2 flex flex-col gap-2">
+    {Object.entries(p.benchmarks).map(([k, v]) => (
+      <div key={k} className="flex items-center gap-2 text-sm">
+        <span className="w-40 truncate font-mono">{k}</span>
+        <input className="w-32 rounded border p-1" defaultValue={String(v)}
+          onBlur={(e) => setP({ ...p, benchmarks: { ...p.benchmarks, [k]: coerceBenchmarkValue(e.target.value) } })} />
+        <button type="button" className="text-red-600"
+          onClick={() => { const rest = { ...p.benchmarks }; delete rest[k]; setP({ ...p, benchmarks: rest }); }}>
+          remove
+        </button>
+      </div>
+    ))}
+    <div className="flex items-center gap-2 text-sm">
+      <input className="w-40 rounded border p-1" placeholder="name (e.g. deadlift1RM)" value={newBenchKey} onChange={(e) => setNewBenchKey(e.target.value)} />
+      <input className="w-32 rounded border p-1" placeholder="value" value={newBenchVal} onChange={(e) => setNewBenchVal(e.target.value)} />
+      <button type="button" className="rounded border px-2 py-1 disabled:opacity-40" disabled={!newBenchKey.trim()}
+        onClick={() => {
+          setP({ ...p, benchmarks: { ...p.benchmarks, [newBenchKey.trim()]: coerceBenchmarkValue(newBenchVal) } });
+          setNewBenchKey(""); setNewBenchVal("");
+        }}>
+        Add
+      </button>
+    </div>
+  </div>
+</section>
+```
+
+- [ ] **Step 6: Manual check + commit**
+
+Run: `pnpm dev`, open `/profile`, add `backSquat1RM` = `140` and `canDoMuscleUp` = `true`, save, reload — confirm values persist and render.
+
+```bash
+git add -A
+git commit -m "feat: benchmarks section in profile form with value coercion"
+```
+
+### Task 6.8: Manual structured entry (spec v1 ingestion: paste OR manual)
+
+The API already accepts `{ kind: "structured" }`; this task adds the UI. A manual workout still needs `rawText` (it is the engine's source of truth), so a pure helper renders the draft to text.
+
+**Files:**
+- Create: `src/lib/engine/render-text.ts`, `src/app/tailor/ManualEntryForm.tsx`
+- Modify: `src/app/tailor/TailorClient.tsx`
+- Test: `tests/engine/render-text.test.ts`
+
+**Interfaces:**
+- Consumes: `WorkoutBlock`, `StructuredWorkout`, `StructuredWorkoutSchema`, `BlockFormat` from `@/lib/engine/types` (Task 3.1).
+- Produces: `type ManualBlockDraft = Omit<WorkoutBlock, "rawText">`, `interface ManualWorkoutDraft { name: string | null; blocks: ManualBlockDraft[] }`, `draftToStructuredWorkout(draft: ManualWorkoutDraft): StructuredWorkout` from `@/lib/engine/render-text`.
+
+- [ ] **Step 1: Write the failing test**
+
+`tests/engine/render-text.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { draftToStructuredWorkout } from "@/lib/engine/render-text";
+
+describe("draftToStructuredWorkout", () => {
+  it("renders a manual draft into a StructuredWorkout with generated rawText", () => {
+    const w = draftToStructuredWorkout({
+      name: "Manual day",
+      blocks: [{
+        title: "Conditioning", format: "amrap", scheme: "AMRAP 12",
+        timeDomainMinutes: 12, coachingNotes: "Steady pace.",
+        components: [
+          { movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
+          { movement: "Row (Erg)", reps: null, load: null, distanceMeters: null, calories: 12, durationSeconds: null, notes: null },
+        ],
+      }],
+    });
+    expect(w.source).toBe("adhoc");
+    expect(w.rawText).toContain("AMRAP 12");
+    expect(w.rawText).toContain("10 Burpee");
+    expect(w.blocks[0].rawText).toContain("12 cal");
+    expect(w.blocks[0].rawText).toContain("Steady pace.");
+  });
+
+  it("never produces an empty block rawText (schema requires min length 1)", () => {
+    const w = draftToStructuredWorkout({
+      name: null,
+      blocks: [{ title: null, format: "rest", scheme: null, timeDomainMinutes: null, coachingNotes: null, components: [] }],
+    });
+    expect(w.blocks[0].rawText.length).toBeGreaterThan(0);
+  });
+});
+```
+
+- [ ] **Step 2: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/engine/render-text.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement `src/lib/engine/render-text.ts`**
+
+```ts
+import { StructuredWorkoutSchema, type StructuredWorkout, type WorkoutBlock } from "@/lib/engine/types";
+
+export type ManualBlockDraft = Omit<WorkoutBlock, "rawText">;
+
+export interface ManualWorkoutDraft {
+  name: string | null;
+  blocks: ManualBlockDraft[];
+}
+
+function renderBlockText(b: ManualBlockDraft): string {
+  const lines: string[] = [];
+  if (b.title) lines.push(b.title);
+  if (b.scheme) lines.push(b.scheme);
+  for (const c of b.components) {
+    const parts = [
+      c.reps != null ? String(c.reps) : null,
+      c.movement,
+      c.load ? `@ ${c.load}` : null,
+      c.distanceMeters != null ? `${c.distanceMeters} m` : null,
+      c.calories != null ? `${c.calories} cal` : null,
+      c.durationSeconds != null ? `${c.durationSeconds}s` : null,
+      c.notes ? `(${c.notes})` : null,
+    ].filter(Boolean);
+    lines.push(parts.join(" "));
+  }
+  if (b.coachingNotes) lines.push(b.coachingNotes);
+  if (lines.length === 0) lines.push(b.format); // e.g. a bare "rest" block
+  return lines.join("\n");
+}
+
+/** Manual entry: the rendered text becomes the workout's rawText source of truth. */
+export function draftToStructuredWorkout(draft: ManualWorkoutDraft): StructuredWorkout {
+  const blocks = draft.blocks.map((b) => ({ ...b, rawText: renderBlockText(b) }));
+  return StructuredWorkoutSchema.parse({
+    name: draft.name,
+    rawText: blocks.map((b) => b.rawText).join("\n\n"),
+    source: "adhoc",
+    blocks,
+  });
+}
+```
+
+- [ ] **Step 4: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/engine/render-text.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Implement `src/app/tailor/ManualEntryForm.tsx`** (client component)
+
+```tsx
+"use client";
+import { useState } from "react";
+import { BlockFormat, type StructuredWorkout, type WorkoutComponent } from "@/lib/engine/types";
+import { draftToStructuredWorkout, type ManualBlockDraft } from "@/lib/engine/render-text";
+
+function emptyComponent(): WorkoutComponent {
+  return { movement: "", reps: null, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null };
+}
+function emptyBlock(): ManualBlockDraft {
+  return { title: null, format: "for_time", scheme: null, timeDomainMinutes: null, coachingNotes: null, components: [emptyComponent()] };
+}
+
+export default function ManualEntryForm({ onSubmit }: { onSubmit: (workout: StructuredWorkout) => void }) {
+  const [name, setName] = useState("");
+  const [blocks, setBlocks] = useState<ManualBlockDraft[]>([emptyBlock()]);
+  const [error, setError] = useState("");
+
+  function updateBlock(bi: number, patch: Partial<ManualBlockDraft>) {
+    setBlocks(blocks.map((b, i) => (i === bi ? { ...b, ...patch } : b)));
+  }
+  function updateComponent(bi: number, ci: number, patch: Partial<WorkoutComponent>) {
+    setBlocks(blocks.map((b, i) => i === bi
+      ? { ...b, components: b.components.map((c, j) => (j === ci ? { ...c, ...patch } : c)) }
+      : b));
+  }
+
+  function submit() {
+    try {
+      const workout = draftToStructuredWorkout({
+        name: name.trim() || null,
+        blocks: blocks.map((b) => ({ ...b, components: b.components.filter((c) => c.movement.trim() !== "") })),
+      });
+      setError("");
+      onSubmit(workout);
+    } catch {
+      setError("Please complete the workout — every listed movement needs a name.");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded border p-4">
+      <input className="rounded border p-2" placeholder="Workout name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
+      {blocks.map((b, bi) => (
+        <div key={bi} className="flex flex-col gap-2 border-l-2 border-gray-200 pl-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <input className="rounded border p-1" placeholder="Block title" value={b.title ?? ""}
+              onChange={(e) => updateBlock(bi, { title: e.target.value || null })} />
+            <select className="rounded border p-1" value={b.format}
+              onChange={(e) => updateBlock(bi, { format: e.target.value as ManualBlockDraft["format"] })}>
+              {BlockFormat.options.map((f) => (<option key={f} value={f}>{f.replaceAll("_", " ")}</option>))}
+            </select>
+            <input className="rounded border p-1" placeholder='Scheme (e.g. "AMRAP 12", "5x5")' value={b.scheme ?? ""}
+              onChange={(e) => updateBlock(bi, { scheme: e.target.value || null })} />
+            <input type="number" min={1} className="w-20 rounded border p-1" placeholder="min" value={b.timeDomainMinutes ?? ""}
+              onChange={(e) => updateBlock(bi, { timeDomainMinutes: e.target.value ? Number(e.target.value) : null })} />
+          </div>
+          {b.components.map((c, ci) => (
+            <div key={ci} className="flex flex-wrap items-center gap-2 text-sm">
+              <input className="w-24 rounded border p-1" placeholder="Reps" value={c.reps == null ? "" : String(c.reps)}
+                onChange={(e) => updateComponent(bi, ci, { reps: e.target.value || null })} />
+              <input className="w-44 rounded border p-1" placeholder="Movement (e.g. Thruster)" value={c.movement}
+                onChange={(e) => updateComponent(bi, ci, { movement: e.target.value })} />
+              <input className="w-28 rounded border p-1" placeholder="Load" value={c.load ?? ""}
+                onChange={(e) => updateComponent(bi, ci, { load: e.target.value || null })} />
+              <button type="button" className="text-red-600"
+                onClick={() => updateBlock(bi, { components: b.components.filter((_, j) => j !== ci) })}>×</button>
+            </div>
+          ))}
+          <div className="flex gap-2 text-sm">
+            <button type="button" className="rounded border px-2 py-1"
+              onClick={() => updateBlock(bi, { components: [...b.components, emptyComponent()] })}>+ movement</button>
+            {blocks.length > 1 && (
+              <button type="button" className="rounded border px-2 py-1 text-red-600"
+                onClick={() => setBlocks(blocks.filter((_, i) => i !== bi))}>remove block</button>
+            )}
+          </div>
+          <textarea rows={2} className="rounded border p-2 text-sm" placeholder="Coaching notes (tempo, intensity, Rx/scaled tiers…)"
+            value={b.coachingNotes ?? ""} onChange={(e) => updateBlock(bi, { coachingNotes: e.target.value || null })} />
+        </div>
+      ))}
+      <div className="flex items-center gap-3">
+        <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => setBlocks([...blocks, emptyBlock()])}>+ block</button>
+        <button type="button" className="rounded bg-black px-4 py-2 text-sm text-white" onClick={submit}>Use this workout</button>
+        {error && <span className="text-sm text-red-600">{error}</span>}
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 6: Add the paste/manual toggle to `src/app/tailor/TailorClient.tsx`**
+
+Add imports and state:
+
+```tsx
+import ManualEntryForm from "./ManualEntryForm";
+import { WorkoutView } from "@/components/WorkoutView";           // already imported
+import type { StructuredWorkout } from "@/lib/engine/types";
+
+// inside the component:
+const [mode, setMode] = useState<"paste" | "manual">("paste");
+const [manualWorkout, setManualWorkout] = useState<StructuredWorkout | null>(null);
+```
+
+In `run()`, build the input from the mode (replace the fetch body's `input`):
+
+```tsx
+const input = mode === "paste"
+  ? { kind: "raw" as const, rawText }
+  : { kind: "structured" as const, workout: manualWorkout! };
+// ...
+body: JSON.stringify({ input, request }),
+```
+
+Replace the single paste `<label>` with a mode toggle + conditional source:
+
+```tsx
+<div className="flex flex-col gap-2">
+  <div className="flex gap-2">
+    <button type="button" onClick={() => setMode("paste")}
+      className={`rounded border px-3 py-1 text-sm ${mode === "paste" ? "bg-black text-white" : ""}`}>Paste text</button>
+    <button type="button" onClick={() => { setMode("manual"); setManualWorkout(null); }}
+      className={`rounded border px-3 py-1 text-sm ${mode === "manual" ? "bg-black text-white" : ""}`}>Enter manually</button>
+  </div>
+  {mode === "paste" ? (
+    <label className="flex flex-col gap-1">
+      <span className="font-semibold">Paste today's workout</span>
+      <textarea rows={5} className="rounded border p-2" value={rawText} onChange={(e) => setRawText(e.target.value)}
+        placeholder={"e.g.\n21-15-9 for time\nThrusters 95 lb\nPull-ups"} />
+    </label>
+  ) : manualWorkout ? (
+    <div className="flex flex-col gap-2">
+      <WorkoutView workout={manualWorkout} title="Your workout" />
+      <button type="button" className="self-start rounded border px-3 py-1 text-sm" onClick={() => setManualWorkout(null)}>Edit</button>
+    </div>
+  ) : (
+    <ManualEntryForm onSubmit={setManualWorkout} />
+  )}
+</div>
+```
+
+Update the Tailor button's disabled condition:
+
+```tsx
+<button disabled={loading || (mode === "paste" ? !rawText : !manualWorkout)} onClick={run} ...>
+```
+
+- [ ] **Step 7: Manual check + commit**
+
+Run: `pnpm dev`, switch to "Enter manually", build a two-block workout, "Use this workout", tailor it. Confirm the pipeline runs without a parse step (the structured input goes straight to classification).
+
+```bash
+git add -A
+git commit -m "feat: manual structured workout entry with text rendering"
+```
+
+### Task 6.9: Missed-days support (multi-day paste → one merged session)
+
+Spec: "Missed days — help prioritize/merge when rejoining; the paste may span several missed days." The single-workout pipeline handles this via prompting: the parser accepts multi-day pastes (days become blocks) and the tailor merges/prioritizes for the `missed_days` constraint. UI hints tell the athlete to paste everything.
+
+**Files:**
+- Modify: `src/lib/engine/parse-workout.ts`, `src/lib/engine/tailor.ts`, `src/app/tailor/TailorClient.tsx`
+- Test: `tests/engine/parse-workout.test.ts`, `tests/engine/tailor.test.ts` (extend)
+
+- [ ] **Step 1: Write the failing tests** (guardrails that the prompts cover multi-day input)
+
+Append to `tests/engine/parse-workout.test.ts` (uses the same inline capturing pattern as Task 4.5):
+
+```ts
+it("instructs the model to handle multi-day pastes", async () => {
+  let capturedSystem = "";
+  const capturing: LlmProvider = {
+    async generateStructured(args) {
+      capturedSystem = args.systemPrompt ?? "";
+      throw new Error("only capturing"); // fallback path is fine for this test
+    },
+  };
+  await parseWorkout(capturing, "Day 1 ...\nDay 2 ...");
+  expect(capturedSystem).toContain("MULTIPLE days");
+});
+```
+
+Append to `tests/engine/tailor.test.ts` (reuses `CapturingProvider` from Task 4.5):
+
+```ts
+it("instructs the model to merge multi-day input for missed_days requests", async () => {
+  const provider = new CapturingProvider({ workout: fran, changes: [], rationale: "Merged.", safetyNote: null });
+  await tailor(provider, {
+    workout: fran, classification, profile,
+    request: { constraintType: "missed_days", details: "Missed Mon+Tue", timeCapMinutes: null, targetMovement: null },
+    movements: [], contraindications: [],
+  });
+  expect(provider.lastArgs?.systemPrompt).toContain("missed_days");
+});
+```
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts tests/engine/tailor.test.ts`
+Expected: FAIL — prompts do not contain the expected instructions.
+
+- [ ] **Step 3: Extend the prompts**
+
+In `src/lib/engine/parse-workout.ts`, append to the `SYSTEM` string:
+
+```
+- The paste may contain MULTIPLE days of programming (e.g., an athlete catching up on missed days).
+  Keep everything: represent each day's pieces as ordered blocks and keep any day labels
+  (e.g., "Day 1", "Monday") in the block titles.
+```
+
+In `src/lib/engine/tailor.ts`, append to the `SYSTEM` string:
+
+```
+- If the request's constraintType is "missed_days", the original may span SEVERAL days of programming.
+  Merge and prioritize into ONE session that fits the athlete's availability and time budget: keep the
+  most important stimuli (favor the primary classification), drop or shrink redundant volume, and list
+  every dropped piece in "changes" with the reason.
+```
+
+- [ ] **Step 4: Run them, verify they pass**
+
+Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts tests/engine/tailor.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Add the UI hint in `src/app/tailor/TailorClient.tsx`**
+
+Below the constraint detail textarea (inside the `constraintType !== "none"` block), add:
+
+```tsx
+{constraintType === "missed_days" && (
+  <p className="text-sm text-gray-500">
+    Tip: paste ALL the missed days above (in order) — they'll be merged into one session that fits today.
+  </p>
+)}
+```
+
+- [ ] **Step 6: Manual check + commit**
+
+Run: `pnpm dev`, paste two days of programming, pick "Missed days", tailor. Confirm the result is a single merged session and dropped pieces appear in "What changed".
+
+```bash
+git add -A
+git commit -m "feat: missed-days support (multi-day parse + merge prompts, UI hint)"
+```
+
 ---
 
 ## Phase 7 — Final wiring & verification
@@ -2420,14 +3381,14 @@ git commit -m "feat: history page listing saved tailored workouts"
 ### Task 7.1: README, env check, and full verification
 
 **Files:**
-- Create: `README.md`
+- Modify: `README.md` (replace the create-next-app boilerplate)
 
-- [ ] **Step 1: Write `README.md`** with: prerequisites (Node 20+, Postgres, a `GEMINI_API_KEY`), setup steps (`pnpm install`, set `.env` from `.env.example`, `pnpm db:push`, `pnpm db:seed`, `pnpm dev`), how auth works in dev (magic link printed to console), and how to run tests (`ppnpm test`).
+- [ ] **Step 1: Rewrite `README.md`** with: prerequisites (Node 20+, Postgres, a `GEMINI_API_KEY`), setup steps (`pnpm install`, set `.env` from `.env.example`, `pnpm db:push`, `pnpm dev` — note there is **no seed step**; domain data ships as JSON in `data/`), how auth works in dev (magic link printed to console), and how to run tests (`pnpm test`).
 
-- [ ] **Step 2: Run the full unit suite**
+- [ ] **Step 2: Run the full test suite**
 
 Run: `pnpm test`
-Expected: all non-DB suites pass. DB-integration suites (`tests/domain/repository.test.ts`) pass when `db:push` + `db:seed` have run against `DATABASE_URL`.
+Expected: all suites pass with no DB and no API key (the Gemini integration test skips itself when `GEMINI_API_KEY` is unset).
 
 - [ ] **Step 3: Production build check**
 
@@ -2436,33 +3397,35 @@ Expected: build completes with no type errors.
 
 - [ ] **Step 4: Manual smoke of the full flow**
 
-Sign in → save profile → tailor a pasted workout with an injury constraint → confirm contraindicated movements are avoided → save → see it in history.
+Sign in → save profile (including a benchmark) → tailor a pasted workout with an injury constraint → confirm contraindicated movements are avoided → refine with feedback ("too easy") → save → see it in history. Then tailor a manually entered workout and a two-day "missed days" paste.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "docs: add README and finalize v1 verification"
+git commit -m "docs: rewrite README and finalize v1 verification"
 ```
 
 ---
 
 ## Self-review notes (coverage against spec)
 
-- **Engine + domain-grounding** → Phases 2–4 (domain seed, types, parse/classify/tailor with contraindications + stimulus). ✔
+- **Engine + domain-grounding** → Phases 2–4 (versioned JSON domain data behind a repository, types, parse/classify/tailor with contraindications + stimulus). ✔
 - **AI service abstraction (Gemini behind interface)** → Task 3.2/3.3; only `gemini-provider.ts` imports the SDK; `getProvider()` factory keyed by `AI_PROVIDER`. ✔
-- **Free-text + manual ingestion** → `WorkoutInput` union (`raw` | `structured`); pipeline branches in Task 4.4; UI uses raw paste (manual entry of a structured workout is supported by the API/types and can be surfaced in a later UI iteration). ✔
-- **Athlete profile incl. availability** → Prisma `AthleteProfile.availability`, `AthleteProfileSchema`, profile form. ✔
-- **Constraints: injury / time / missed days / movement goal / none** → `ConstraintType`, surfaced in `TailorClient`. ✔
+- **Free-text + manual ingestion** → `WorkoutInput` union (`raw` | `structured`); pipeline branches in Task 4.4; paste UI in Task 6.4, manual structured-entry UI in Task 6.8. ✔
+- **Graceful parse degradation** (spec: "a parse failure degrades gracefully") → Task 4.1 `fallbackWorkout` + verbatim rawText guard. ✔
+- **Athlete profile incl. availability and benchmarks** → Prisma `AthleteProfile`, `AthleteProfileSchema`, profile form (Task 6.2) + benchmarks section (Task 6.7). ✔
+- **Constraints: injury / time / missed days / movement goal / none** → `ConstraintType`, surfaced in `TailorClient`; missed-days multi-day merge in Task 6.9. ✔
+- **Refine loop** (spec pipeline step 6) → engine support in Task 4.5, endpoint + UI in Task 6.6. ✔
 - **Dynamic multi-block workout formats** → `StructuredWorkout` is a session of ordered `blocks[]`, each with its own `format`, `scheme`, `components[]`, and `coachingNotes`; verbatim `rawText` is preserved at session and block level as the source of truth, with structure as a derived extraction (Task 3.1, parse prompt in Task 4.1). Stored in `Json` columns — no per-format tables. ✔
 - **Result: side-by-side + rationale + what-changed + safety disclaimer** → Task 6.4 (block-by-block `WorkoutView`) + layout footer. ✔
-- **Auth + Postgres persistence** → Phase 1 + Phase 5. ✔
+- **Save what you reviewed** → save persists the exact displayed result; it never re-runs the nondeterministic pipeline (Tasks 6.3/6.4). ✔
+- **Auth + Postgres persistence (user data only)** → Phase 1 + Phase 5; no edge middleware (incompatible with database sessions/Prisma); pages and API routes self-guard. ✔
 - **Out of scope (coach portal, OCR, integrations)** → not present. ✔
 
 ## Open follow-ups (not blocking v1)
 
-- Refine loop ("still hurts / too easy") — the API already accepts a free-text `details`; a conversational refine UI is a fast follow.
-- **Movement-name → library resolution:** `components[].movement` is a canonical name string with no enforced FK to the `Movement` library, so an extracted movement may have no grounding row (no contraindications/substitutes). v1 relies on the parse prompt emitting canonical names; a fuzzy/normalization pass (and surfacing "unrecognized movement") is a follow-up.
-- **`blocks[].rawText` reconstruction:** the parser splits the session into per-block slices; if a split is lossy, the session-level `rawText` remains the complete source of truth and the block can fall back to it.
-- Manual structured-entry form (the data path exists; only the UI is deferred).
-- Confirm the exact current Gemini model id at build time; `gemini-2.5-flash` is the default.
+- **Movement-name → library resolution:** `components[].movement` is a canonical name string with no enforced FK to the movement library, so an extracted movement may have no grounding row (no contraindications/substitutes). v1 relies on the parse prompt emitting canonical names; a fuzzy/normalization pass (and surfacing "unrecognized movement") is a follow-up.
+- **Domain data to DB (Phase C):** when coaches need to edit domain data at runtime, move it behind the same `repository.ts` interface into Postgres — nothing else changes.
+- **Refine history:** refines replace the on-screen result; persisting the refine conversation chain is a follow-up.
+- Retry-with-error-feedback when the LLM returns schema-invalid JSON (currently: one shot, then the parse fallback / a 502).
