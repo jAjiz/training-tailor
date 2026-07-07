@@ -67,33 +67,6 @@ model AthleteProfile {
   updatedAt    DateTime @updatedAt
 }
 
-// ---- Domain knowledge (seeded, product-owned) ----
-model Movement {
-  id          String @id @default(cuid())
-  name        String @unique
-  plane       String
-  jointStress Json
-  loadType    String
-  skill       String
-  substitutes Json
-}
-
-model InjuryContraindication {
-  id             String  @id @default(cuid())
-  injuryKey      String  @unique
-  label          String
-  avoidPatterns  Json
-  avoidMovements Json
-  notes          String?
-}
-
-model StimulusDef {
-  id          String @id @default(cuid())
-  key         String @unique
-  label       String
-  description String
-}
-
 model TailoredWorkout {
   id          String   @id @default(cuid())
   userId      String
