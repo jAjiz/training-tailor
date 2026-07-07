@@ -16,7 +16,7 @@
 
 ## Status
 
-**Phases 0–1 are already implemented and committed** (`d5ea79e` scaffold, `eb8937f` Prisma schema + db client, plus fix-ups `822cfe2`, `2513c5d`, `b1350b3`). Their tasks below are marked done and their snippets reflect the committed code. Execution resumes at Phase 2. Note that Task 2.3 removes the domain tables that Task 1.1 originally created — domain data is JSON-backed, not DB-backed.
+**Phases 0–1 are already implemented and committed** (`d5ea79e` scaffold, `eb8937f` Prisma schema + db client, fix-ups `822cfe2`, `2513c5d`, `b1350b3`, and `2265875`, which reworked the schema to hold user data only — domain data is JSON-backed, not DB-backed). Their tasks below are marked done and their snippets reflect the committed code. Execution resumes at Phase 2.
 
 ## Conventions for the implementing engineer
 
@@ -190,7 +190,7 @@ git commit -m "chore: scaffold Next.js app with Vitest and env template"
 
 ### Task 1.1: Set up Prisma and the schema — ✅ DONE
 
-> **Status: completed** in commit `eb8937f`. Prisma 7 was installed: the client generates to `src/generated/prisma`, connects through the `@prisma/adapter-pg` driver adapter, and the datasource URL lives in `prisma.config.ts`. **Note:** this task created domain tables (`Movement`, `InjuryContraindication`, `StimulusDef`) that a later decision removed — Task 2.3 deletes them from the schema. Snippets below match the committed code.
+> **Status: completed** in commits `eb8937f` and `2265875`. Prisma 7 was installed: the client generates to `src/generated/prisma`, connects through the `@prisma/adapter-pg` driver adapter, and the datasource URL lives in `prisma.config.ts`. The schema holds **user data only** (auth models, `AthleteProfile`, `TailoredWorkout`) — domain knowledge (movements, contraindications, stimulus taxonomy) is versioned JSON in `data/` (Phase 2), never DB tables. Snippets below match the committed code.
 
 **Files:**
 - Create: `prisma/schema.prisma`, `prisma.config.ts`, `src/lib/db.ts`
@@ -277,33 +277,6 @@ model AthleteProfile {
   updatedAt    DateTime @updatedAt
 }
 
-// ---- Domain knowledge (seeded, product-owned) ----
-model Movement {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  plane       String   // e.g. "sagittal", "frontal", "transverse", "multi"
-  jointStress Json     // string[] e.g. ["shoulder","wrist"]
-  loadType    String   // "barbell" | "bodyweight" | "dumbbell" | "machine" | "kettlebell" | "other"
-  skill       String   // "beginner" | "intermediate" | "advanced"
-  substitutes Json     // string[] of other movement names
-}
-
-model InjuryContraindication {
-  id            String @id @default(cuid())
-  injuryKey     String @unique // e.g. "shoulder_impingement"
-  label         String         // human label e.g. "Shoulder impingement"
-  avoidPatterns Json           // string[] e.g. ["overhead_press","ballistic_pressing"]
-  avoidMovements Json          // string[] of movement names to avoid
-  notes         String?
-}
-
-model StimulusDef {
-  id          String @id @default(cuid())
-  key         String @unique // e.g. "aerobic_capacity"
-  label       String
-  description String
-}
-
 model TailoredWorkout {
   id            String   @id @default(cuid())
   userId        String
@@ -331,17 +304,10 @@ model TailoredWorkout {
 
 ```json
 "db:push": "prisma db push",
-"db:seed": "tsx prisma/seed.ts",
 "db:studio": "prisma studio"
 ```
 
-Install `tsx` for running TS scripts:
-
-```bash
-pnpm add -D tsx
-```
-
-(The `db:seed` script is removed again in Task 2.3 — domain data ended up JSON-backed, so no seed script exists.)
+(No `db:seed` script — domain data is JSON-backed, nothing is seeded into the DB.)
 
 - [x] **Step 4: Push schema to the database**
 
@@ -372,7 +338,7 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 ```bash
 git add -A
-git commit -m "feat: add Prisma schema and db client (auth, profile, domain, tailored)"
+git commit -m "feat: add Prisma schema and db client (auth, profile, tailored)"
 ```
 
 ---
@@ -635,13 +601,12 @@ git add -A
 git commit -m "feat: seed domain data (movements, injuries, stimulus taxonomy) with integrity tests"
 ```
 
-### Task 2.3: JSON-backed domain repository (and drop the domain DB tables)
+### Task 2.3: JSON-backed domain repository
 
 The domain data (movements, contraindications, stimulus taxonomy) is read-only, tiny, and ships with the code — the versioned JSON in `data/` **is** the source of truth. No DB tables, no seed script, no DB-dependent tests. The repository keeps `Promise`-returning signatures so a later move to the DB (Phase C, when coaches edit domain data at runtime) changes only this file.
 
 **Files:**
 - Create: `src/lib/domain/repository.ts`
-- Modify: `prisma/schema.prisma` (remove `Movement`, `InjuryContraindication`, `StimulusDef`), `package.json` (remove `db:seed` script)
 - Test: `tests/domain/repository.test.ts`
 
 **Interfaces:**
@@ -722,27 +687,16 @@ export async function getStimulusDefs(): Promise<StimulusDef[]> {
 Run: `pnpm exec vitest run tests/domain/repository.test.ts`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Remove the domain models from `prisma/schema.prisma`**
-
-Delete the `Movement`, `InjuryContraindication`, and `StimulusDef` models (the whole `// ---- Domain knowledge (seeded, product-owned) ----` block). Keep `User`, `Account`, `Session`, `VerificationToken`, `AthleteProfile`, `TailoredWorkout`.
-
-Run: `pnpm db:push`
-Expected: schema synced; the three domain tables are dropped (they were never seeded, so no data is lost).
-
-- [ ] **Step 6: Remove the dangling `db:seed` script from `package.json`**
-
-Delete the line `"db:seed": "tsx prisma/seed.ts",` from `"scripts"` (no seed file exists; domain data is not seeded).
-
-- [ ] **Step 7: Run the full suite, verify green**
+- [ ] **Step 5: Run the full suite, verify green**
 
 Run: `pnpm test`
 Expected: all tests pass, with no DB required.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: JSON-backed domain repository; drop domain DB tables and seed script"
+git commit -m "feat: JSON-backed domain repository"
 ```
 
 ---
