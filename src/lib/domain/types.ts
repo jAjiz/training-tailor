@@ -3,10 +3,58 @@ import { z } from "zod";
 export const LoadType = z.enum(["barbell", "bodyweight", "dumbbell", "machine", "kettlebell", "other"]);
 export const SkillLevel = z.enum(["beginner", "intermediate", "advanced"]);
 
+// Functional movement pattern. Drives substitution and programming balance.
+// Ordered primary-first on a movement (e.g. Thruster = ["squat", "vertical_push"]).
+export const MovementPattern = z.enum([
+  "squat",
+  "hinge",
+  "lunge",
+  "vertical_push",
+  "horizontal_push",
+  "vertical_pull",
+  "horizontal_pull",
+  "core",
+  "carry",
+  "olympic",
+  "jump",
+  "monostructural",
+]);
+
+// Anatomical site: joints/spine regions plus muscle groups. Muscle sites are
+// added as the injury catalog needs them.
+export const Site = z.enum([
+  // joints & spine
+  "shoulder", "elbow", "wrist", "neck", "lumbar", "hip", "knee", "ankle",
+  // muscle groups
+  "quads", "hamstrings", "calves", "hip_flexors", "chest", "biceps",
+]);
+
+// How a site is stressed. Mechanisms describe clinically significant (loaded or
+// forceful) stress — a site merely participating in a movement is not listed.
+// Load is implied by that convention, so names don't repeat it.
+export const StressMechanism = z.enum([
+  "compression",  // axial/compressive loading
+  "flexion",      // forceful or repetitive flexion through mid-range
+  "deep_flexion", // end-range flexion (a site gets flexion OR deep_flexion, never both)
+  "extension",    // held extended under load (front rack, push-up wrist)
+  "overhead",     // loaded overhead
+  "ballistic",    // explosive, high-velocity loading
+  "impact",       // ground-reaction impact
+  "traction",     // hanging/distraction
+  "kipping",      // dynamic swinging while hanging
+  "eccentric",    // forceful lengthening or loading at long muscle length
+]);
+
+export const SiteStressSchema = z.object({
+  site: Site,
+  mechanisms: z.array(StressMechanism).min(1),
+});
+export type SiteStress = z.infer<typeof SiteStressSchema>;
+
 export const MovementSchema = z.object({
   name: z.string().min(1),
-  plane: z.string().min(1),
-  jointStress: z.array(z.string()),
+  patterns: z.array(MovementPattern).min(1),
+  stresses: z.array(SiteStressSchema),
   loadType: LoadType,
   skill: SkillLevel,
   substitutes: z.array(z.string()),
@@ -16,7 +64,10 @@ export type Movement = z.infer<typeof MovementSchema>;
 export const InjuryContraindicationSchema = z.object({
   injuryKey: z.string().min(1),
   label: z.string().min(1),
-  avoidPatterns: z.array(z.string()),
+  // Site+mechanism rules matched against Movement.stresses (see matching.ts).
+  avoidStresses: z.array(SiteStressSchema),
+  // Manual override for cases the stress vocabulary cannot capture; each use is
+  // a signal a mechanism may be missing.
   avoidMovements: z.array(z.string()),
   notes: z.string().nullable().optional(),
 });
