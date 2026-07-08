@@ -1,0 +1,9 @@
+[
+  { "key": "aerobic_capacity", "label": "Aerobic capacity", "description": "Sustained sub-threshold conditioning, typically >8 min, steady breathing." },
+  { "key": "anaerobic_capacity", "label": "Anaerobic capacity", "description": "Short, high-intensity efforts with incomplete recovery; sprint conditioning." },
+  { "key": "heavy_strength", "label": "Heavy strength", "description": "Low reps at high load to build maximal strength." },
+  { "key": "muscular_endurance", "label": "Muscular endurance", "description": "High-rep, moderate-load work sustaining muscular output over time." },
+  { "key": "gymnastics_skill", "label": "Gymnastics skill", "description": "Bodyweight skill and control (e.g., muscle-ups, handstands, pull-ups)." },
+  { "key": "olympic_lifting", "label": "Olympic lifting", "description": "Snatch/clean & jerk technique and power expression." },
+  { "key": "mixed_modal", "label": "Mixed-modal conditioning", "description": "Blended monostructural + weightlifting + gymnastics intensity." }
+]
