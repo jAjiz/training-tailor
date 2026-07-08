@@ -1,0 +1,68 @@
+{
+  "qualities": [
+    {
+      "key": "strength",
+      "label": "Strength",
+      "description": "Moving heavy loads for few reps."
+    },
+    {
+      "key": "power",
+      "label": "Power",
+      "description": "Moving loads fast."
+    },
+    {
+      "key": "skill",
+      "label": "Skill",
+      "description": "Practising a technical movement."
+    },
+    {
+      "key": "conditioning",
+      "label": "Conditioning",
+      "description": "Sustained mixed work for time or rounds."
+    },
+    {
+      "key": "muscular_endurance",
+      "label": "Muscular endurance",
+      "description": "Many reps at a light or moderate load."
+    },
+    {
+      "key": "preparation",
+      "label": "Preparation",
+      "description": "Warm-up and mobility."
+    }
+  ],
+  "energySystems": [
+    {
+      "key": "phosphagen",
+      "label": "Phosphagen",
+      "description": "Efforts under about 15 seconds."
+    },
+    {
+      "key": "glycolytic",
+      "label": "Glycolytic",
+      "description": "Hard efforts of roughly 30 seconds to a few minutes."
+    },
+    {
+      "key": "oxidative",
+      "label": "Oxidative",
+      "description": "Longer, steady efforts."
+    }
+  ],
+  "loadIntensities": [
+    {
+      "key": "light",
+      "label": "Light",
+      "description": "Easy to move for many reps."
+    },
+    {
+      "key": "moderate",
+      "label": "Moderate",
+      "description": "Challenging but repeatable."
+    },
+    {
+      "key": "heavy",
+      "label": "Heavy",
+      "description": "Close to a maximal effort."
+    }
+  ]
+}
