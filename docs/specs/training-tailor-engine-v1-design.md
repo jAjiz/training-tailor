@@ -88,10 +88,13 @@ the coach portal. **C is a later phase** that plugs into the same engine.
 
 ## Domain-grounding assets (seed lean, grow over time)
 
-- **Movement library:** each movement tagged with plane, joint stress, load type,
+- **Movement library:** each movement tagged with functional movement pattern(s),
+  per-site stress mechanisms (sites cover joints and muscle groups), load type,
   skill level, and substitution candidates.
-- **Injury → contraindication map:** e.g., "shoulder impingement → avoid overhead /
-  ballistic pressing."
+- **Injury → contraindication map:** site + mechanism rules covering both joint
+  injuries ("shoulder impingement → avoid shoulder: overhead / ballistic /
+  kipping") and muscle strains ("hamstring strain → avoid hamstrings:
+  eccentric / ballistic").
 - **Stimulus taxonomy:** the set of training-intent tags used to classify and
   preserve stimulus.
 
@@ -104,8 +107,27 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
 - **AthleteProfile:** injuries[], benchmarks{} (1RMs, skills, benchmark scores),
   equipment[], goals[], availability{} (hours per day, days per week, which specific
   days are trainable)
-- **Movement:** name, plane, jointStress, loadType, skill, substitutes[]
-- **InjuryContraindication:** injury → avoided patterns/movements
+- **Movement:** name, patterns[] (functional movement pattern enum, primary first:
+  `squat | hinge | lunge | vertical_push | horizontal_push | vertical_pull |
+  horizontal_pull | core | carry | olympic | jump | monostructural`), stresses[]
+  (per-site stress: `{ site, mechanisms[] }` where site is an anatomical-site enum
+  covering joints/spine — `shoulder | elbow | wrist | neck | lumbar | hip | knee |
+  ankle` — and muscle groups, added as the injury catalog needs them — `quads |
+  hamstrings | calves | hip_flexors | chest | biceps` — and mechanisms is an enum of
+  `compression | flexion | deep_flexion | extension | overhead | ballistic |
+  impact | traction | kipping | eccentric`), loadType, skill, substitutes[].
+  Patterns drive substitution and programming balance; stresses drive safety
+  filtering — two independent axes. Mechanisms mean *clinically significant*
+  (loaded or forceful) stress, so load is implied and names don't repeat it; a site
+  merely participating is not listed — for muscle sites, list only primary movers
+  under substantial load. `flexion` (mid-range) and `deep_flexion` (end-range) are
+  mutually exclusive on a site; `eccentric` covers forceful lengthening and loading
+  at long muscle length.
+- **InjuryContraindication:** injuryKey, label, avoidStresses[] (same
+  `{ site, mechanisms[] }` shape — a movement is contraindicated when one of its
+  stress entries matches an avoided rule on the site AND at least one mechanism),
+  avoidMovements[] (explicit-name override for cases the stress vocabulary can't
+  capture; each use signals a possibly missing mechanism), notes
 - **StimulusTag:** taxonomy of training intents
 - **Workout (structured):** a training **session**, not a single block — one day routinely
   contains several blocks with different formats (a strength piece + a conditioning AMRAP +
