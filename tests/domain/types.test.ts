@@ -3,10 +3,11 @@ import { MovementSchema, InjuryContraindicationSchema, StimulusDefSchema } from 
 import { matchesContraindication } from "@/lib/domain/matching";
 
 describe("domain schemas", () => {
-  it("validates a movement with patterns and site stresses (joints and muscles)", () => {
+  it("validates a movement with patterns, positions, and site stresses (joints and muscles)", () => {
     const m = MovementSchema.parse({
       name: "Pull-up",
       patterns: ["vertical_pull"],
+      positions: ["hanging"],
       stresses: [
         { site: "shoulder", mechanisms: ["traction", "kipping"] },
         { site: "elbow", mechanisms: ["traction", "kipping"] },
@@ -17,30 +18,36 @@ describe("domain schemas", () => {
       substitutes: ["Ring Row", "Banded Pull-up"],
     });
     expect(m.patterns[0]).toBe("vertical_pull");
+    expect(m.positions).toEqual(["hanging"]);
     expect(m.stresses).toHaveLength(3);
   });
 
   it("requires at least one pattern", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: [], stresses: [], loadType: "barbell",
+        name: "X", patterns: [], positions: [], stresses: [], loadType: "barbell",
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
   });
 
-  it("rejects values outside the pattern, site, and mechanism vocabularies", () => {
+  it("rejects values outside the pattern, position, site, and mechanism vocabularies", () => {
     const base = { name: "X", loadType: "barbell", skill: "beginner", substitutes: [] };
-    expect(() => MovementSchema.parse({ ...base, patterns: ["yoga"], stresses: [] })).toThrow();
+    expect(() =>
+      MovementSchema.parse({ ...base, patterns: ["yoga"], positions: [], stresses: [] })
+    ).toThrow();
+    expect(() =>
+      MovementSchema.parse({ ...base, patterns: ["squat"], positions: ["floating"], stresses: [] })
+    ).toThrow();
     expect(() =>
       MovementSchema.parse({
-        ...base, patterns: ["squat"],
+        ...base, patterns: ["squat"], positions: [],
         stresses: [{ site: "pinky", mechanisms: ["compression"] }],
       })
     ).toThrow();
     expect(() =>
       MovementSchema.parse({
-        ...base, patterns: ["squat"],
+        ...base, patterns: ["squat"], positions: [],
         stresses: [{ site: "knee", mechanisms: ["vibes"] }],
       })
     ).toThrow();
@@ -49,7 +56,7 @@ describe("domain schemas", () => {
   it("rejects an invalid loadType", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: ["squat"], stresses: [], loadType: "rocket",
+        name: "X", patterns: ["squat"], positions: [], stresses: [], loadType: "rocket",
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
@@ -60,7 +67,7 @@ describe("domain schemas", () => {
       InjuryContraindicationSchema.parse({
         injuryKey: "shoulder_impingement", label: "Shoulder impingement",
         avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"] }],
-        avoidMovements: [], notes: null,
+        avoidPositions: [], avoidMovements: [], notes: null,
       }).injuryKey
     ).toBe("shoulder_impingement");
     expect(
@@ -73,21 +80,29 @@ describe("matchesContraindication", () => {
   const overheadInjury = InjuryContraindicationSchema.parse({
     injuryKey: "shoulder_impingement", label: "Shoulder impingement",
     avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"] }],
-    avoidMovements: ["Bench Press"], notes: null,
+    avoidPositions: [], avoidMovements: ["Bench Press"], notes: null,
+  });
+  const noInversion = InjuryContraindicationSchema.parse({
+    injuryKey: "no_inversion", label: "Unable to go inverted",
+    avoidStresses: [], avoidPositions: ["inverted"], avoidMovements: [], notes: null,
   });
   const press = MovementSchema.parse({
-    name: "Shoulder Press", patterns: ["vertical_push"],
+    name: "Shoulder Press", patterns: ["vertical_push"], positions: [],
     stresses: [{ site: "shoulder", mechanisms: ["overhead"] }],
     loadType: "barbell", skill: "beginner", substitutes: [],
   });
   const row = MovementSchema.parse({
-    name: "Ring Row", patterns: ["horizontal_pull"],
+    name: "Ring Row", patterns: ["horizontal_pull"], positions: [],
     stresses: [{ site: "shoulder", mechanisms: ["traction"] }],
     loadType: "bodyweight", skill: "beginner", substitutes: [],
   });
   const bench = MovementSchema.parse({
-    name: "Bench Press", patterns: ["horizontal_push"], stresses: [],
+    name: "Bench Press", patterns: ["horizontal_push"], positions: [], stresses: [],
     loadType: "barbell", skill: "beginner", substitutes: [],
+  });
+  const handstandPushUp = MovementSchema.parse({
+    name: "Handstand Push-up", patterns: ["vertical_push"], positions: ["inverted"], stresses: [],
+    loadType: "bodyweight", skill: "advanced", substitutes: [],
   });
 
   it("blocks a movement whose stress overlaps an avoided site+mechanism", () => {
@@ -100,5 +115,13 @@ describe("matchesContraindication", () => {
 
   it("blocks a movement listed explicitly in avoidMovements even without stress overlap", () => {
     expect(matchesContraindication(bench, overheadInjury)).toBe(true);
+  });
+
+  it("blocks a movement requiring an avoided position even without stress overlap", () => {
+    expect(matchesContraindication(handstandPushUp, noInversion)).toBe(true);
+  });
+
+  it("allows a movement that does not require the avoided position", () => {
+    expect(matchesContraindication(press, noInversion)).toBe(false);
   });
 });

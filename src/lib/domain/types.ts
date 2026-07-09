@@ -20,6 +20,15 @@ export const MovementPattern = z.enum([
   "monostructural",
 ]);
 
+// Whole-body positional demand — a body position the movement requires, which
+// an athlete can be categorically unable to adopt (cast, grip issue, vertigo,
+// pregnancy) regardless of any specific injured tissue. Orthogonal to both
+// patterns (what the movement trains) and stresses (what tissue it loads).
+export const Position = z.enum([
+  "hanging",  // suspended from a bar or rings
+  "inverted", // upside down (handstand family)
+]);
+
 // Anatomical site: joints/spine regions plus muscle groups. Muscle sites are
 // added as the injury catalog needs them.
 export const Site = z.enum([
@@ -54,6 +63,7 @@ export type SiteStress = z.infer<typeof SiteStressSchema>;
 export const MovementSchema = z.object({
   name: z.string().min(1),
   patterns: z.array(MovementPattern).min(1),
+  positions: z.array(Position),
   stresses: z.array(SiteStressSchema),
   loadType: LoadType,
   skill: SkillLevel,
@@ -66,6 +76,10 @@ export const InjuryContraindicationSchema = z.object({
   label: z.string().min(1),
   // Site+mechanism rules matched against Movement.stresses (see matching.ts).
   avoidStresses: z.array(SiteStressSchema),
+  // Positional restrictions matched against Movement.positions. Used by
+  // limitation entries (e.g. no_hanging, no_inversion) that the LLM activates
+  // from the athlete's situation; injuries may use them too where relevant.
+  avoidPositions: z.array(Position),
   // Manual override for cases the stress vocabulary cannot capture; each use is
   // a signal a mechanism may be missing.
   avoidMovements: z.array(z.string()),
