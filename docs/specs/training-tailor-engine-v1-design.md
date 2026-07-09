@@ -213,7 +213,7 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
 - **Domain data authoring:** manually authored, enforced by schema-validation and
   referential-integrity tests (every substitute / avoided movement must exist in
   the movement library).
-- **Minimum viable seed size:** ~59 movements, 14 contraindication entries
+- **Minimum viable seed size:** ~60 movements, 14 contraindication entries
   (12 injuries + 2 positional limitations), 7 stimulus tags.
 
 ## Next steps
