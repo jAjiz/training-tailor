@@ -2,11 +2,7 @@ import { z } from "zod";
 
 export const SkillLevel = z.enum(["beginner", "intermediate", "advanced"]);
 
-// Equipment a movement requires — an AND-set matched by subset against the
-// athlete's available equipment (empty = needs nothing). Drives availability
-// filtering, NOT contraindication: a missing item filters substitution
-// candidates, it does not hard-block like an injury. Values are added lazily,
-// only when availability-relevant (don't model the floor or the wall).
+// An AND-set, matched by subset against the athlete's equipment. Empty = needs nothing.
 export const Equipment = z.enum([
   "barbell",
   "dumbbell",
@@ -22,8 +18,7 @@ export const Equipment = z.enum([
   "wall_ball",
 ]);
 
-// Functional movement pattern. Drives substitution and programming balance.
-// Ordered primary-first on a movement (e.g. Thruster = ["squat", "vertical_push"]).
+// Ordered primary-first (e.g. Thruster = ["squat", "vertical_push"]).
 export const MovementPattern = z.enum([
   "squat",
   "hinge",
@@ -33,29 +28,19 @@ export const MovementPattern = z.enum([
   "vertical_pull",
   "horizontal_pull",
   "core",
-  "carry", // locomotion while holding a loaded position (farmer's carry, handstand walk)
-  "hold",  // isometric maintenance of a loaded position (handstand hold, dead hang, plank)
+  "carry", // locomotion while holding a loaded position
+  "hold",  // isometric maintenance of a loaded position
   "olympic",
   "jump",
   "monostructural",
 ]);
 
-// Whole-body positional demand — a body position the movement requires, which
-// an athlete can be categorically unable to adopt (cast, grip issue, vertigo,
-// pregnancy) regardless of any specific injured tissue. Orthogonal to both
-// patterns (what the movement trains) and stresses (what tissue it loads).
-// Graded: a contraindication that avoids `inverted` need not avoid
-// `partial_inversion`, but one that avoids all inversion lists both.
 export const Position = z.enum([
   "hanging",           // suspended from a bar or rings
-  "inverted",          // upside down with bodyweight fully on the hands (handstand family;
-                       // wall contact for balance only)
-  "partial_inversion", // head below the hips with the load shared between hands and feet on a
-                       // surface (wall climb, pike push-up)
+  "inverted",          // bodyweight fully on the hands
+  "partial_inversion", // head below the hips, load shared with the feet on a surface
 ]);
 
-// Anatomical site: joints/spine regions plus muscle groups. Muscle sites are
-// added as the injury catalog needs them.
 export const Site = z.enum([
   // joints & spine
   "shoulder", "elbow", "wrist", "neck", "lumbar", "hip", "knee", "ankle",
@@ -63,20 +48,19 @@ export const Site = z.enum([
   "quads", "hamstrings", "calves", "hip_flexors", "chest", "biceps",
 ]);
 
-// How a site is stressed. Mechanisms describe clinically significant (loaded or
-// forceful) stress — a site merely participating in a movement is not listed.
-// Load is implied by that convention, so names don't repeat it.
+// Clinically significant (loaded or forceful) stress only, so load is implied and
+// a site merely participating in a movement is not listed.
 export const StressMechanism = z.enum([
-  "compression",  // axial/compressive loading
-  "flexion",      // forceful or repetitive flexion through mid-range
-  "deep_flexion", // end-range flexion (a site gets flexion OR deep_flexion, never both)
+  "compression",
+  "flexion",      // through mid-range
+  "deep_flexion", // end-range (a site gets flexion OR deep_flexion, never both)
   "extension",    // held extended under load (front rack, push-up wrist)
-  "overhead",     // loaded overhead
-  "ballistic",    // explosive, high-velocity loading
-  "impact",       // ground-reaction impact
+  "overhead",
+  "ballistic",    // explosive, high-velocity
+  "impact",
   "traction",     // hanging/distraction
   "kipping",      // dynamic swinging while hanging
-  "eccentric",    // forceful lengthening or loading at long muscle length
+  "eccentric",    // forceful lengthening, or loading at long muscle length
 ]);
 
 export const SiteStressSchema = z.object({
@@ -99,14 +83,9 @@ export type Movement = z.infer<typeof MovementSchema>;
 export const InjuryContraindicationSchema = z.object({
   injuryKey: z.string().min(1),
   label: z.string().min(1),
-  // Site+mechanism rules matched against Movement.stresses (see matching.ts).
   avoidStresses: z.array(SiteStressSchema),
-  // Positional restrictions matched against Movement.positions. Used by
-  // limitation entries (e.g. no_hanging, no_inversion) that the LLM activates
-  // from the athlete's situation; injuries may use them too where relevant.
   avoidPositions: z.array(Position),
-  // Manual override for cases the stress vocabulary cannot capture; each use is
-  // a signal a mechanism may be missing.
+  // Escape hatch: each use signals a mechanism the vocabulary is missing.
   avoidMovements: z.array(z.string()),
   notes: z.string().nullable().optional(),
 });

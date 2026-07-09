@@ -1,8 +1,5 @@
 import type { InjuryContraindication, Movement } from "./types";
 
-// A movement is contraindicated if it is listed explicitly, if it requires an
-// avoided body position, or if any of its site stresses matches an avoided
-// rule on both site and at least one mechanism.
 export function matchesContraindication(
   movement: Movement,
   contraindication: InjuryContraindication
