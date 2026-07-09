@@ -157,7 +157,9 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   `no_hanging` / `no_inversion`, which the LLM activates from the athlete's
   situation), avoidMovements[] (explicit-name override for cases the stress and
   position vocabularies can't capture; each use signals a possibly missing
-  mechanism), notes
+  mechanism, so it is **empty for every seeded entry** and a guardrail test keeps
+  it that way — the olympic pull-under, its last user, is now expressed as
+  `hip_flexors: [flexion, ballistic]`), notes
 - **StimulusTag:** taxonomy of training intents
 - **Workout (structured):** a training **session**, not a single block — one day routinely
   contains several blocks with different formats (a strength piece + a conditioning AMRAP +
@@ -211,7 +213,7 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
 - **Domain data authoring:** manually authored, enforced by schema-validation and
   referential-integrity tests (every substitute / avoided movement must exist in
   the movement library).
-- **Minimum viable seed size:** ~35 movements, 14 contraindication entries
+- **Minimum viable seed size:** ~45 movements, 14 contraindication entries
   (12 injuries + 2 positional limitations), 7 stimulus tags.
 
 ## Next steps
