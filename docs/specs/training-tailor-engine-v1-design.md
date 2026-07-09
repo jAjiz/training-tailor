@@ -135,7 +135,13 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   body can do; stresses drive safety filtering; equipment drives what the gym
   allows — four independent axes. Equipment is **not** a contraindication: a
   missing item filters substitution candidates and flags the original movement as
-  unavailable today; it does not hard-block like an injury. Substitutes are
+  unavailable today; it does not hard-block like an injury. It names the
+  *typical* implement, not an exclusive requirement, and deliberately models
+  neither **count** nor **interchangeable implements**: one dumbbell instead of
+  two changes no pattern, stress, or substitution, so the engine adjusts the rep
+  scheme to preserve the stimulus rather than swapping the movement; and a goblet
+  squat held with a dumbbell is the same goblet squat. Both are resolved at
+  tailoring time. Substitutes are
   *stimulus-preserving alternatives*, not scaling progressions — they may be
   harder than the movement itself; the tailoring step picks direction using
   `skill` and the reason the original is unavailable. `substitutes[]` is the
@@ -213,7 +219,7 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
 - **Domain data authoring:** manually authored, enforced by schema-validation and
   referential-integrity tests (every substitute / avoided movement must exist in
   the movement library).
-- **Minimum viable seed size:** ~60 movements, 14 contraindication entries
+- **Minimum viable seed size:** ~70 movements, 14 contraindication entries
   (12 injuries + 2 positional limitations), 7 stimulus tags.
 
 ## Next steps

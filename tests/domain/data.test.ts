@@ -44,6 +44,19 @@ describe("domain data integrity", () => {
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
   });
 
+  it("the goblet and dumbbell squats differ by implement and cover for each other", () => {
+    expect(byName("Goblet Squat").equipment).toEqual(["kettlebell"]);
+    expect(byName("Dumbbell Squat").equipment).toEqual(["dumbbell"]);
+    expect(byName("Goblet Squat").substitutes).toContain("Dumbbell Squat");
+    expect(byName("Dumbbell Squat").substitutes).toContain("Goblet Squat");
+  });
+
+  it("no dumbbell movement loads the wrist in extension", () => {
+    for (const m of movements.filter((mv) => mv.equipment.includes("dumbbell"))) {
+      expect(m.stresses.some((s) => s.site === "wrist"), m.name).toBe(false);
+    }
+  });
+
   it("toes-to-bar scales through knees-to-elbows to the strict knee raise", () => {
     expect(byName("Toes-to-Bar").substitutes[0]).toBe("Knees-to-Elbows");
     expect(byName("Knees-to-Elbows").substitutes[0]).toBe("Hanging Knee Raise");
@@ -101,12 +114,20 @@ describe("contraindication matching over real data", () => {
         "Squat Snatch", "Clean & Jerk", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
         "Box Handstand Hold", "Knees-to-Elbows",
+        "Dumbbell Snatch", "Dumbbell Split Jerk", "Dumbbell Clean & Jerk",
+        "Dumbbell Overhead Squat", "Dumbbell Squat Snatch",
       ],
-      allowed: ["Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean", "Dead Hang", "Plank"],
+      allowed: [
+        "Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean", "Dead Hang", "Plank",
+        "Dumbbell Clean", "Dumbbell Deadlift", "Dumbbell Front Squat",
+      ],
     },
     {
       key: "lower_back_strain",
-      blocked: ["Deadlift", "Kettlebell Swing", "Power Clean", "Power Snatch", "GHD Sit-up"],
+      blocked: [
+        "Deadlift", "Kettlebell Swing", "Power Clean", "Power Snatch", "GHD Sit-up",
+        "Dumbbell Deadlift", "Dumbbell Clean", "Dumbbell Snatch",
+      ],
       allowed: ["Romanian Deadlift", "Goblet Squat", "Bike (Erg)", "V-up", "Sit-up"],
     },
     {
@@ -114,8 +135,13 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Back Squat", "Front Squat", "Thruster", "Wall Ball", "Run", "Box Jump",
         "Overhead Squat", "Squat Clean", "Squat Snatch", "Clean & Jerk",
+        "Dumbbell Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
+        "Dumbbell Squat Clean", "Dumbbell Squat Snatch",
       ],
-      allowed: ["Box Squat", "Air Squat", "Bike (Erg)", "Step-up", "Power Clean"],
+      allowed: [
+        "Box Squat", "Air Squat", "Bike (Erg)", "Step-up", "Power Clean",
+        "Dumbbell Deadlift", "Dumbbell Clean",
+      ],
     },
     {
       key: "wrist_pain",
@@ -129,6 +155,7 @@ describe("contraindication matching over real data", () => {
         "Dumbbell Shoulder Press", "Dumbbell Bench Press", "Ring Row",
         "Ring Muscle-up", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Dumbbell Overhead Hold", "Plank",
+        "Dumbbell Snatch", "Dumbbell Squat Clean", "Dumbbell Overhead Squat",
       ],
     },
     {
@@ -149,9 +176,12 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Toes-to-Bar", "Run", "Power Clean", "Power Snatch",
         "Squat Clean", "Squat Snatch", "Clean & Jerk", "GHD Sit-up", "V-up",
-        "Knees-to-Elbows",
+        "Knees-to-Elbows", "Dumbbell Squat Clean", "Dumbbell Squat Snatch",
       ],
-      allowed: ["Kettlebell Swing", "Bike (Erg)", "Air Squat", "Deadlift"],
+      allowed: [
+        "Kettlebell Swing", "Bike (Erg)", "Air Squat", "Deadlift",
+        "Dumbbell Clean", "Dumbbell Snatch",
+      ],
     },
     {
       key: "quad_strain",
