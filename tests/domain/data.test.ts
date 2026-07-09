@@ -44,6 +44,11 @@ describe("domain data integrity", () => {
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
   });
 
+  it("toes-to-bar scales through knees-to-elbows to the strict knee raise", () => {
+    expect(byName("Toes-to-Bar").substitutes[0]).toBe("Knees-to-Elbows");
+    expect(byName("Knees-to-Elbows").substitutes[0]).toBe("Hanging Knee Raise");
+  });
+
   it("the GHD sit-up requires a GHD and scales to the V-up", () => {
     expect(byName("GHD Sit-up").equipment).toEqual(["ghd"]);
     expect(byName("GHD Sit-up").substitutes[0]).toBe("V-up");
@@ -95,7 +100,7 @@ describe("contraindication matching over real data", () => {
         "Bar Muscle-up", "Ring Muscle-up", "Overhead Squat", "Push Jerk", "Split Jerk",
         "Squat Snatch", "Clean & Jerk", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
-        "Box Handstand Hold",
+        "Box Handstand Hold", "Knees-to-Elbows",
       ],
       allowed: ["Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean", "Dead Hang", "Plank"],
     },
@@ -128,8 +133,11 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "elbow_tendinopathy",
-      blocked: ["Bar Muscle-up", "Ring Muscle-up", "Pull-up", "Toes-to-Bar", "Chest-to-Bar"],
-      allowed: ["Banded Pull-up", "Ring Row", "Dead Hang"],
+      blocked: [
+        "Bar Muscle-up", "Ring Muscle-up", "Pull-up", "Toes-to-Bar",
+        "Chest-to-Bar", "Knees-to-Elbows",
+      ],
+      allowed: ["Banded Pull-up", "Ring Row", "Dead Hang", "Hanging Knee Raise"],
     },
     {
       key: "ankle_sprain",
@@ -141,6 +149,7 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Toes-to-Bar", "Run", "Power Clean", "Power Snatch",
         "Squat Clean", "Squat Snatch", "Clean & Jerk", "GHD Sit-up", "V-up",
+        "Knees-to-Elbows",
       ],
       allowed: ["Kettlebell Swing", "Bike (Erg)", "Air Squat", "Deadlift"],
     },
@@ -174,6 +183,7 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Pull-up", "Banded Pull-up", "Bar Muscle-up", "Ring Muscle-up",
         "Toes-to-Bar", "Hanging Knee Raise", "Chest-to-Bar", "Dead Hang",
+        "Knees-to-Elbows",
       ],
       allowed: ["Ring Row", "Sit-up", "Shoulder Press", "Handstand Hold"],
     },
