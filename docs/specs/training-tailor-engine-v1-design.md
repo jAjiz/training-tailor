@@ -112,10 +112,15 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   days are trainable)
 - **Movement:** name, patterns[] (functional movement pattern enum, primary first:
   `squat | hinge | lunge | vertical_push | horizontal_push | vertical_pull |
-  horizontal_pull | core | carry | olympic | jump | monostructural`), positions[]
-  (whole-body positional demand enum: `hanging | inverted` — a body position the
-  movement requires, which an athlete can be categorically unable to adopt
-  regardless of any specific injured tissue; empty for most movements), stresses[]
+  horizontal_pull | core | carry | hold | olympic | jump | monostructural` —
+  `carry` is locomotion while holding a loaded position, `hold` is isometric
+  maintenance of one), positions[] (whole-body positional demand enum:
+  `hanging | inverted | partial_inversion` — a body position the movement
+  requires, which an athlete can be categorically unable to adopt regardless of
+  any specific injured tissue; empty for most movements. Inversion is graded:
+  `inverted` means bodyweight fully on the hands, `partial_inversion` means the
+  load is shared with the feet on a surface — a contraindication may avoid the
+  former without the latter), stresses[]
   (per-site stress: `{ site, mechanisms[] }` where site is an anatomical-site enum
   covering joints/spine — `shoulder | elbow | wrist | neck | lumbar | hip | knee |
   ankle` — and muscle groups, added as the injury catalog needs them — `quads |
@@ -133,7 +138,12 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   unavailable today; it does not hard-block like an injury. Substitutes are
   *stimulus-preserving alternatives*, not scaling progressions — they may be
   harder than the movement itself; the tailoring step picks direction using
-  `skill` and the reason the original is unavailable.
+  `skill` and the reason the original is unavailable. `substitutes[]` is the
+  **primary** source of alternatives and is consulted first; the pattern axis is
+  the fallback, used only when the list is exhausted or every entry on it is
+  blocked, and the resulting substitution is ranked by the remaining shared
+  annotations (a Handstand Walk falls back to carries, and among carries to the
+  one that also shares its `shoulder: overhead` stress).
   Mechanisms mean *clinically significant* (loaded or forceful) stress, so load is
   implied and names don't repeat it; a site merely participating is not listed —
   for muscle sites, list only primary movers under substantial load. `flexion`

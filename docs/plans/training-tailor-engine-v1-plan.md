@@ -349,9 +349,11 @@ git commit -m "feat: add Prisma schema and db client (auth, profile, tailored)"
 
 Movements are classified on four orthogonal, enum-backed axes: **patterns[]**
 (functional movement pattern — drives substitution and programming balance),
-**positions[]** (whole-body positional demand — `hanging | inverted` — a body
-position the movement requires, which an athlete can be categorically unable to
-adopt regardless of any specific injured tissue), **stresses[]** (per-site
+**positions[]** (whole-body positional demand — `hanging | inverted |
+partial_inversion` — a body position the movement requires, which an athlete can
+be categorically unable to adopt regardless of any specific injured tissue;
+inversion is graded, so a contraindication may avoid full inversion without
+avoiding the wall-supported kind), **stresses[]** (per-site
 stress mechanisms — drive safety filtering), and **equipment[]** (required
 equipment — an AND-set matched by subset against the athlete's available
 equipment; empty = needs nothing; drives availability filtering, NOT
@@ -397,6 +399,22 @@ describe("domain schemas", () => {
     expect(m.positions).toEqual(["hanging"]);
     expect(m.stresses).toHaveLength(3);
     expect(m.equipment).toEqual(["pullup_bar"]);
+  });
+
+  it("accepts hold as a movement pattern", () => {
+    const m = MovementSchema.parse({
+      name: "Handstand Hold", patterns: ["hold"], positions: ["inverted"], stresses: [],
+      equipment: [], skill: "advanced", substitutes: [],
+    });
+    expect(m.patterns).toEqual(["hold"]);
+  });
+
+  it("accepts partial_inversion as a position", () => {
+    const m = MovementSchema.parse({
+      name: "Wall Climb", patterns: ["vertical_push"], positions: ["partial_inversion"], stresses: [],
+      equipment: [], skill: "intermediate", substitutes: [],
+    });
+    expect(m.positions).toEqual(["partial_inversion"]);
   });
 
   it("requires at least one pattern", () => {
@@ -547,7 +565,8 @@ export const MovementPattern = z.enum([
   "vertical_pull",
   "horizontal_pull",
   "core",
-  "carry",
+  "carry", // locomotion while holding a loaded position (farmer's carry, handstand walk)
+  "hold",  // isometric maintenance of a loaded position (handstand hold, dead hang, plank)
   "olympic",
   "jump",
   "monostructural",
@@ -557,9 +576,14 @@ export const MovementPattern = z.enum([
 // an athlete can be categorically unable to adopt (cast, grip issue, vertigo,
 // pregnancy) regardless of any specific injured tissue. Orthogonal to both
 // patterns (what the movement trains) and stresses (what tissue it loads).
+// Graded: a contraindication that avoids `inverted` need not avoid
+// `partial_inversion`, but one that avoids all inversion lists both.
 export const Position = z.enum([
-  "hanging",  // suspended from a bar or rings
-  "inverted", // upside down (handstand family)
+  "hanging",           // suspended from a bar or rings
+  "inverted",          // upside down with bodyweight fully on the hands (handstand family;
+                       // wall contact for balance only)
+  "partial_inversion", // head below the hips with the load shared between hands and feet on a
+                       // surface (wall climb, pike push-up)
 ]);
 
 // Anatomical site: joints/spine regions plus muscle groups. Muscle sites are
@@ -663,7 +687,7 @@ pnpm add zod
 - [ ] **Step 4: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/types.test.ts`
-Expected: PASS (10 tests).
+Expected: PASS (12 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -832,6 +856,14 @@ describe("contraindication matching over real data", () => {
     });
   }
 
+  it("no_inversion blocks partially inverted movements, not only full inversion", () => {
+    const wallSupported = MovementSchema.parse({
+      name: "Wall-supported fixture", patterns: ["vertical_push"], positions: ["partial_inversion"],
+      stresses: [], equipment: [], skill: "intermediate", substitutes: [],
+    });
+    expect(matchesContraindication(wallSupported, injury("no_inversion"))).toBe(true);
+  });
+
   it("every injury leaves at least five movements available", () => {
     for (const i of injuries) {
       const remaining = movements.filter((m) => !matchesContraindication(m, i));
@@ -864,9 +896,12 @@ Expected: FAIL — cannot find the JSON files.
 
 - [ ] **Step 4: Create `data/movements.json`** (>=25 common functional fitness movements; each substitute MUST also appear as a `name`)
 
-Annotation conventions: `patterns` is ordered primary-first; `positions` lists
-the body positions the movement requires (`hanging` = suspended from a bar or
-rings, `inverted` = upside down) and is empty for most movements; `equipment`
+Annotation conventions: `patterns` is ordered primary-first, and separates
+locomotion under load (`carry`) from isometric maintenance of a position
+(`hold`); `positions` lists the body positions the movement requires (`hanging` =
+suspended from a bar or rings, `inverted` = upside down with bodyweight fully on
+the hands, `partial_inversion` = load shared with the feet on a surface) and is
+empty for most movements; `equipment`
 lists only availability-relevant gear (don't model the floor or the wall — a
 bodyweight movement with no gear gets `[]`); `stresses`
 lists only *clinically significant* (loaded or forceful) stress — a site merely
@@ -943,14 +978,14 @@ matching code enforces them deterministically.
   { "injuryKey": "pec_strain", "label": "Pectoral strain", "avoidStresses": [{ "site": "chest", "mechanisms": ["eccentric", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded pressing through a deep pec stretch; light reduced-range pressing (e.g., knee push-ups) as tolerated." },
   { "injuryKey": "biceps_strain", "label": "Biceps strain", "avoidStresses": [{ "site": "biceps", "mechanisms": ["eccentric", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid high-load and ballistic pulling; supported rows and banded pull-ups as tolerated." },
   { "injuryKey": "no_hanging", "label": "Unable to hang from a bar or rings", "avoidStresses": [], "avoidPositions": ["hanging"], "avoidMovements": [], "notes": "Limitation, not an injury: the athlete cannot suspend their bodyweight from a bar or rings (hand/grip injury, cast, post-op restriction). Activated by the LLM from the athlete's situation rather than an injury diagnosis." },
-  { "injuryKey": "no_inversion", "label": "Unable to go upside down", "avoidStresses": [], "avoidPositions": ["inverted"], "avoidMovements": [], "notes": "Limitation, not an injury: the athlete cannot adopt inverted positions (vertigo, blood pressure, pregnancy, eye conditions). Overhead pressing remains available; only the handstand family is blocked. Activated by the LLM from the athlete's situation." }
+  { "injuryKey": "no_inversion", "label": "Unable to go upside down", "avoidStresses": [], "avoidPositions": ["inverted", "partial_inversion"], "avoidMovements": [], "notes": "Limitation, not an injury: the athlete cannot adopt inverted positions (vertigo, blood pressure, pregnancy, eye conditions). Blocks supported inversion too, since the head still goes below the hips. Overhead pressing remains available; only the handstand family is blocked. Activated by the LLM from the athlete's situation." }
 ]
 ```
 
 - [ ] **Step 6: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/data.test.ts`
-Expected: PASS (19 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
+Expected: PASS (20 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
 
 - [ ] **Step 7: Commit**
 

@@ -139,6 +139,14 @@ describe("contraindication matching over real data", () => {
     });
   }
 
+  it("no_inversion blocks partially inverted movements, not only full inversion", () => {
+    const wallSupported = MovementSchema.parse({
+      name: "Wall-supported fixture", patterns: ["vertical_push"], positions: ["partial_inversion"],
+      stresses: [], equipment: [], skill: "intermediate", substitutes: [],
+    });
+    expect(matchesContraindication(wallSupported, injury("no_inversion"))).toBe(true);
+  });
+
   it("every injury leaves at least five movements available", () => {
     for (const i of injuries) {
       const remaining = movements.filter((m) => !matchesContraindication(m, i));
