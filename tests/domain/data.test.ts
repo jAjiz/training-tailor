@@ -44,6 +44,11 @@ describe("domain data integrity", () => {
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
   });
 
+  it("the ramp variant requires a ramp, the plain handstand walk requires nothing", () => {
+    expect(byName("Handstand Walk Ramp").equipment).toEqual(["ramp"]);
+    expect(byName("Handstand Walk").equipment).toEqual([]);
+  });
+
   it("each muscle-up variant is apparatus-specific", () => {
     expect(byName("Bar Muscle-up").equipment).toEqual(["pullup_bar"]);
     expect(byName("Ring Muscle-up").equipment).toEqual(["rings"]);

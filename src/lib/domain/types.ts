@@ -10,6 +10,7 @@ export const Equipment = z.enum([
   "pullup_bar",
   "rings",
   "box",
+  "ramp",
   "bench",
   "band",
   "jump_rope",

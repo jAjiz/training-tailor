@@ -544,6 +544,7 @@ export const Equipment = z.enum([
   "pullup_bar",
   "rings",
   "box",
+  "ramp",
   "bench",
   "band",
   "jump_rope",
@@ -737,6 +738,11 @@ describe("domain data integrity", () => {
     expect(ballistic("Handstand Push-up")).toBe(true);
     expect(ballistic("Strict Handstand Push-up")).toBe(false);
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
+  });
+
+  it("the ramp variant requires a ramp, the plain handstand walk requires nothing", () => {
+    expect(byName("Handstand Walk Ramp").equipment).toEqual(["ramp"]);
+    expect(byName("Handstand Walk").equipment).toEqual([]);
   });
 
   it("each muscle-up variant is apparatus-specific", () => {
@@ -997,7 +1003,7 @@ has no chest entry, so it stays available for a pec strain).
   { "name": "Box Handstand Hold", "patterns": ["hold"], "positions": ["partial_inversion"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }], "equipment": ["box"], "skill": "intermediate", "substitutes": ["Dumbbell Overhead Hold", "Plank"] },
   { "name": "Handstand Walk", "patterns": ["carry"], "positions": ["inverted"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }], "equipment": [], "skill": "advanced", "substitutes": ["Wall Climb", "Handstand Hold"] },
   { "name": "Handstand Walk Pirouette", "patterns": ["carry"], "positions": ["inverted"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }], "equipment": [], "skill": "advanced", "substitutes": ["Handstand Walk", "Wall Climb"] },
-  { "name": "Handstand Walk Ramp", "patterns": ["carry"], "positions": ["inverted"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }], "equipment": [], "skill": "advanced", "substitutes": ["Handstand Walk", "Wall Climb"] },
+  { "name": "Handstand Walk Ramp", "patterns": ["carry"], "positions": ["inverted"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }], "equipment": ["ramp"], "skill": "advanced", "substitutes": ["Handstand Walk", "Wall Climb"] },
   { "name": "Toes-to-Bar", "patterns": ["core"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping"] }, { "site": "elbow", "mechanisms": ["kipping"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }, { "site": "lumbar", "mechanisms": ["flexion"] }], "equipment": ["pullup_bar"], "skill": "intermediate", "substitutes": ["Hanging Knee Raise", "Sit-up"] },
   { "name": "Hanging Knee Raise", "patterns": ["core"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "equipment": ["pullup_bar"], "skill": "beginner", "substitutes": ["Sit-up"] },
   { "name": "Sit-up", "patterns": ["core"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "equipment": [], "skill": "beginner", "substitutes": [] },
@@ -1054,7 +1060,7 @@ matching code enforces them deterministically.
 - [ ] **Step 6: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/data.test.ts`
-Expected: PASS (27 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
+Expected: PASS (28 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
 
 - [ ] **Step 7: Commit**
 

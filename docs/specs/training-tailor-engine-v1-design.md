@@ -127,8 +127,8 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   hamstrings | calves | hip_flexors | chest | biceps` — and mechanisms is an enum of
   `compression | flexion | deep_flexion | extension | overhead | ballistic |
   impact | traction | kipping | eccentric`), equipment[] (required-equipment enum:
-  `barbell | dumbbell | kettlebell | pullup_bar | rings | box | bench | band |
-  jump_rope | rower | bike | wall_ball` — an AND-set matched by subset against the
+  `barbell | dumbbell | kettlebell | pullup_bar | rings | box | ramp | bench |
+  band | jump_rope | rower | bike | wall_ball` — an AND-set matched by subset against the
   athlete's equipment; empty = needs nothing; values added lazily, only when
   availability-relevant), skill, substitutes[].
   Patterns drive substitution and programming balance; positions drive what the
