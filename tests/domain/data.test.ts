@@ -36,6 +36,14 @@ describe("domain data integrity", () => {
     expect(injuries.length).toBeGreaterThanOrEqual(10);
   });
 
+  it("strict handstand variants carry no ballistic shoulder stress", () => {
+    const ballistic = (name: string) =>
+      byName(name).stresses.some((s) => s.site === "shoulder" && s.mechanisms.includes("ballistic"));
+    expect(ballistic("Handstand Push-up")).toBe(true);
+    expect(ballistic("Strict Handstand Push-up")).toBe(false);
+    expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
+  });
+
   it("each muscle-up variant is apparatus-specific", () => {
     expect(byName("Bar Muscle-up").equipment).toEqual(["pullup_bar"]);
     expect(byName("Ring Muscle-up").equipment).toEqual(["rings"]);
@@ -75,8 +83,10 @@ describe("contraindication matching over real data", () => {
         "Shoulder Press", "Push Press", "Handstand Push-up", "Power Snatch",
         "Bar Muscle-up", "Ring Muscle-up", "Overhead Squat", "Push Jerk", "Split Jerk",
         "Squat Snatch", "Clean & Jerk", "Dumbbell Push Press", "Dumbbell Push Jerk",
+        "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
+        "Box Handstand Hold",
       ],
-      allowed: ["Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean"],
+      allowed: ["Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean", "Dead Hang", "Plank"],
     },
     {
       key: "lower_back_strain",
@@ -96,16 +106,19 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Front Squat", "Thruster", "Handstand Push-up", "Push-up", "Power Clean",
         "Overhead Squat", "Push Jerk", "Bar Muscle-up",
+        "Strict Handstand Push-up", "Wall-facing Handstand Push-up",
+        "Handstand Hold", "Handstand Walk", "Wall Climb", "Box Handstand Hold",
       ],
       allowed: [
         "Dumbbell Shoulder Press", "Dumbbell Bench Press", "Ring Row",
         "Ring Muscle-up", "Dumbbell Push Press", "Dumbbell Push Jerk",
+        "Dumbbell Overhead Hold", "Plank",
       ],
     },
     {
       key: "elbow_tendinopathy",
-      blocked: ["Bar Muscle-up", "Ring Muscle-up", "Pull-up", "Toes-to-Bar"],
-      allowed: ["Banded Pull-up", "Ring Row"],
+      blocked: ["Bar Muscle-up", "Ring Muscle-up", "Pull-up", "Toes-to-Bar", "Chest-to-Bar"],
+      allowed: ["Banded Pull-up", "Ring Row", "Dead Hang"],
     },
     {
       key: "ankle_sprain",
@@ -142,21 +155,28 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "biceps_strain",
-      blocked: ["Pull-up", "Bar Muscle-up", "Ring Muscle-up"],
+      blocked: ["Pull-up", "Bar Muscle-up", "Ring Muscle-up", "Chest-to-Bar"],
       allowed: ["Ring Row", "Banded Pull-up", "Push-up"],
     },
     {
       key: "no_hanging",
       blocked: [
         "Pull-up", "Banded Pull-up", "Bar Muscle-up", "Ring Muscle-up",
-        "Toes-to-Bar", "Hanging Knee Raise",
+        "Toes-to-Bar", "Hanging Knee Raise", "Chest-to-Bar", "Dead Hang",
       ],
-      allowed: ["Ring Row", "Sit-up", "Shoulder Press"],
+      allowed: ["Ring Row", "Sit-up", "Shoulder Press", "Handstand Hold"],
     },
     {
       key: "no_inversion",
-      blocked: ["Handstand Push-up"],
-      allowed: ["Shoulder Press", "Push Press", "Push-up", "Wall Ball"],
+      blocked: [
+        "Handstand Push-up", "Strict Handstand Push-up", "Wall-facing Handstand Push-up",
+        "Handstand Hold", "Handstand Walk", "Handstand Walk Pirouette",
+        "Handstand Walk Ramp", "Wall Climb", "Box Handstand Hold",
+      ],
+      allowed: [
+        "Shoulder Press", "Push Press", "Push-up", "Wall Ball", "Dead Hang",
+        "Plank", "Dumbbell Overhead Hold",
+      ],
     },
   ];
 
@@ -173,11 +193,28 @@ describe("contraindication matching over real data", () => {
   }
 
   it("no_inversion blocks partially inverted movements, not only full inversion", () => {
-    const wallSupported = MovementSchema.parse({
-      name: "Wall-supported fixture", patterns: ["vertical_push"], positions: ["partial_inversion"],
-      stresses: [], equipment: [], skill: "intermediate", substitutes: [],
-    });
-    expect(matchesContraindication(wallSupported, injury("no_inversion"))).toBe(true);
+    const wallClimb = byName("Wall Climb");
+    expect(wallClimb.positions).toEqual(["partial_inversion"]);
+    expect(matchesContraindication(wallClimb, injury("no_inversion"))).toBe(true);
+  });
+
+  it("the handstand hold scales to a supported inverted hold before leaving inversion", () => {
+    const first = byName("Handstand Hold").substitutes[0];
+    expect(first).toBe("Box Handstand Hold");
+    expect(byName(first).positions).toEqual(["partial_inversion"]);
+    expect(byName(first).patterns).toEqual(["hold"]);
+  });
+
+  it("the handstand hold falls back to a hold that survives no_inversion", () => {
+    const usable = byName("Handstand Hold")
+      .substitutes.map(byName)
+      .filter((m) => !matchesContraindication(m, injury("no_inversion")));
+    expect(usable.map((m) => m.name)).toContain("Dumbbell Overhead Hold");
+  });
+
+  it("the plank survives every contraindication", () => {
+    const plank = byName("Plank");
+    for (const i of injuries) expect(matchesContraindication(plank, i), i.injuryKey).toBe(false);
   });
 
   it("every injury leaves at least five movements available", () => {
