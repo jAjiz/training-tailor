@@ -1,7 +1,26 @@
 import { z } from "zod";
 
-export const LoadType = z.enum(["barbell", "bodyweight", "dumbbell", "machine", "kettlebell", "other"]);
 export const SkillLevel = z.enum(["beginner", "intermediate", "advanced"]);
+
+// Equipment a movement requires — an AND-set matched by subset against the
+// athlete's available equipment (empty = needs nothing). Drives availability
+// filtering, NOT contraindication: a missing item filters substitution
+// candidates, it does not hard-block like an injury. Values are added lazily,
+// only when availability-relevant (don't model the floor or the wall).
+export const Equipment = z.enum([
+  "barbell",
+  "dumbbell",
+  "kettlebell",
+  "pullup_bar",
+  "rings",
+  "box",
+  "bench",
+  "band",
+  "jump_rope",
+  "rower",
+  "bike",
+  "wall_ball",
+]);
 
 // Functional movement pattern. Drives substitution and programming balance.
 // Ordered primary-first on a movement (e.g. Thruster = ["squat", "vertical_push"]).
@@ -65,7 +84,7 @@ export const MovementSchema = z.object({
   patterns: z.array(MovementPattern).min(1),
   positions: z.array(Position),
   stresses: z.array(SiteStressSchema),
-  loadType: LoadType,
+  equipment: z.array(Equipment),
   skill: SkillLevel,
   substitutes: z.array(z.string()),
 });

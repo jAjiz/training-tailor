@@ -3,7 +3,7 @@ import { MovementSchema, InjuryContraindicationSchema, StimulusDefSchema } from 
 import { matchesContraindication } from "@/lib/domain/matching";
 
 describe("domain schemas", () => {
-  it("validates a movement with patterns, positions, and site stresses (joints and muscles)", () => {
+  it("validates a movement with patterns, positions, site stresses, and equipment", () => {
     const m = MovementSchema.parse({
       name: "Pull-up",
       patterns: ["vertical_pull"],
@@ -13,26 +13,27 @@ describe("domain schemas", () => {
         { site: "elbow", mechanisms: ["traction", "kipping"] },
         { site: "biceps", mechanisms: ["eccentric"] },
       ],
-      loadType: "bodyweight",
+      equipment: ["pullup_bar"],
       skill: "intermediate",
       substitutes: ["Ring Row", "Banded Pull-up"],
     });
     expect(m.patterns[0]).toBe("vertical_pull");
     expect(m.positions).toEqual(["hanging"]);
     expect(m.stresses).toHaveLength(3);
+    expect(m.equipment).toEqual(["pullup_bar"]);
   });
 
   it("requires at least one pattern", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: [], positions: [], stresses: [], loadType: "barbell",
+        name: "X", patterns: [], positions: [], stresses: [], equipment: [],
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
   });
 
   it("rejects values outside the pattern, position, site, and mechanism vocabularies", () => {
-    const base = { name: "X", loadType: "barbell", skill: "beginner", substitutes: [] };
+    const base = { name: "X", equipment: [], skill: "beginner", substitutes: [] };
     expect(() =>
       MovementSchema.parse({ ...base, patterns: ["yoga"], positions: [], stresses: [] })
     ).toThrow();
@@ -53,10 +54,10 @@ describe("domain schemas", () => {
     ).toThrow();
   });
 
-  it("rejects an invalid loadType", () => {
+  it("rejects an equipment value outside the vocabulary", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: ["squat"], positions: [], stresses: [], loadType: "rocket",
+        name: "X", patterns: ["squat"], positions: [], stresses: [], equipment: ["rocket"],
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
@@ -89,20 +90,20 @@ describe("matchesContraindication", () => {
   const press = MovementSchema.parse({
     name: "Shoulder Press", patterns: ["vertical_push"], positions: [],
     stresses: [{ site: "shoulder", mechanisms: ["overhead"] }],
-    loadType: "barbell", skill: "beginner", substitutes: [],
+    equipment: ["barbell"], skill: "beginner", substitutes: [],
   });
   const row = MovementSchema.parse({
     name: "Ring Row", patterns: ["horizontal_pull"], positions: [],
     stresses: [{ site: "shoulder", mechanisms: ["traction"] }],
-    loadType: "bodyweight", skill: "beginner", substitutes: [],
+    equipment: ["rings"], skill: "beginner", substitutes: [],
   });
   const bench = MovementSchema.parse({
     name: "Bench Press", patterns: ["horizontal_push"], positions: [], stresses: [],
-    loadType: "barbell", skill: "beginner", substitutes: [],
+    equipment: ["barbell", "bench"], skill: "beginner", substitutes: [],
   });
   const handstandPushUp = MovementSchema.parse({
     name: "Handstand Push-up", patterns: ["vertical_push"], positions: ["inverted"], stresses: [],
-    loadType: "bodyweight", skill: "advanced", substitutes: [],
+    equipment: [], skill: "advanced", substitutes: [],
   });
 
   it("blocks a movement whose stress overlaps an avoided site+mechanism", () => {
