@@ -33,7 +33,8 @@ export const MovementPattern = z.enum([
   "vertical_pull",
   "horizontal_pull",
   "core",
-  "carry",
+  "carry", // locomotion while holding a loaded position (farmer's carry, handstand walk)
+  "hold",  // isometric maintenance of a loaded position (handstand hold, dead hang, plank)
   "olympic",
   "jump",
   "monostructural",
@@ -43,9 +44,14 @@ export const MovementPattern = z.enum([
 // an athlete can be categorically unable to adopt (cast, grip issue, vertigo,
 // pregnancy) regardless of any specific injured tissue. Orthogonal to both
 // patterns (what the movement trains) and stresses (what tissue it loads).
+// Graded: a contraindication that avoids `inverted` need not avoid
+// `partial_inversion`, but one that avoids all inversion lists both.
 export const Position = z.enum([
-  "hanging",  // suspended from a bar or rings
-  "inverted", // upside down (handstand family)
+  "hanging",           // suspended from a bar or rings
+  "inverted",          // upside down with bodyweight fully on the hands (handstand family;
+                       // wall contact for balance only)
+  "partial_inversion", // head below the hips with the load shared between hands and feet on a
+                       // surface (wall climb, pike push-up)
 ]);
 
 // Anatomical site: joints/spine regions plus muscle groups. Muscle sites are

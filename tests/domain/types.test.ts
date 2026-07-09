@@ -23,6 +23,22 @@ describe("domain schemas", () => {
     expect(m.equipment).toEqual(["pullup_bar"]);
   });
 
+  it("accepts hold as a movement pattern", () => {
+    const m = MovementSchema.parse({
+      name: "Handstand Hold", patterns: ["hold"], positions: ["inverted"], stresses: [],
+      equipment: [], skill: "advanced", substitutes: [],
+    });
+    expect(m.patterns).toEqual(["hold"]);
+  });
+
+  it("accepts partial_inversion as a position", () => {
+    const m = MovementSchema.parse({
+      name: "Wall Climb", patterns: ["vertical_push"], positions: ["partial_inversion"], stresses: [],
+      equipment: [], skill: "intermediate", substitutes: [],
+    });
+    expect(m.positions).toEqual(["partial_inversion"]);
+  });
+
   it("requires at least one pattern", () => {
     expect(() =>
       MovementSchema.parse({
