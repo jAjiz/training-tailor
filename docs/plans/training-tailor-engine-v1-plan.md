@@ -347,14 +347,19 @@ git commit -m "feat: add Prisma schema and db client (auth, profile, tailored)"
 
 ### Task 2.1: Define domain TypeScript types
 
-Movements are classified on two orthogonal, enum-backed axes: **patterns[]**
-(functional movement pattern — drives substitution and programming balance) and
-**stresses[]** (per-site stress mechanisms — drive safety filtering). A site is an
-anatomical site: joints/spine regions plus muscle groups, so the same model covers
-joint injuries and muscle strains. Contraindications declare `avoidStresses` in the
-same `{ site, mechanisms[] }` shape and are matched programmatically (site equal
-AND at least one shared mechanism); `avoidMovements` is an explicit-name override
-for cases the stress vocabulary cannot capture.
+Movements are classified on three orthogonal, enum-backed axes: **patterns[]**
+(functional movement pattern — drives substitution and programming balance),
+**positions[]** (whole-body positional demand — `hanging | inverted` — a body
+position the movement requires, which an athlete can be categorically unable to
+adopt regardless of any specific injured tissue), and **stresses[]** (per-site
+stress mechanisms — drive safety filtering). A site is an anatomical site:
+joints/spine regions plus muscle groups, so the same model covers joint injuries
+and muscle strains. Contraindications declare `avoidStresses` in the same
+`{ site, mechanisms[] }` shape, matched programmatically (site equal AND at least
+one shared mechanism), and `avoidPositions` matched on simple membership — used
+by limitation entries (e.g. `no_hanging`, `no_inversion`) that the LLM activates
+from the athlete's situation; `avoidMovements` is an explicit-name override for
+cases the stress and position vocabularies cannot capture.
 
 **Files:**
 - Create: `src/lib/domain/types.ts`, `src/lib/domain/matching.ts`
@@ -370,10 +375,11 @@ import { MovementSchema, InjuryContraindicationSchema, StimulusDefSchema } from 
 import { matchesContraindication } from "@/lib/domain/matching";
 
 describe("domain schemas", () => {
-  it("validates a movement with patterns and site stresses (joints and muscles)", () => {
+  it("validates a movement with patterns, positions, and site stresses (joints and muscles)", () => {
     const m = MovementSchema.parse({
       name: "Pull-up",
       patterns: ["vertical_pull"],
+      positions: ["hanging"],
       stresses: [
         { site: "shoulder", mechanisms: ["traction", "kipping"] },
         { site: "elbow", mechanisms: ["traction", "kipping"] },
@@ -384,30 +390,36 @@ describe("domain schemas", () => {
       substitutes: ["Ring Row", "Banded Pull-up"],
     });
     expect(m.patterns[0]).toBe("vertical_pull");
+    expect(m.positions).toEqual(["hanging"]);
     expect(m.stresses).toHaveLength(3);
   });
 
   it("requires at least one pattern", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: [], stresses: [], loadType: "barbell",
+        name: "X", patterns: [], positions: [], stresses: [], loadType: "barbell",
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
   });
 
-  it("rejects values outside the pattern, site, and mechanism vocabularies", () => {
+  it("rejects values outside the pattern, position, site, and mechanism vocabularies", () => {
     const base = { name: "X", loadType: "barbell", skill: "beginner", substitutes: [] };
-    expect(() => MovementSchema.parse({ ...base, patterns: ["yoga"], stresses: [] })).toThrow();
+    expect(() =>
+      MovementSchema.parse({ ...base, patterns: ["yoga"], positions: [], stresses: [] })
+    ).toThrow();
+    expect(() =>
+      MovementSchema.parse({ ...base, patterns: ["squat"], positions: ["floating"], stresses: [] })
+    ).toThrow();
     expect(() =>
       MovementSchema.parse({
-        ...base, patterns: ["squat"],
+        ...base, patterns: ["squat"], positions: [],
         stresses: [{ site: "pinky", mechanisms: ["compression"] }],
       })
     ).toThrow();
     expect(() =>
       MovementSchema.parse({
-        ...base, patterns: ["squat"],
+        ...base, patterns: ["squat"], positions: [],
         stresses: [{ site: "knee", mechanisms: ["vibes"] }],
       })
     ).toThrow();
@@ -416,7 +428,7 @@ describe("domain schemas", () => {
   it("rejects an invalid loadType", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: ["squat"], stresses: [], loadType: "rocket",
+        name: "X", patterns: ["squat"], positions: [], stresses: [], loadType: "rocket",
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
@@ -427,7 +439,7 @@ describe("domain schemas", () => {
       InjuryContraindicationSchema.parse({
         injuryKey: "shoulder_impingement", label: "Shoulder impingement",
         avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"] }],
-        avoidMovements: [], notes: null,
+        avoidPositions: [], avoidMovements: [], notes: null,
       }).injuryKey
     ).toBe("shoulder_impingement");
     expect(
@@ -440,21 +452,29 @@ describe("matchesContraindication", () => {
   const overheadInjury = InjuryContraindicationSchema.parse({
     injuryKey: "shoulder_impingement", label: "Shoulder impingement",
     avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"] }],
-    avoidMovements: ["Bench Press"], notes: null,
+    avoidPositions: [], avoidMovements: ["Bench Press"], notes: null,
+  });
+  const noInversion = InjuryContraindicationSchema.parse({
+    injuryKey: "no_inversion", label: "Unable to go inverted",
+    avoidStresses: [], avoidPositions: ["inverted"], avoidMovements: [], notes: null,
   });
   const press = MovementSchema.parse({
-    name: "Shoulder Press", patterns: ["vertical_push"],
+    name: "Shoulder Press", patterns: ["vertical_push"], positions: [],
     stresses: [{ site: "shoulder", mechanisms: ["overhead"] }],
     loadType: "barbell", skill: "beginner", substitutes: [],
   });
   const row = MovementSchema.parse({
-    name: "Ring Row", patterns: ["horizontal_pull"],
+    name: "Ring Row", patterns: ["horizontal_pull"], positions: [],
     stresses: [{ site: "shoulder", mechanisms: ["traction"] }],
     loadType: "bodyweight", skill: "beginner", substitutes: [],
   });
   const bench = MovementSchema.parse({
-    name: "Bench Press", patterns: ["horizontal_push"], stresses: [],
+    name: "Bench Press", patterns: ["horizontal_push"], positions: [], stresses: [],
     loadType: "barbell", skill: "beginner", substitutes: [],
+  });
+  const handstandPushUp = MovementSchema.parse({
+    name: "Handstand Push-up", patterns: ["vertical_push"], positions: ["inverted"], stresses: [],
+    loadType: "bodyweight", skill: "advanced", substitutes: [],
   });
 
   it("blocks a movement whose stress overlaps an avoided site+mechanism", () => {
@@ -467,6 +487,14 @@ describe("matchesContraindication", () => {
 
   it("blocks a movement listed explicitly in avoidMovements even without stress overlap", () => {
     expect(matchesContraindication(bench, overheadInjury)).toBe(true);
+  });
+
+  it("blocks a movement requiring an avoided position even without stress overlap", () => {
+    expect(matchesContraindication(handstandPushUp, noInversion)).toBe(true);
+  });
+
+  it("allows a movement that does not require the avoided position", () => {
+    expect(matchesContraindication(press, noInversion)).toBe(false);
   });
 });
 ```
@@ -499,6 +527,15 @@ export const MovementPattern = z.enum([
   "olympic",
   "jump",
   "monostructural",
+]);
+
+// Whole-body positional demand — a body position the movement requires, which
+// an athlete can be categorically unable to adopt (cast, grip issue, vertigo,
+// pregnancy) regardless of any specific injured tissue. Orthogonal to both
+// patterns (what the movement trains) and stresses (what tissue it loads).
+export const Position = z.enum([
+  "hanging",  // suspended from a bar or rings
+  "inverted", // upside down (handstand family)
 ]);
 
 // Anatomical site: joints/spine regions plus muscle groups. Muscle sites are
@@ -535,6 +572,7 @@ export type SiteStress = z.infer<typeof SiteStressSchema>;
 export const MovementSchema = z.object({
   name: z.string().min(1),
   patterns: z.array(MovementPattern).min(1),
+  positions: z.array(Position),
   stresses: z.array(SiteStressSchema),
   loadType: LoadType,
   skill: SkillLevel,
@@ -547,6 +585,10 @@ export const InjuryContraindicationSchema = z.object({
   label: z.string().min(1),
   // Site+mechanism rules matched against Movement.stresses (see matching.ts).
   avoidStresses: z.array(SiteStressSchema),
+  // Positional restrictions matched against Movement.positions. Used by
+  // limitation entries (e.g. no_hanging, no_inversion) that the LLM activates
+  // from the athlete's situation; injuries may use them too where relevant.
+  avoidPositions: z.array(Position),
   // Manual override for cases the stress vocabulary cannot capture; each use is
   // a signal a mechanism may be missing.
   avoidMovements: z.array(z.string()),
@@ -567,13 +609,15 @@ export type StimulusDef = z.infer<typeof StimulusDefSchema>;
 ```ts
 import type { InjuryContraindication, Movement } from "./types";
 
-// A movement is contraindicated if it is listed explicitly, or if any of its
-// site stresses matches an avoided rule on both site and at least one mechanism.
+// A movement is contraindicated if it is listed explicitly, if it requires an
+// avoided body position, or if any of its site stresses matches an avoided
+// rule on both site and at least one mechanism.
 export function matchesContraindication(
   movement: Movement,
   contraindication: InjuryContraindication
 ): boolean {
   if (contraindication.avoidMovements.includes(movement.name)) return true;
+  if (movement.positions.some((p) => contraindication.avoidPositions.includes(p))) return true;
   return movement.stresses.some((stress) =>
     contraindication.avoidStresses.some(
       (rule) =>
@@ -595,7 +639,7 @@ pnpm add zod
 - [ ] **Step 4: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/types.test.ts`
-Expected: PASS (8 tests).
+Expected: PASS (10 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -616,8 +660,9 @@ git commit -m "feat: domain types and Zod schemas (movement, injury, stimulus)"
 
 Beyond schema validity, uniqueness, and referential checks (substitutes and
 `avoidMovements` must name real movements), the test runs `matchesContraindication`
-over the real data with per-injury blocked/allowed guardrail cases, and asserts
-every injury leaves at least five movements available.
+over the real data with blocked/allowed guardrail cases for every injury and
+positional-limitation entry, and asserts every entry leaves at least five
+movements available.
 
 `tests/domain/data.test.ts`:
 
@@ -739,6 +784,16 @@ describe("contraindication matching over real data", () => {
       blocked: ["Pull-up", "Muscle-up"],
       allowed: ["Ring Row", "Banded Pull-up", "Push-up"],
     },
+    {
+      key: "no_hanging",
+      blocked: ["Pull-up", "Banded Pull-up", "Muscle-up", "Toes-to-Bar", "Hanging Knee Raise"],
+      allowed: ["Ring Row", "Sit-up", "Shoulder Press"],
+    },
+    {
+      key: "no_inversion",
+      blocked: ["Handstand Push-up"],
+      allowed: ["Shoulder Press", "Push Press", "Push-up", "Wall Ball"],
+    },
   ];
 
   for (const c of cases) {
@@ -785,10 +840,12 @@ Expected: FAIL — cannot find the JSON files.
 
 - [ ] **Step 4: Create `data/movements.json`** (>=25 common functional fitness movements; each substitute MUST also appear as a `name`)
 
-Annotation conventions: `patterns` is ordered primary-first; `stresses` lists only
-*clinically significant* (loaded or forceful) stress — a site merely participating
-is not listed, and muscle sites are listed only for primary movers under
-substantial load. In particular, unloaded bodyweight range of motion is not
+Annotation conventions: `patterns` is ordered primary-first; `positions` lists
+the body positions the movement requires (`hanging` = suspended from a bar or
+rings, `inverted` = upside down) and is empty for most movements; `stresses`
+lists only *clinically significant* (loaded or forceful) stress — a site merely
+participating is not listed, and muscle sites are listed only for primary movers
+under substantial load. In particular, unloaded bodyweight range of motion is not
 `deep_flexion` (Air Squat has no knee entry, so it stays available for knee pain),
 strict variants drop `kipping`/`ballistic` (Banded Pull-up stays available for
 elbow tendinopathy), and reduced-load variants drop muscle entries (Knee Push-up
@@ -796,42 +853,42 @@ has no chest entry, so it stays available for a pec strain).
 
 ```json
 [
-  { "name": "Back Squat", "patterns": ["squat"], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "compression"] }, { "site": "hip", "mechanisms": ["compression"] }, { "site": "lumbar", "mechanisms": ["compression"] }, { "site": "quads", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Goblet Squat", "Air Squat"] },
-  { "name": "Front Squat", "patterns": ["squat"], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "compression"] }, { "site": "lumbar", "mechanisms": ["compression"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "quads", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Goblet Squat", "Air Squat"] },
-  { "name": "Air Squat", "patterns": ["squat"], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Box Squat"] },
-  { "name": "Goblet Squat", "patterns": ["squat"], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion"] }, { "site": "quads", "mechanisms": ["eccentric"] }], "loadType": "dumbbell", "skill": "beginner", "substitutes": ["Air Squat"] },
-  { "name": "Box Squat", "patterns": ["squat"], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Air Squat"] },
-  { "name": "Deadlift", "patterns": ["hinge"], "stresses": [{ "site": "lumbar", "mechanisms": ["compression"] }, { "site": "hamstrings", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Romanian Deadlift", "Kettlebell Swing"] },
-  { "name": "Romanian Deadlift", "patterns": ["hinge"], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }, { "site": "hamstrings", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Kettlebell Swing"] },
-  { "name": "Shoulder Press", "patterns": ["vertical_push"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Dumbbell Shoulder Press", "Push Press"] },
-  { "name": "Push Press", "patterns": ["vertical_push"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Shoulder Press", "Dumbbell Shoulder Press"] },
-  { "name": "Dumbbell Shoulder Press", "patterns": ["vertical_push"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }], "loadType": "dumbbell", "skill": "beginner", "substitutes": ["Shoulder Press"] },
-  { "name": "Bench Press", "patterns": ["horizontal_push"], "stresses": [{ "site": "chest", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Push-up", "Dumbbell Bench Press"] },
-  { "name": "Dumbbell Bench Press", "patterns": ["horizontal_push"], "stresses": [{ "site": "chest", "mechanisms": ["eccentric"] }], "loadType": "dumbbell", "skill": "beginner", "substitutes": ["Push-up"] },
-  { "name": "Push-up", "patterns": ["horizontal_push"], "stresses": [{ "site": "wrist", "mechanisms": ["extension"] }, { "site": "chest", "mechanisms": ["eccentric"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Knee Push-up"] },
-  { "name": "Knee Push-up", "patterns": ["horizontal_push"], "stresses": [{ "site": "wrist", "mechanisms": ["extension"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
-  { "name": "Pull-up", "patterns": ["vertical_pull"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping"] }, { "site": "elbow", "mechanisms": ["traction", "kipping"] }, { "site": "biceps", "mechanisms": ["eccentric"] }], "loadType": "bodyweight", "skill": "intermediate", "substitutes": ["Ring Row", "Banded Pull-up"] },
-  { "name": "Banded Pull-up", "patterns": ["vertical_pull"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction"] }, { "site": "elbow", "mechanisms": ["traction"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Ring Row"] },
-  { "name": "Ring Row", "patterns": ["horizontal_pull"], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
-  { "name": "Muscle-up", "patterns": ["vertical_pull"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping", "ballistic"] }, { "site": "elbow", "mechanisms": ["traction", "kipping", "ballistic"] }, { "site": "chest", "mechanisms": ["eccentric", "ballistic"] }, { "site": "biceps", "mechanisms": ["eccentric", "ballistic"] }], "loadType": "bodyweight", "skill": "advanced", "substitutes": ["Pull-up", "Ring Row"] },
-  { "name": "Handstand Push-up", "patterns": ["vertical_push"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "neck", "mechanisms": ["compression"] }], "loadType": "bodyweight", "skill": "advanced", "substitutes": ["Dumbbell Shoulder Press", "Push-up"] },
-  { "name": "Toes-to-Bar", "patterns": ["core"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping"] }, { "site": "elbow", "mechanisms": ["kipping"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }, { "site": "lumbar", "mechanisms": ["flexion"] }], "loadType": "bodyweight", "skill": "intermediate", "substitutes": ["Hanging Knee Raise", "Sit-up"] },
-  { "name": "Hanging Knee Raise", "patterns": ["core"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Sit-up"] },
-  { "name": "Sit-up", "patterns": ["core"], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
-  { "name": "Kettlebell Swing", "patterns": ["hinge"], "stresses": [{ "site": "lumbar", "mechanisms": ["ballistic"] }, { "site": "hip", "mechanisms": ["ballistic"] }, { "site": "hamstrings", "mechanisms": ["ballistic", "eccentric"] }], "loadType": "kettlebell", "skill": "beginner", "substitutes": ["Romanian Deadlift"] },
-  { "name": "Power Clean", "patterns": ["olympic", "hinge"], "stresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "hamstrings", "mechanisms": ["ballistic"] }], "loadType": "barbell", "skill": "advanced", "substitutes": ["Kettlebell Swing", "Deadlift"] },
-  { "name": "Power Snatch", "patterns": ["olympic", "hinge"], "stresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }, { "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "hamstrings", "mechanisms": ["ballistic"] }], "loadType": "barbell", "skill": "advanced", "substitutes": ["Kettlebell Swing"] },
-  { "name": "Thruster", "patterns": ["squat", "vertical_push"], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "compression"] }, { "site": "lumbar", "mechanisms": ["compression"] }, { "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "quads", "mechanisms": ["eccentric", "ballistic"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Goblet Squat", "Dumbbell Shoulder Press"] },
-  { "name": "Wall Ball", "patterns": ["squat", "vertical_push"], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "ballistic"] }, { "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "quads", "mechanisms": ["ballistic"] }], "loadType": "other", "skill": "beginner", "substitutes": ["Thruster", "Goblet Squat"] },
-  { "name": "Burpee", "patterns": ["jump", "horizontal_push"], "stresses": [{ "site": "wrist", "mechanisms": ["extension", "impact"] }, { "site": "knee", "mechanisms": ["impact"] }, { "site": "ankle", "mechanisms": ["impact"] }, { "site": "chest", "mechanisms": ["eccentric"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Up-Down", "Push-up"] },
-  { "name": "Up-Down", "patterns": ["jump"], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
-  { "name": "Box Jump", "patterns": ["jump"], "stresses": [{ "site": "knee", "mechanisms": ["impact", "ballistic"] }, { "site": "ankle", "mechanisms": ["impact", "ballistic"] }, { "site": "quads", "mechanisms": ["ballistic", "eccentric"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Step-up"] },
-  { "name": "Step-up", "patterns": ["lunge"], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Air Squat"] },
-  { "name": "Row (Erg)", "patterns": ["monostructural"], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }], "loadType": "machine", "skill": "beginner", "substitutes": ["Bike (Erg)", "Run"] },
-  { "name": "Bike (Erg)", "patterns": ["monostructural"], "stresses": [], "loadType": "machine", "skill": "beginner", "substitutes": ["Row (Erg)"] },
-  { "name": "Run", "patterns": ["monostructural"], "stresses": [{ "site": "knee", "mechanisms": ["impact"] }, { "site": "ankle", "mechanisms": ["impact"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }, { "site": "hamstrings", "mechanisms": ["ballistic"] }, { "site": "calves", "mechanisms": ["eccentric"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Row (Erg)", "Bike (Erg)"] },
-  { "name": "Double-under", "patterns": ["jump", "monostructural"], "stresses": [{ "site": "ankle", "mechanisms": ["impact", "ballistic"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "intermediate", "substitutes": ["Single-under"] },
-  { "name": "Single-under", "patterns": ["jump", "monostructural"], "stresses": [{ "site": "ankle", "mechanisms": ["impact"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] }
+  { "name": "Back Squat", "patterns": ["squat"], "positions": [], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "compression"] }, { "site": "hip", "mechanisms": ["compression"] }, { "site": "lumbar", "mechanisms": ["compression"] }, { "site": "quads", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Goblet Squat", "Air Squat"] },
+  { "name": "Front Squat", "patterns": ["squat"], "positions": [], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "compression"] }, { "site": "lumbar", "mechanisms": ["compression"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "quads", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Goblet Squat", "Air Squat"] },
+  { "name": "Air Squat", "patterns": ["squat"], "positions": [], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Box Squat"] },
+  { "name": "Goblet Squat", "patterns": ["squat"], "positions": [], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion"] }, { "site": "quads", "mechanisms": ["eccentric"] }], "loadType": "dumbbell", "skill": "beginner", "substitutes": ["Air Squat"] },
+  { "name": "Box Squat", "patterns": ["squat"], "positions": [], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Air Squat"] },
+  { "name": "Deadlift", "patterns": ["hinge"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["compression"] }, { "site": "hamstrings", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Romanian Deadlift", "Kettlebell Swing"] },
+  { "name": "Romanian Deadlift", "patterns": ["hinge"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }, { "site": "hamstrings", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Kettlebell Swing"] },
+  { "name": "Shoulder Press", "patterns": ["vertical_push"], "positions": [], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Dumbbell Shoulder Press", "Push Press"] },
+  { "name": "Push Press", "patterns": ["vertical_push"], "positions": [], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Shoulder Press", "Dumbbell Shoulder Press"] },
+  { "name": "Dumbbell Shoulder Press", "patterns": ["vertical_push"], "positions": [], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }], "loadType": "dumbbell", "skill": "beginner", "substitutes": ["Shoulder Press"] },
+  { "name": "Bench Press", "patterns": ["horizontal_push"], "positions": [], "stresses": [{ "site": "chest", "mechanisms": ["eccentric"] }], "loadType": "barbell", "skill": "beginner", "substitutes": ["Push-up", "Dumbbell Bench Press"] },
+  { "name": "Dumbbell Bench Press", "patterns": ["horizontal_push"], "positions": [], "stresses": [{ "site": "chest", "mechanisms": ["eccentric"] }], "loadType": "dumbbell", "skill": "beginner", "substitutes": ["Push-up"] },
+  { "name": "Push-up", "patterns": ["horizontal_push"], "positions": [], "stresses": [{ "site": "wrist", "mechanisms": ["extension"] }, { "site": "chest", "mechanisms": ["eccentric"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Knee Push-up"] },
+  { "name": "Knee Push-up", "patterns": ["horizontal_push"], "positions": [], "stresses": [{ "site": "wrist", "mechanisms": ["extension"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
+  { "name": "Pull-up", "patterns": ["vertical_pull"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping"] }, { "site": "elbow", "mechanisms": ["traction", "kipping"] }, { "site": "biceps", "mechanisms": ["eccentric"] }], "loadType": "bodyweight", "skill": "intermediate", "substitutes": ["Ring Row", "Banded Pull-up"] },
+  { "name": "Banded Pull-up", "patterns": ["vertical_pull"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction"] }, { "site": "elbow", "mechanisms": ["traction"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Ring Row"] },
+  { "name": "Ring Row", "patterns": ["horizontal_pull"], "positions": [], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
+  { "name": "Muscle-up", "patterns": ["vertical_pull"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping", "ballistic"] }, { "site": "elbow", "mechanisms": ["traction", "kipping", "ballistic"] }, { "site": "chest", "mechanisms": ["eccentric", "ballistic"] }, { "site": "biceps", "mechanisms": ["eccentric", "ballistic"] }], "loadType": "bodyweight", "skill": "advanced", "substitutes": ["Pull-up", "Ring Row"] },
+  { "name": "Handstand Push-up", "patterns": ["vertical_push"], "positions": ["inverted"], "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "neck", "mechanisms": ["compression"] }], "loadType": "bodyweight", "skill": "advanced", "substitutes": ["Dumbbell Shoulder Press", "Push-up"] },
+  { "name": "Toes-to-Bar", "patterns": ["core"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping"] }, { "site": "elbow", "mechanisms": ["kipping"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }, { "site": "lumbar", "mechanisms": ["flexion"] }], "loadType": "bodyweight", "skill": "intermediate", "substitutes": ["Hanging Knee Raise", "Sit-up"] },
+  { "name": "Hanging Knee Raise", "patterns": ["core"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Sit-up"] },
+  { "name": "Sit-up", "patterns": ["core"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
+  { "name": "Kettlebell Swing", "patterns": ["hinge"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["ballistic"] }, { "site": "hip", "mechanisms": ["ballistic"] }, { "site": "hamstrings", "mechanisms": ["ballistic", "eccentric"] }], "loadType": "kettlebell", "skill": "beginner", "substitutes": ["Romanian Deadlift"] },
+  { "name": "Power Clean", "patterns": ["olympic", "hinge"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "hamstrings", "mechanisms": ["ballistic"] }], "loadType": "barbell", "skill": "advanced", "substitutes": ["Kettlebell Swing", "Deadlift"] },
+  { "name": "Power Snatch", "patterns": ["olympic", "hinge"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }, { "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "hamstrings", "mechanisms": ["ballistic"] }], "loadType": "barbell", "skill": "advanced", "substitutes": ["Kettlebell Swing"] },
+  { "name": "Thruster", "patterns": ["squat", "vertical_push"], "positions": [], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "compression"] }, { "site": "lumbar", "mechanisms": ["compression"] }, { "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "quads", "mechanisms": ["eccentric", "ballistic"] }], "loadType": "barbell", "skill": "intermediate", "substitutes": ["Goblet Squat", "Dumbbell Shoulder Press"] },
+  { "name": "Wall Ball", "patterns": ["squat", "vertical_push"], "positions": [], "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "ballistic"] }, { "site": "shoulder", "mechanisms": ["overhead", "ballistic"] }, { "site": "quads", "mechanisms": ["ballistic"] }], "loadType": "other", "skill": "beginner", "substitutes": ["Thruster", "Goblet Squat"] },
+  { "name": "Burpee", "patterns": ["jump", "horizontal_push"], "positions": [], "stresses": [{ "site": "wrist", "mechanisms": ["extension", "impact"] }, { "site": "knee", "mechanisms": ["impact"] }, { "site": "ankle", "mechanisms": ["impact"] }, { "site": "chest", "mechanisms": ["eccentric"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Up-Down", "Push-up"] },
+  { "name": "Up-Down", "patterns": ["jump"], "positions": [], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] },
+  { "name": "Box Jump", "patterns": ["jump"], "positions": [], "stresses": [{ "site": "knee", "mechanisms": ["impact", "ballistic"] }, { "site": "ankle", "mechanisms": ["impact", "ballistic"] }, { "site": "quads", "mechanisms": ["ballistic", "eccentric"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Step-up"] },
+  { "name": "Step-up", "patterns": ["lunge"], "positions": [], "stresses": [], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Air Squat"] },
+  { "name": "Row (Erg)", "patterns": ["monostructural"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }], "loadType": "machine", "skill": "beginner", "substitutes": ["Bike (Erg)", "Run"] },
+  { "name": "Bike (Erg)", "patterns": ["monostructural"], "positions": [], "stresses": [], "loadType": "machine", "skill": "beginner", "substitutes": ["Row (Erg)"] },
+  { "name": "Run", "patterns": ["monostructural"], "positions": [], "stresses": [{ "site": "knee", "mechanisms": ["impact"] }, { "site": "ankle", "mechanisms": ["impact"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }, { "site": "hamstrings", "mechanisms": ["ballistic"] }, { "site": "calves", "mechanisms": ["eccentric"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": ["Row (Erg)", "Bike (Erg)"] },
+  { "name": "Double-under", "patterns": ["jump", "monostructural"], "positions": [], "stresses": [{ "site": "ankle", "mechanisms": ["impact", "ballistic"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "intermediate", "substitutes": ["Single-under"] },
+  { "name": "Single-under", "patterns": ["jump", "monostructural"], "positions": [], "stresses": [{ "site": "ankle", "mechanisms": ["impact"] }, { "site": "calves", "mechanisms": ["ballistic"] }], "loadType": "bodyweight", "skill": "beginner", "substitutes": [] }
 ]
 ```
 
@@ -839,29 +896,35 @@ has no chest entry, so it stays available for a pec strain).
 
 Each injury declares `avoidStresses` rules matched programmatically against
 movement stresses; derivation replaces hand-listing, so `avoidMovements` stays
-empty except for true exceptions the stress vocabulary cannot capture.
+empty except for true exceptions the stress vocabulary cannot capture. The
+catalog also contains **limitation entries** (`no_hanging`, `no_inversion`) that
+carry only `avoidPositions` — they are not injuries; the LLM activates them from
+the athlete's stated situation (cast, grip injury, vertigo, pregnancy) and the
+matching code enforces them deterministically.
 
 ```json
 [
-  { "injuryKey": "shoulder_impingement", "label": "Shoulder impingement", "avoidStresses": [{ "site": "shoulder", "mechanisms": ["overhead", "ballistic", "kipping"] }], "avoidMovements": [], "notes": "Avoid loaded overhead work and ballistic/kipping shoulder loading; prefer neutral-grip, below-shoulder work." },
-  { "injuryKey": "lower_back_strain", "label": "Lower back strain", "avoidStresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }], "avoidMovements": [], "notes": "Avoid heavy axial loading and ballistic hinging; light controlled hinging (e.g., Romanian Deadlift) is acceptable." },
-  { "injuryKey": "knee_pain", "label": "Knee pain", "avoidStresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "impact"] }], "avoidMovements": [], "notes": "Avoid loaded end-range knee flexion and impact; prefer box squats to a comfortable height and low-impact cardio." },
-  { "injuryKey": "wrist_pain", "label": "Wrist pain", "avoidStresses": [{ "site": "wrist", "mechanisms": ["extension", "impact"] }], "avoidMovements": [], "notes": "Avoid loaded wrist extension; use dumbbells/neutral grip where possible." },
-  { "injuryKey": "elbow_tendinopathy", "label": "Elbow tendinopathy", "avoidStresses": [{ "site": "elbow", "mechanisms": ["ballistic", "kipping"] }], "avoidMovements": [], "notes": "Avoid ballistic/kipping pulling; strict controlled pulling and supported rows are acceptable." },
-  { "injuryKey": "ankle_sprain", "label": "Ankle sprain", "avoidStresses": [{ "site": "ankle", "mechanisms": ["impact", "ballistic"] }], "avoidMovements": [], "notes": "Avoid impact/plyometrics; use low-impact monostructural substitutes." },
-  { "injuryKey": "hip_flexor_strain", "label": "Hip flexor strain", "avoidStresses": [{ "site": "hip_flexors", "mechanisms": ["flexion"] }], "avoidMovements": ["Power Clean"], "notes": "Avoid loaded/explosive hip flexion. Power Clean listed explicitly: the violent pull-under stresses hip flexors in a way its stress tags don't capture." },
-  { "injuryKey": "quad_strain", "label": "Quadriceps strain", "avoidStresses": [{ "site": "quads", "mechanisms": ["eccentric", "ballistic"] }], "avoidMovements": [], "notes": "Avoid loaded/explosive knee extension; unloaded squatting to a comfortable depth and low-impact cardio are acceptable." },
-  { "injuryKey": "hamstring_strain", "label": "Hamstring strain", "avoidStresses": [{ "site": "hamstrings", "mechanisms": ["eccentric", "ballistic"] }], "avoidMovements": [], "notes": "Avoid loaded hinging, long-length hamstring loading, and sprinting; bike is the preferred conditioning." },
-  { "injuryKey": "calf_strain", "label": "Calf strain", "avoidStresses": [{ "site": "calves", "mechanisms": ["ballistic", "eccentric"] }], "avoidMovements": [], "notes": "Avoid jumping, rope work, and running; bike or row for conditioning." },
-  { "injuryKey": "pec_strain", "label": "Pectoral strain", "avoidStresses": [{ "site": "chest", "mechanisms": ["eccentric", "ballistic"] }], "avoidMovements": [], "notes": "Avoid loaded pressing through a deep pec stretch; light reduced-range pressing (e.g., knee push-ups) as tolerated." },
-  { "injuryKey": "biceps_strain", "label": "Biceps strain", "avoidStresses": [{ "site": "biceps", "mechanisms": ["eccentric", "ballistic"] }], "avoidMovements": [], "notes": "Avoid high-load and ballistic pulling; supported rows and banded pull-ups as tolerated." }
+  { "injuryKey": "shoulder_impingement", "label": "Shoulder impingement", "avoidStresses": [{ "site": "shoulder", "mechanisms": ["overhead", "ballistic", "kipping"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded overhead work and ballistic/kipping shoulder loading; prefer neutral-grip, below-shoulder work." },
+  { "injuryKey": "lower_back_strain", "label": "Lower back strain", "avoidStresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid heavy axial loading and ballistic hinging; light controlled hinging (e.g., Romanian Deadlift) is acceptable." },
+  { "injuryKey": "knee_pain", "label": "Knee pain", "avoidStresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "impact"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded end-range knee flexion and impact; prefer box squats to a comfortable height and low-impact cardio." },
+  { "injuryKey": "wrist_pain", "label": "Wrist pain", "avoidStresses": [{ "site": "wrist", "mechanisms": ["extension", "impact"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded wrist extension; use dumbbells/neutral grip where possible." },
+  { "injuryKey": "elbow_tendinopathy", "label": "Elbow tendinopathy", "avoidStresses": [{ "site": "elbow", "mechanisms": ["ballistic", "kipping"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid ballistic/kipping pulling; strict controlled pulling and supported rows are acceptable." },
+  { "injuryKey": "ankle_sprain", "label": "Ankle sprain", "avoidStresses": [{ "site": "ankle", "mechanisms": ["impact", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid impact/plyometrics; use low-impact monostructural substitutes." },
+  { "injuryKey": "hip_flexor_strain", "label": "Hip flexor strain", "avoidStresses": [{ "site": "hip_flexors", "mechanisms": ["flexion"] }], "avoidPositions": [], "avoidMovements": ["Power Clean"], "notes": "Avoid loaded/explosive hip flexion. Power Clean listed explicitly: the violent pull-under stresses hip flexors in a way its stress tags don't capture." },
+  { "injuryKey": "quad_strain", "label": "Quadriceps strain", "avoidStresses": [{ "site": "quads", "mechanisms": ["eccentric", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded/explosive knee extension; unloaded squatting to a comfortable depth and low-impact cardio are acceptable." },
+  { "injuryKey": "hamstring_strain", "label": "Hamstring strain", "avoidStresses": [{ "site": "hamstrings", "mechanisms": ["eccentric", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded hinging, long-length hamstring loading, and sprinting; bike is the preferred conditioning." },
+  { "injuryKey": "calf_strain", "label": "Calf strain", "avoidStresses": [{ "site": "calves", "mechanisms": ["ballistic", "eccentric"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid jumping, rope work, and running; bike or row for conditioning." },
+  { "injuryKey": "pec_strain", "label": "Pectoral strain", "avoidStresses": [{ "site": "chest", "mechanisms": ["eccentric", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded pressing through a deep pec stretch; light reduced-range pressing (e.g., knee push-ups) as tolerated." },
+  { "injuryKey": "biceps_strain", "label": "Biceps strain", "avoidStresses": [{ "site": "biceps", "mechanisms": ["eccentric", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid high-load and ballistic pulling; supported rows and banded pull-ups as tolerated." },
+  { "injuryKey": "no_hanging", "label": "Unable to hang from a bar or rings", "avoidStresses": [], "avoidPositions": ["hanging"], "avoidMovements": [], "notes": "Limitation, not an injury: the athlete cannot suspend their bodyweight from a bar or rings (hand/grip injury, cast, post-op restriction). Activated by the LLM from the athlete's situation rather than an injury diagnosis." },
+  { "injuryKey": "no_inversion", "label": "Unable to go upside down", "avoidStresses": [], "avoidPositions": ["inverted"], "avoidMovements": [], "notes": "Limitation, not an injury: the athlete cannot adopt inverted positions (vertigo, blood pressure, pregnancy, eye conditions). Overhead pressing remains available; only the handstand family is blocked. Activated by the LLM from the athlete's situation." }
 ]
 ```
 
 - [ ] **Step 6: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/data.test.ts`
-Expected: PASS (17 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
+Expected: PASS (19 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
 
 - [ ] **Step 7: Commit**
 
@@ -1674,7 +1737,7 @@ describe("tailor", () => {
     });
     const movements: Movement[] = [];
     const contraindications: InjuryContraindication[] = [
-      { injuryKey: "shoulder_impingement", label: "Shoulder impingement", avoidStresses: [{ site: "shoulder", mechanisms: ["overhead"] }], avoidMovements: ["Thruster"], notes: null },
+      { injuryKey: "shoulder_impingement", label: "Shoulder impingement", avoidStresses: [{ site: "shoulder", mechanisms: ["overhead"] }], avoidPositions: [], avoidMovements: ["Thruster"], notes: null },
     ];
     const result = await tailor(provider, { workout: fran, classification, profile, request, movements, contraindications });
     expect(result.changes.length).toBeGreaterThan(0);
@@ -1712,7 +1775,7 @@ const SYSTEM = `You are an expert functional fitness coach. Modify the given tra
 constraint WHILE PRESERVING THE PRIMARY TRAINING STIMULUS identified in the classification. Rules:
 - Keep the session's BLOCK structure: return the same ordered blocks, preserving each block's intended format unless a
   block must be dropped (explain any dropped block in "changes"). Modify within blocks.
-- Respect every contraindication: never prescribe a movement from the AVOID list or one whose stresses match an avoided site+mechanism rule.
+- Respect every contraindication: never prescribe a movement from the AVOID list, one that requires an avoided body position, or one whose stresses match an avoided site+mechanism rule.
 - Prefer substitutions from the provided movement library; keep the same stimulus (time domain, intensity, modality balance).
 - Scale loads to the athlete's benchmarks and equipment; fit the athlete's time budget if provided.
 - Carry over each block's coachingNotes (tempo, intensity, scaling tiers); update them only where the change requires it.
@@ -1735,6 +1798,7 @@ export async function tailor(provider: LlmProvider, input: TailorInput): Promise
   const avoidStresses = input.contraindications.flatMap((c) =>
     c.avoidStresses.map((r) => `${r.site}: ${r.mechanisms.join("/")}`)
   );
+  const avoidPositions = [...new Set(input.contraindications.flatMap((c) => c.avoidPositions))];
   const library = input.movements.map((m) => `${m.name} [${m.patterns.join("+")}, ${m.loadType}, ${m.skill}, stress: ${m.stresses.map((s) => `${s.site}(${s.mechanisms.join(",")})`).join(" ") || "none"}, subs: ${m.substitutes.join(", ") || "none"}]`).join("\n");
 
   const prompt = [
@@ -1744,6 +1808,7 @@ export async function tailor(provider: LlmProvider, input: TailorInput): Promise
     `Today's request:\n${JSON.stringify(input.request)}`,
     `Movements to AVOID: ${avoid.join(", ") || "none"}`,
     `Site stresses to AVOID: ${avoidStresses.join("; ") || "none"}`,
+    `Body positions to AVOID: ${avoidPositions.join(", ") || "none"}`,
     `Movement library:\n${library || "(none provided)"}`,
     `Return the tailored result as JSON.`,
   ].join("\n\n");
@@ -2007,6 +2072,7 @@ In `tailor()`, build the prompt parts array as before, and append the refine sec
     `Today's request:\n${JSON.stringify(input.request)}`,
     `Movements to AVOID: ${avoid.join(", ") || "none"}`,
     `Site stresses to AVOID: ${avoidStresses.join("; ") || "none"}`,
+    `Body positions to AVOID: ${avoidPositions.join(", ") || "none"}`,
     `Movement library:\n${library || "(none provided)"}`,
   ];
   if (input.previousAttempt) {
@@ -2516,7 +2582,7 @@ describe("runTailorForAthlete", () => {
         taxonomy: [{ key: "muscular_endurance", label: "Muscular endurance", description: "..." }],
         movements: [],
         contraindicationsFor: async () => [
-          { injuryKey: "shoulder_impingement", label: "Shoulder impingement", avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "kipping"] }], avoidMovements: ["Pull-up"], notes: null },
+          { injuryKey: "shoulder_impingement", label: "Shoulder impingement", avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "kipping"] }], avoidPositions: [], avoidMovements: ["Pull-up"], notes: null },
         ],
       },
     });

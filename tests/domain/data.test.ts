@@ -115,6 +115,16 @@ describe("contraindication matching over real data", () => {
       blocked: ["Pull-up", "Muscle-up"],
       allowed: ["Ring Row", "Banded Pull-up", "Push-up"],
     },
+    {
+      key: "no_hanging",
+      blocked: ["Pull-up", "Banded Pull-up", "Muscle-up", "Toes-to-Bar", "Hanging Knee Raise"],
+      allowed: ["Ring Row", "Sit-up", "Shoulder Press"],
+    },
+    {
+      key: "no_inversion",
+      blocked: ["Handstand Push-up"],
+      allowed: ["Shoulder Press", "Push Press", "Push-up", "Wall Ball"],
+    },
   ];
 
   for (const c of cases) {
