@@ -36,6 +36,20 @@ describe("domain data integrity", () => {
     expect(injuries.length).toBeGreaterThanOrEqual(10);
   });
 
+  it("each muscle-up variant is apparatus-specific", () => {
+    expect(byName("Bar Muscle-up").equipment).toEqual(["pullup_bar"]);
+    expect(byName("Ring Muscle-up").equipment).toEqual(["rings"]);
+  });
+
+  it("each muscle-up variant substitutes for the other", () => {
+    expect(byName("Bar Muscle-up").substitutes).toContain("Ring Muscle-up");
+    expect(byName("Ring Muscle-up").substitutes).toContain("Bar Muscle-up");
+  });
+
+  it("no contraindication relies on an explicit movement override", () => {
+    for (const i of injuries) expect(i.avoidMovements, i.injuryKey).toEqual([]);
+  });
+
   it("stimulus taxonomy is valid with unique keys", () => {
     const keys = new Set<string>();
     for (const s of stimuli) {
@@ -57,8 +71,12 @@ describe("contraindication matching over real data", () => {
   const cases: Array<{ key: string; blocked: string[]; allowed: string[] }> = [
     {
       key: "shoulder_impingement",
-      blocked: ["Shoulder Press", "Push Press", "Handstand Push-up", "Power Snatch", "Muscle-up"],
-      allowed: ["Bench Press", "Ring Row", "Banded Pull-up"],
+      blocked: [
+        "Shoulder Press", "Push Press", "Handstand Push-up", "Power Snatch",
+        "Bar Muscle-up", "Ring Muscle-up", "Overhead Squat", "Push Jerk", "Split Jerk",
+        "Squat Snatch", "Clean & Jerk", "Dumbbell Push Press", "Dumbbell Push Jerk",
+      ],
+      allowed: ["Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean"],
     },
     {
       key: "lower_back_strain",
@@ -67,17 +85,26 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "knee_pain",
-      blocked: ["Back Squat", "Front Squat", "Thruster", "Wall Ball", "Run", "Box Jump"],
-      allowed: ["Box Squat", "Air Squat", "Bike (Erg)", "Step-up"],
+      blocked: [
+        "Back Squat", "Front Squat", "Thruster", "Wall Ball", "Run", "Box Jump",
+        "Overhead Squat", "Squat Clean", "Squat Snatch", "Clean & Jerk",
+      ],
+      allowed: ["Box Squat", "Air Squat", "Bike (Erg)", "Step-up", "Power Clean"],
     },
     {
       key: "wrist_pain",
-      blocked: ["Front Squat", "Thruster", "Handstand Push-up", "Push-up", "Power Clean"],
-      allowed: ["Dumbbell Shoulder Press", "Dumbbell Bench Press", "Ring Row"],
+      blocked: [
+        "Front Squat", "Thruster", "Handstand Push-up", "Push-up", "Power Clean",
+        "Overhead Squat", "Push Jerk", "Bar Muscle-up",
+      ],
+      allowed: [
+        "Dumbbell Shoulder Press", "Dumbbell Bench Press", "Ring Row",
+        "Ring Muscle-up", "Dumbbell Push Press", "Dumbbell Push Jerk",
+      ],
     },
     {
       key: "elbow_tendinopathy",
-      blocked: ["Muscle-up", "Pull-up", "Toes-to-Bar"],
+      blocked: ["Bar Muscle-up", "Ring Muscle-up", "Pull-up", "Toes-to-Bar"],
       allowed: ["Banded Pull-up", "Ring Row"],
     },
     {
@@ -87,8 +114,11 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "hip_flexor_strain",
-      blocked: ["Toes-to-Bar", "Run", "Power Clean"],
-      allowed: ["Kettlebell Swing", "Bike (Erg)", "Air Squat"],
+      blocked: [
+        "Toes-to-Bar", "Run", "Power Clean", "Power Snatch",
+        "Squat Clean", "Squat Snatch", "Clean & Jerk",
+      ],
+      allowed: ["Kettlebell Swing", "Bike (Erg)", "Air Squat", "Deadlift"],
     },
     {
       key: "quad_strain",
@@ -107,17 +137,20 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "pec_strain",
-      blocked: ["Bench Press", "Dumbbell Bench Press", "Push-up", "Muscle-up"],
+      blocked: ["Bench Press", "Dumbbell Bench Press", "Push-up", "Bar Muscle-up", "Ring Muscle-up"],
       allowed: ["Knee Push-up", "Ring Row", "Shoulder Press"],
     },
     {
       key: "biceps_strain",
-      blocked: ["Pull-up", "Muscle-up"],
+      blocked: ["Pull-up", "Bar Muscle-up", "Ring Muscle-up"],
       allowed: ["Ring Row", "Banded Pull-up", "Push-up"],
     },
     {
       key: "no_hanging",
-      blocked: ["Pull-up", "Banded Pull-up", "Muscle-up", "Toes-to-Bar", "Hanging Knee Raise"],
+      blocked: [
+        "Pull-up", "Banded Pull-up", "Bar Muscle-up", "Ring Muscle-up",
+        "Toes-to-Bar", "Hanging Knee Raise",
+      ],
       allowed: ["Ring Row", "Sit-up", "Shoulder Press"],
     },
     {
