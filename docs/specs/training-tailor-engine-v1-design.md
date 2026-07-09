@@ -128,7 +128,7 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   `compression | flexion | deep_flexion | extension | overhead | ballistic |
   impact | traction | kipping | eccentric`), equipment[] (required-equipment enum:
   `barbell | dumbbell | kettlebell | pullup_bar | rings | box | ramp | bench |
-  band | jump_rope | rower | bike | wall_ball` — an AND-set matched by subset against the
+  ghd | band | jump_rope | rower | bike | wall_ball` — an AND-set matched by subset against the
   athlete's equipment; empty = needs nothing; values added lazily, only when
   availability-relevant), skill, substitutes[].
   Patterns drive substitution and programming balance; positions drive what the
@@ -213,7 +213,7 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
 - **Domain data authoring:** manually authored, enforced by schema-validation and
   referential-integrity tests (every substitute / avoided movement must exist in
   the movement library).
-- **Minimum viable seed size:** ~57 movements, 14 contraindication entries
+- **Minimum viable seed size:** ~59 movements, 14 contraindication entries
   (12 injuries + 2 positional limitations), 7 stimulus tags.
 
 ## Next steps

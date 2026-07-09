@@ -546,6 +546,7 @@ export const Equipment = z.enum([
   "box",
   "ramp",
   "bench",
+  "ghd",
   "band",
   "jump_rope",
   "rower",
@@ -740,6 +741,12 @@ describe("domain data integrity", () => {
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
   });
 
+  it("the GHD sit-up requires a GHD and scales to the V-up", () => {
+    expect(byName("GHD Sit-up").equipment).toEqual(["ghd"]);
+    expect(byName("GHD Sit-up").substitutes[0]).toBe("V-up");
+    expect(byName("V-up").equipment).toEqual([]);
+  });
+
   it("the ramp variant requires a ramp, the plain handstand walk requires nothing", () => {
     expect(byName("Handstand Walk Ramp").equipment).toEqual(["ramp"]);
     expect(byName("Handstand Walk").equipment).toEqual([]);
@@ -791,8 +798,8 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "lower_back_strain",
-      blocked: ["Deadlift", "Kettlebell Swing", "Power Clean", "Power Snatch"],
-      allowed: ["Romanian Deadlift", "Goblet Squat", "Bike (Erg)"],
+      blocked: ["Deadlift", "Kettlebell Swing", "Power Clean", "Power Snatch", "GHD Sit-up"],
+      allowed: ["Romanian Deadlift", "Goblet Squat", "Bike (Erg)", "V-up", "Sit-up"],
     },
     {
       key: "knee_pain",
@@ -830,7 +837,7 @@ describe("contraindication matching over real data", () => {
       key: "hip_flexor_strain",
       blocked: [
         "Toes-to-Bar", "Run", "Power Clean", "Power Snatch",
-        "Squat Clean", "Squat Snatch", "Clean & Jerk",
+        "Squat Clean", "Squat Snatch", "Clean & Jerk", "GHD Sit-up", "V-up",
       ],
       allowed: ["Kettlebell Swing", "Bike (Erg)", "Air Squat", "Deadlift"],
     },
@@ -1007,6 +1014,8 @@ has no chest entry, so it stays available for a pec strain).
   { "name": "Toes-to-Bar", "patterns": ["core"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction", "kipping"] }, { "site": "elbow", "mechanisms": ["kipping"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }, { "site": "lumbar", "mechanisms": ["flexion"] }], "equipment": ["pullup_bar"], "skill": "intermediate", "substitutes": ["Hanging Knee Raise", "Sit-up"] },
   { "name": "Hanging Knee Raise", "patterns": ["core"], "positions": ["hanging"], "stresses": [{ "site": "shoulder", "mechanisms": ["traction"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "equipment": ["pullup_bar"], "skill": "beginner", "substitutes": ["Sit-up"] },
   { "name": "Sit-up", "patterns": ["core"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "equipment": [], "skill": "beginner", "substitutes": [] },
+  { "name": "V-up", "patterns": ["core"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion"] }, { "site": "hip_flexors", "mechanisms": ["flexion"] }], "equipment": [], "skill": "intermediate", "substitutes": ["Sit-up"] },
+  { "name": "GHD Sit-up", "patterns": ["core"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["flexion", "extension"] }, { "site": "hip_flexors", "mechanisms": ["flexion", "eccentric"] }], "equipment": ["ghd"], "skill": "advanced", "substitutes": ["V-up", "Sit-up"] },
   { "name": "Plank", "patterns": ["core", "hold"], "positions": [], "stresses": [], "equipment": [], "skill": "beginner", "substitutes": [] },
   { "name": "Kettlebell Swing", "patterns": ["hinge"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["ballistic"] }, { "site": "hip", "mechanisms": ["ballistic"] }, { "site": "hamstrings", "mechanisms": ["ballistic", "eccentric"] }], "equipment": ["kettlebell"], "skill": "beginner", "substitutes": ["Romanian Deadlift"] },
   { "name": "Power Clean", "patterns": ["olympic", "hinge"], "positions": [], "stresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }, { "site": "wrist", "mechanisms": ["extension"] }, { "site": "hip_flexors", "mechanisms": ["flexion", "ballistic"] }, { "site": "hamstrings", "mechanisms": ["ballistic"] }], "equipment": ["barbell"], "skill": "advanced", "substitutes": ["Kettlebell Swing", "Deadlift"] },
@@ -1041,7 +1050,7 @@ matching code enforces them deterministically.
 ```json
 [
   { "injuryKey": "shoulder_impingement", "label": "Shoulder impingement", "avoidStresses": [{ "site": "shoulder", "mechanisms": ["overhead", "ballistic", "kipping"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded overhead work and ballistic/kipping shoulder loading; prefer neutral-grip, below-shoulder work." },
-  { "injuryKey": "lower_back_strain", "label": "Lower back strain", "avoidStresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid heavy axial loading and ballistic hinging; light controlled hinging (e.g., Romanian Deadlift) is acceptable." },
+  { "injuryKey": "lower_back_strain", "label": "Lower back strain", "avoidStresses": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic", "extension"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid heavy axial loading, ballistic hinging, and loaded end-range extension (GHD Sit-up); light controlled hinging (e.g., Romanian Deadlift) and spinal flexion (e.g., Sit-up) are acceptable." },
   { "injuryKey": "knee_pain", "label": "Knee pain", "avoidStresses": [{ "site": "knee", "mechanisms": ["deep_flexion", "impact"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded end-range knee flexion and impact; prefer box squats to a comfortable height and low-impact cardio." },
   { "injuryKey": "wrist_pain", "label": "Wrist pain", "avoidStresses": [{ "site": "wrist", "mechanisms": ["extension", "impact"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid loaded wrist extension; use dumbbells/neutral grip where possible." },
   { "injuryKey": "elbow_tendinopathy", "label": "Elbow tendinopathy", "avoidStresses": [{ "site": "elbow", "mechanisms": ["ballistic", "kipping"] }], "avoidPositions": [], "avoidMovements": [], "notes": "Avoid ballistic/kipping pulling; strict controlled pulling and supported rows are acceptable." },
@@ -1060,7 +1069,7 @@ matching code enforces them deterministically.
 - [ ] **Step 6: Run the test, verify it passes**
 
 Run: `pnpm exec vitest run tests/domain/data.test.ts`
-Expected: PASS (28 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
+Expected: PASS (29 tests). If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
 
 - [ ] **Step 7: Commit**
 
