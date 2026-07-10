@@ -39,6 +39,15 @@ describe("domain schemas", () => {
     expect(m.positions).toEqual(["partial_inversion"]);
   });
 
+  it("accepts lats as a stress site", () => {
+    const m = MovementSchema.parse({
+      name: "Pull-up", patterns: ["vertical_pull"], positions: ["hanging"],
+      stresses: [{ site: "lats", mechanisms: ["kipping", "eccentric"] }],
+      equipment: ["pullup_bar"], skill: "intermediate", substitutes: [],
+    });
+    expect(m.stresses[0].site).toBe("lats");
+  });
+
   it("requires at least one pattern", () => {
     expect(() =>
       MovementSchema.parse({
