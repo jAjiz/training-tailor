@@ -124,7 +124,9 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   (per-site stress: `{ site, mechanisms[] }` where site is an anatomical-site enum
   covering joints/spine — `shoulder | elbow | wrist | neck | lumbar | hip | knee |
   ankle` — and muscle groups, added as the injury catalog needs them — `quads |
-  hamstrings | calves | hip_flexors | chest | biceps` — and mechanisms is an enum of
+  hamstrings | calves | hip_flexors | chest | biceps | lats | triceps` — a site is
+  admitted only when some contraindication needs to block it, and a guardrail test
+  keeps every annotated site blocked — and mechanisms is an enum of
   `compression | flexion | deep_flexion | extension | overhead | ballistic |
   impact | traction | kipping | eccentric`), equipment[] (required-equipment enum:
   `barbell | dumbbell | kettlebell | pullup_bar | rings | box | ramp | bench |
@@ -219,8 +221,8 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
 - **Domain data authoring:** manually authored, enforced by schema-validation and
   referential-integrity tests (every substitute / avoided movement must exist in
   the movement library).
-- **Minimum viable seed size:** ~70 movements, 14 contraindication entries
-  (12 injuries + 2 positional limitations), 7 stimulus tags.
+- **Minimum viable seed size:** ~71 movements, 18 contraindication entries
+  (16 injuries + 2 positional limitations), 7 stimulus tags.
 
 ## Next steps
 
