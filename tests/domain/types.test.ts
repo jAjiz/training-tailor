@@ -48,6 +48,15 @@ describe("domain schemas", () => {
     expect(m.stresses[0].site).toBe("lats");
   });
 
+  it("accepts triceps as a stress site", () => {
+    const m = MovementSchema.parse({
+      name: "Ring Dip", patterns: ["vertical_push"], positions: [],
+      stresses: [{ site: "triceps", mechanisms: ["eccentric"] }],
+      equipment: ["rings"], skill: "advanced", substitutes: [],
+    });
+    expect(m.stresses[0].site).toBe("triceps");
+  });
+
   it("requires at least one pattern", () => {
     expect(() =>
       MovementSchema.parse({

@@ -74,6 +74,12 @@ describe("domain data integrity", () => {
     expect(byName("V-up").equipment).toEqual([]);
   });
 
+  it("the ring dip requires rings and scales to the push-up", () => {
+    expect(byName("Ring Dip").equipment).toEqual(["rings"]);
+    expect(byName("Ring Dip").substitutes[0]).toBe("Push-up");
+    expect(byName("Push-up").stresses.some((s) => s.site === "triceps")).toBe(false);
+  });
+
   it("the ramp variant requires a ramp, the plain handstand walk requires nothing", () => {
     expect(byName("Handstand Walk Ramp").equipment).toEqual(["ramp"]);
     expect(byName("Handstand Walk").equipment).toEqual([]);
@@ -238,7 +244,7 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "pec_strain",
-      blocked: ["Bench Press", "Dumbbell Bench Press", "Push-up", "Bar Muscle-up", "Ring Muscle-up"],
+      blocked: ["Bench Press", "Dumbbell Bench Press", "Push-up", "Bar Muscle-up", "Ring Muscle-up", "Ring Dip"],
       allowed: ["Knee Push-up", "Ring Row", "Shoulder Press"],
     },
     {
@@ -250,6 +256,11 @@ describe("contraindication matching over real data", () => {
       key: "lat_strain",
       blocked: ["Pull-up", "Chest-to-Bar", "Bar Muscle-up", "Ring Muscle-up", "Toes-to-Bar", "Knees-to-Elbows"],
       allowed: ["Ring Row", "Banded Pull-up", "Dead Hang", "Hanging Knee Raise", "Bike (Erg)", "Plank"],
+    },
+    {
+      key: "triceps_tendinopathy",
+      blocked: ["Ring Dip", "Handstand Push-up", "Strict Handstand Push-up", "Wall-facing Handstand Push-up"],
+      allowed: ["Push-up", "Knee Push-up", "Shoulder Press", "Push Press", "Bench Press", "Ring Row", "Plank"],
     },
     {
       key: "no_hanging",
