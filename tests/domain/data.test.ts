@@ -90,6 +90,15 @@ describe("domain data integrity", () => {
     expect(byName("Ring Muscle-up").equipment).toEqual(["rings"]);
   });
 
+  it("every muscle-up carries the triceps stress of the dip it finishes with", () => {
+    const dipTriceps = byName("Ring Dip").stresses.find((s) => s.site === "triceps")!.mechanisms;
+    for (const m of movements.filter((mv) => mv.name.endsWith("Muscle-up"))) {
+      const triceps = m.stresses.find((s) => s.site === "triceps");
+      expect(triceps, m.name).toBeDefined();
+      for (const mech of dipTriceps) expect(triceps!.mechanisms, m.name).toContain(mech);
+    }
+  });
+
   it("each muscle-up variant substitutes for the other", () => {
     expect(byName("Bar Muscle-up").substitutes).toContain("Ring Muscle-up");
     expect(byName("Ring Muscle-up").substitutes).toContain("Bar Muscle-up");
@@ -259,7 +268,10 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "triceps_tendinopathy",
-      blocked: ["Ring Dip", "Handstand Push-up", "Strict Handstand Push-up", "Wall-facing Handstand Push-up"],
+      blocked: [
+        "Ring Dip", "Handstand Push-up", "Strict Handstand Push-up", "Wall-facing Handstand Push-up",
+        "Bar Muscle-up", "Ring Muscle-up",
+      ],
       allowed: ["Push-up", "Knee Push-up", "Shoulder Press", "Push Press", "Bench Press", "Ring Row", "Plank"],
     },
     {
