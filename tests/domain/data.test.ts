@@ -229,8 +229,8 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "quad_strain",
-      blocked: ["Back Squat", "Thruster", "Wall Ball", "Box Jump"],
-      allowed: ["Air Squat", "Box Squat", "Step-up", "Bike (Erg)"],
+      blocked: ["Back Squat", "Thruster", "Wall Ball", "Box Jump", "Run"],
+      allowed: ["Air Squat", "Box Squat", "Step-up", "Bike (Erg)", "Row (Erg)"],
     },
     {
       key: "hamstring_strain",
@@ -315,6 +315,14 @@ describe("contraindication matching over real data", () => {
       .substitutes.map(byName)
       .filter((m) => !matchesContraindication(m, injury("no_inversion")));
     expect(usable.map((m) => m.name)).toContain("Dumbbell Overhead Hold");
+  });
+
+  it("running loads the quads and falls back to an erg that spares them", () => {
+    expect(byName("Run").stresses.some((s) => s.site === "quads")).toBe(true);
+    const usable = byName("Run")
+      .substitutes.map(byName)
+      .filter((m) => !matchesContraindication(m, injury("quad_strain")));
+    expect(usable.map((m) => m.name)).toEqual(["Row (Erg)", "Bike (Erg)"]);
   });
 
   it("the plank survives every contraindication", () => {
