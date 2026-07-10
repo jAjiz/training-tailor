@@ -54,15 +54,16 @@ export const Site = z.enum([
 // a site merely participating in a movement is not listed.
 export const StressMechanism = z.enum([
   "compression",
-  "flexion",      // through mid-range
-  "deep_flexion", // end-range (a site gets flexion OR deep_flexion, never both)
-  "extension",    // held extended under load (front rack, push-up wrist)
+  "flexion",        // through mid-range
+  "deep_flexion",   // end-range (a site gets flexion OR deep_flexion, never both)
+  "extension",      // held extended under load (front rack, push-up wrist)
+  "deep_extension", // end-range (a site gets extension OR deep_extension, never both)
   "overhead",
-  "ballistic",    // explosive, high-velocity
+  "ballistic",      // explosive, high-velocity
   "impact",
-  "traction",     // hanging/distraction
-  "kipping",      // dynamic swinging while hanging
-  "eccentric",    // forceful lengthening, or loading at long muscle length
+  "traction",       // hanging/distraction
+  "kipping",        // dynamic swinging while hanging
+  "eccentric",      // forceful lengthening, or loading at long muscle length
 ]);
 
 export const SiteStressSchema = z.object({

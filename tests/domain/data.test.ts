@@ -126,6 +126,28 @@ describe("domain data integrity", () => {
     }
   });
 
+  it("no site carries both a mid-range mechanism and its end-range grade", () => {
+    const graded = [["flexion", "deep_flexion"], ["extension", "deep_extension"]] as const;
+    for (const m of movements) {
+      for (const s of m.stresses) {
+        for (const [mid, end] of graded) {
+          const both = s.mechanisms.includes(mid) && s.mechanisms.includes(end);
+          expect(both, `${m.name} / ${s.site}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("the dip bottom loads the shoulder in end-range extension", () => {
+    const deepExtension = (name: string) =>
+      byName(name).stresses.some((s) => s.site === "shoulder" && s.mechanisms.includes("deep_extension"));
+    expect(deepExtension("Ring Dip")).toBe(true);
+    expect(deepExtension("Bar Muscle-up")).toBe(true);
+    expect(deepExtension("Ring Muscle-up")).toBe(true);
+    expect(deepExtension("Push-up")).toBe(false);
+    expect(deepExtension("Shoulder Press")).toBe(false);
+  });
+
   it("every site annotated on a movement is blocked by some contraindication", () => {
     const movementSites = new Set(movements.flatMap((m) => m.stresses.map((s) => s.site)));
     const blockedSites = new Set(injuries.flatMap((i) => i.avoidStresses.map((s) => s.site)));
@@ -148,12 +170,13 @@ describe("contraindication matching over real data", () => {
         "Bar Muscle-up", "Ring Muscle-up", "Overhead Squat", "Push Jerk", "Split Jerk",
         "Squat Snatch", "Clean & Jerk", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
-        "Box Handstand Hold", "Knees-to-Elbows",
+        "Box Handstand Hold", "Knees-to-Elbows", "Ring Dip",
         "Dumbbell Snatch", "Dumbbell Split Jerk", "Dumbbell Clean & Jerk",
         "Dumbbell Overhead Squat", "Dumbbell Squat Snatch",
       ],
       allowed: [
         "Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean", "Dead Hang", "Plank",
+        "Push-up", "Knee Push-up",
         "Dumbbell Clean", "Dumbbell Deadlift", "Dumbbell Front Squat",
       ],
     },
