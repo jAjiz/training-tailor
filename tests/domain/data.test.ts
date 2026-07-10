@@ -151,10 +151,21 @@ describe("domain data integrity", () => {
     expect(has("Back Rack Lunge", "lumbar")).toBe(true);
   });
 
-  it("the dumbbell and goblet lunges differ only by implement", () => {
-    expect(byName("Dumbbell Lunge").equipment).toEqual(["dumbbell"]);
-    expect(byName("Goblet Lunge").equipment).toEqual(["kettlebell"]);
-    expect(byName("Goblet Lunge").stresses).toEqual(byName("Dumbbell Lunge").stresses);
+  it("each kettlebell lift mirrors its dumbbell twin and they cover for each other", () => {
+    const names = new Set(movements.map((m) => m.name));
+    const twins = movements.filter(
+      (m) => m.name.startsWith("Kettlebell ") && names.has("Dumbbell " + m.name.slice("Kettlebell ".length))
+    );
+    expect(twins.length).toBeGreaterThanOrEqual(13);
+    for (const kb of twins) {
+      const db = byName("Dumbbell " + kb.name.slice("Kettlebell ".length));
+      expect(kb.equipment, kb.name).toEqual(["kettlebell"]);
+      expect(kb.patterns, kb.name).toEqual(db.patterns);
+      expect(kb.skill, kb.name).toBe(db.skill);
+      expect(kb.stresses, kb.name).toEqual(db.stresses);
+      expect(kb.substitutes, kb.name).toContain(db.name);
+      expect(db.substitutes, db.name).toContain(kb.name);
+    }
   });
 
   it("only the jumping lunge carries impact", () => {
@@ -230,7 +241,7 @@ describe("contraindication matching over real data", () => {
       ],
       allowed: [
         "Romanian Deadlift", "Goblet Squat", "Bike (Erg)", "V-up", "Sit-up",
-        "Lunge", "Dumbbell Lunge", "Goblet Lunge",
+        "Lunge", "Dumbbell Lunge", "Kettlebell Lunge",
       ],
     },
     {
@@ -312,7 +323,7 @@ describe("contraindication matching over real data", () => {
       key: "quad_strain",
       blocked: [
         "Back Squat", "Thruster", "Wall Ball", "Box Jump", "Run",
-        "Jumping Lunge", "Dumbbell Lunge", "Goblet Lunge", "Front Rack Lunge",
+        "Jumping Lunge", "Dumbbell Lunge", "Kettlebell Lunge", "Front Rack Lunge",
         "Back Rack Lunge", "Overhead Lunge", "Dumbbell Overhead Lunge",
         "Dumbbell Front Rack Lunge",
       ],
