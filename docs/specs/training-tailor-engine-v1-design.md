@@ -133,18 +133,23 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   `barbell | dumbbell | kettlebell | pullup_bar | rings | box | ramp | bench |
   ghd | band | jump_rope | rower | bike | wall_ball` — an AND-set matched by subset against the
   athlete's equipment; empty = needs nothing; values added lazily, only when
-  availability-relevant), skill, substitutes[].
+  availability-relevant), skill, substitutes[], aliases[] (ingestion shorthand —
+  e.g. `T2B`, `DB Snatch` — used to match pasted workout text to the movement).
   Patterns drive substitution and programming balance; positions drive what the
   body can do; stresses drive safety filtering; equipment drives what the gym
   allows — four independent axes. Equipment is **not** a contraindication: a
   missing item filters substitution candidates and flags the original movement as
-  unavailable today; it does not hard-block like an injury. It names the
-  *typical* implement, not an exclusive requirement, and deliberately models
-  neither **count** nor **interchangeable implements**: one dumbbell instead of
-  two changes no pattern, stress, or substitution, so the engine adjusts the rep
-  scheme to preserve the stimulus rather than swapping the movement; and a goblet
-  squat held with a dumbbell is the same goblet squat. Both are resolved at
-  tailoring time. Substitutes are
+  unavailable today; it does not hard-block like an injury. **Count** is not
+  modeled — one dumbbell instead of two changes no pattern, stress, or
+  substitution, so the engine adjusts the rep scheme to preserve the stimulus
+  rather than swapping the movement, resolved at tailoring time.
+  **Interchangeable implements** (a lift that admits either a dumbbell or a
+  kettlebell) *are* modeled, as **one movement per implement** — e.g. `Dumbbell
+  Snatch` and `Kettlebell Snatch` — so their stresses can diverge later if a rack
+  position ever warrants it, and so a pasted "KB snatch" resolves to its own
+  canonical row instead of relying on the LLM to bridge it to a dumbbell name. The
+  twin rows carry identical stresses today and list each other as substitutes.
+  Substitutes are
   *stimulus-preserving alternatives*, not scaling progressions — they may be
   harder than the movement itself; the tailoring step picks direction using
   `skill` and the reason the original is unavailable. `substitutes[]` is the

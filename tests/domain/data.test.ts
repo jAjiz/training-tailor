@@ -104,6 +104,27 @@ describe("domain data integrity", () => {
     expect(byName("Ring Muscle-up").substitutes).toContain("Bar Muscle-up");
   });
 
+  it("aliases are unique and never collide with a canonical name", () => {
+    const names = new Set(movements.map((m) => m.name));
+    const seen = new Set<string>();
+    for (const m of movements) {
+      for (const a of m.aliases) {
+        expect(names.has(a), `${a} collides with a movement name`).toBe(false);
+        expect(seen.has(a), `${a} is used by more than one movement`).toBe(false);
+        seen.add(a);
+      }
+    }
+  });
+
+  it("resolves common workout shorthand to the movement", () => {
+    const byAlias = (a: string) => movements.find((m) => m.aliases.includes(a));
+    expect(byAlias("T2B")?.name).toBe("Toes-to-Bar");
+    expect(byAlias("HSPU")?.name).toBe("Handstand Push-up");
+    expect(byAlias("KB Snatch")?.name).toBe("Kettlebell Snatch");
+    expect(byAlias("DB Snatch")?.name).toBe("Dumbbell Snatch");
+    expect(byAlias("C&J")?.name).toBe("Clean & Jerk");
+  });
+
   it("no contraindication relies on an explicit movement override", () => {
     for (const i of injuries) expect(i.avoidMovements, i.injuryKey).toEqual([]);
   });

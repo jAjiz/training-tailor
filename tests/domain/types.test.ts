@@ -57,6 +57,22 @@ describe("domain schemas", () => {
     expect(m.stresses[0].site).toBe("triceps");
   });
 
+  it("defaults aliases to an empty array when omitted", () => {
+    const m = MovementSchema.parse({
+      name: "X", patterns: ["squat"], positions: [], stresses: [],
+      equipment: [], skill: "beginner", substitutes: [],
+    });
+    expect(m.aliases).toEqual([]);
+  });
+
+  it("accepts aliases", () => {
+    const m = MovementSchema.parse({
+      name: "Toes-to-Bar", patterns: ["core"], positions: ["hanging"], stresses: [],
+      equipment: ["pullup_bar"], skill: "intermediate", substitutes: [], aliases: ["T2B", "TTB"],
+    });
+    expect(m.aliases).toEqual(["T2B", "TTB"]);
+  });
+
   it("accepts deep_extension as a stress mechanism", () => {
     const m = MovementSchema.parse({
       name: "Ring Dip", patterns: ["vertical_push"], positions: [],

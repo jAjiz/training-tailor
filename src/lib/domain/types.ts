@@ -80,6 +80,8 @@ export const MovementSchema = z.object({
   equipment: z.array(Equipment),
   skill: SkillLevel,
   substitutes: z.array(z.string()),
+  // Ingestion synonyms: shorthand a pasted workout may use for this movement.
+  aliases: z.array(z.string()).default([]),
 });
 export type Movement = z.infer<typeof MovementSchema>;
 
