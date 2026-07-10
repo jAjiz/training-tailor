@@ -126,6 +126,45 @@ describe("domain data integrity", () => {
     }
   });
 
+  it("no lunge reaches end-range flexion, loaded or not", () => {
+    for (const m of movements.filter((mv) => mv.patterns[0] === "lunge")) {
+      for (const s of m.stresses) expect(s.mechanisms.includes("deep_flexion"), m.name).toBe(false);
+    }
+  });
+
+  it("every loaded lunge scales down to the bodyweight lunge", () => {
+    expect(byName("Lunge").substitutes).toEqual(["Step-up"]);
+    const loaded = movements.filter(
+      (mv) => mv.patterns[0] === "lunge" && !["Lunge", "Step-up"].includes(mv.name)
+    );
+    expect(loaded.length).toBeGreaterThanOrEqual(7);
+    for (const m of loaded) expect(m.substitutes, m.name).toContain("Lunge");
+  });
+
+  it("the lunge load position decides the wrist and shoulder stress", () => {
+    const has = (name: string, site: string) => byName(name).stresses.some((s) => s.site === site);
+    expect(has("Front Rack Lunge", "wrist")).toBe(true);
+    expect(has("Dumbbell Front Rack Lunge", "wrist")).toBe(false);
+    expect(has("Overhead Lunge", "shoulder")).toBe(true);
+    expect(has("Back Rack Lunge", "shoulder")).toBe(false);
+    expect(has("Dumbbell Lunge", "lumbar")).toBe(false);
+    expect(has("Back Rack Lunge", "lumbar")).toBe(true);
+  });
+
+  it("the dumbbell and goblet lunges differ only by implement", () => {
+    expect(byName("Dumbbell Lunge").equipment).toEqual(["dumbbell"]);
+    expect(byName("Goblet Lunge").equipment).toEqual(["kettlebell"]);
+    expect(byName("Goblet Lunge").stresses).toEqual(byName("Dumbbell Lunge").stresses);
+  });
+
+  it("only the jumping lunge carries impact", () => {
+    for (const m of movements.filter((mv) => mv.patterns[0] === "lunge")) {
+      const impact = m.stresses.some((s) => s.mechanisms.includes("impact"));
+      expect(impact, m.name).toBe(m.name === "Jumping Lunge");
+    }
+    expect(byName("Jumping Lunge").patterns).toEqual(["lunge", "jump"]);
+  });
+
   it("no site carries both a mid-range mechanism and its end-range grade", () => {
     const graded = [["flexion", "deep_flexion"], ["extension", "deep_extension"]] as const;
     for (const m of movements) {
@@ -171,6 +210,7 @@ describe("contraindication matching over real data", () => {
         "Squat Snatch", "Clean & Jerk", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
         "Box Handstand Hold", "Knees-to-Elbows", "Ring Dip",
+        "Overhead Lunge", "Dumbbell Overhead Lunge",
         "Dumbbell Snatch", "Dumbbell Split Jerk", "Dumbbell Clean & Jerk",
         "Dumbbell Overhead Squat", "Dumbbell Squat Snatch",
       ],
@@ -178,6 +218,7 @@ describe("contraindication matching over real data", () => {
         "Bench Press", "Ring Row", "Banded Pull-up", "Squat Clean", "Dead Hang", "Plank",
         "Push-up", "Knee Push-up",
         "Dumbbell Clean", "Dumbbell Deadlift", "Dumbbell Front Squat",
+        "Front Rack Lunge", "Back Rack Lunge",
       ],
     },
     {
@@ -185,8 +226,12 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Deadlift", "Kettlebell Swing", "Power Clean", "Power Snatch", "GHD Sit-up",
         "Dumbbell Deadlift", "Dumbbell Clean", "Dumbbell Snatch",
+        "Back Rack Lunge", "Front Rack Lunge", "Overhead Lunge",
       ],
-      allowed: ["Romanian Deadlift", "Goblet Squat", "Bike (Erg)", "V-up", "Sit-up"],
+      allowed: [
+        "Romanian Deadlift", "Goblet Squat", "Bike (Erg)", "V-up", "Sit-up",
+        "Lunge", "Dumbbell Lunge", "Goblet Lunge",
+      ],
     },
     {
       key: "knee_pain",
@@ -194,11 +239,12 @@ describe("contraindication matching over real data", () => {
         "Back Squat", "Front Squat", "Thruster", "Wall Ball", "Run", "Box Jump",
         "Overhead Squat", "Squat Clean", "Squat Snatch", "Clean & Jerk",
         "Dumbbell Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
-        "Dumbbell Squat Clean", "Dumbbell Squat Snatch",
+        "Dumbbell Squat Clean", "Dumbbell Squat Snatch", "Jumping Lunge",
       ],
       allowed: [
         "Box Squat", "Air Squat", "Bike (Erg)", "Step-up", "Power Clean",
         "Dumbbell Deadlift", "Dumbbell Clean",
+        "Lunge", "Dumbbell Lunge", "Back Rack Lunge",
       ],
     },
     {
@@ -208,12 +254,14 @@ describe("contraindication matching over real data", () => {
         "Overhead Squat", "Push Jerk", "Bar Muscle-up",
         "Strict Handstand Push-up", "Wall-facing Handstand Push-up",
         "Handstand Hold", "Handstand Walk", "Wall Climb", "Box Handstand Hold",
+        "Front Rack Lunge", "Overhead Lunge",
       ],
       allowed: [
         "Dumbbell Shoulder Press", "Dumbbell Bench Press", "Ring Row",
         "Ring Muscle-up", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Dumbbell Overhead Hold", "Plank",
         "Dumbbell Snatch", "Dumbbell Squat Clean", "Dumbbell Overhead Squat",
+        "Dumbbell Front Rack Lunge", "Dumbbell Overhead Lunge", "Back Rack Lunge",
       ],
     },
     {
@@ -226,8 +274,8 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "ankle_sprain",
-      blocked: ["Run", "Double-under", "Burpee", "Box Jump"],
-      allowed: ["Row (Erg)", "Bike (Erg)", "Up-Down"],
+      blocked: ["Run", "Double-under", "Burpee", "Box Jump", "Jumping Lunge"],
+      allowed: ["Row (Erg)", "Bike (Erg)", "Up-Down", "Lunge", "Step-up"],
     },
     {
       key: "neck_strain",
@@ -245,6 +293,7 @@ describe("contraindication matching over real data", () => {
       allowed: [
         "Air Squat", "Box Squat", "Step-up", "Deadlift", "Kettlebell Swing",
         "Power Clean", "Power Snatch", "Bike (Erg)", "Run",
+        "Lunge", "Front Rack Lunge",
       ],
     },
     {
@@ -261,8 +310,13 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "quad_strain",
-      blocked: ["Back Squat", "Thruster", "Wall Ball", "Box Jump", "Run"],
-      allowed: ["Air Squat", "Box Squat", "Step-up", "Bike (Erg)", "Row (Erg)"],
+      blocked: [
+        "Back Squat", "Thruster", "Wall Ball", "Box Jump", "Run",
+        "Jumping Lunge", "Dumbbell Lunge", "Goblet Lunge", "Front Rack Lunge",
+        "Back Rack Lunge", "Overhead Lunge", "Dumbbell Overhead Lunge",
+        "Dumbbell Front Rack Lunge",
+      ],
+      allowed: ["Air Squat", "Box Squat", "Step-up", "Bike (Erg)", "Row (Erg)", "Lunge"],
     },
     {
       key: "hamstring_strain",
@@ -271,7 +325,7 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "calf_strain",
-      blocked: ["Run", "Double-under", "Single-under", "Box Jump"],
+      blocked: ["Run", "Double-under", "Single-under", "Box Jump", "Jumping Lunge"],
       allowed: ["Bike (Erg)", "Row (Erg)", "Air Squat"],
     },
     {
@@ -358,6 +412,11 @@ describe("contraindication matching over real data", () => {
       .substitutes.map(byName)
       .filter((m) => !matchesContraindication(m, injury("quad_strain")));
     expect(usable.map((m) => m.name)).toEqual(["Row (Erg)", "Bike (Erg)"]);
+  });
+
+  it("the bodyweight lunge survives every contraindication", () => {
+    const lunge = byName("Lunge");
+    for (const i of injuries) expect(matchesContraindication(lunge, i), i.injuryKey).toBe(false);
   });
 
   it("the plank survives every contraindication", () => {
