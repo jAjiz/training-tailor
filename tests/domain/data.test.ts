@@ -178,6 +178,11 @@ describe("contraindication matching over real data", () => {
       allowed: ["Row (Erg)", "Bike (Erg)", "Up-Down"],
     },
     {
+      key: "neck_strain",
+      blocked: ["Handstand Push-up", "Strict Handstand Push-up", "Wall-facing Handstand Push-up"],
+      allowed: ["Handstand Hold", "Handstand Walk", "Wall Climb", "Shoulder Press", "Push-up", "Plank"],
+    },
+    {
       key: "hip_flexor_strain",
       blocked: [
         "Toes-to-Bar", "Run", "Power Clean", "Power Snatch",
