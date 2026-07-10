@@ -47,7 +47,7 @@ export const Site = z.enum([
   // joints & spine
   "shoulder", "elbow", "wrist", "neck", "lumbar", "hip", "knee", "ankle",
   // muscle groups
-  "quads", "hamstrings", "calves", "hip_flexors", "chest", "biceps",
+  "quads", "hamstrings", "calves", "hip_flexors", "chest", "biceps", "lats",
 ]);
 
 // Clinically significant (loaded or forceful) stress only, so load is implied and

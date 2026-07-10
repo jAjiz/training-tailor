@@ -57,6 +57,12 @@ describe("domain data integrity", () => {
     }
   });
 
+  it("lat stress only appears on movements that kip", () => {
+    for (const m of movements.filter((mv) => mv.stresses.some((s) => s.site === "lats"))) {
+      expect(m.stresses.some((s) => s.mechanisms.includes("kipping")), m.name).toBe(true);
+    }
+  });
+
   it("toes-to-bar scales through knees-to-elbows to the strict knee raise", () => {
     expect(byName("Toes-to-Bar").substitutes[0]).toBe("Knees-to-Elbows");
     expect(byName("Knees-to-Elbows").substitutes[0]).toBe("Hanging Knee Raise");
@@ -207,6 +213,11 @@ describe("contraindication matching over real data", () => {
       key: "biceps_strain",
       blocked: ["Pull-up", "Bar Muscle-up", "Ring Muscle-up", "Chest-to-Bar"],
       allowed: ["Ring Row", "Banded Pull-up", "Push-up"],
+    },
+    {
+      key: "lat_strain",
+      blocked: ["Pull-up", "Chest-to-Bar", "Bar Muscle-up", "Ring Muscle-up", "Toes-to-Bar", "Knees-to-Elbows"],
+      allowed: ["Ring Row", "Banded Pull-up", "Dead Hang", "Hanging Knee Raise", "Bike (Erg)", "Plank"],
     },
     {
       key: "no_hanging",
