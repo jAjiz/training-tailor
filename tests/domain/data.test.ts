@@ -102,6 +102,20 @@ describe("domain data integrity", () => {
     }
     expect(keys.has("aerobic_capacity")).toBe(true);
   });
+
+  it("loaded deep knee flexion always travels with deep hip flexion", () => {
+    for (const m of movements) {
+      const deepKnee = m.stresses.some((s) => s.site === "knee" && s.mechanisms.includes("deep_flexion"));
+      const deepHip = m.stresses.some((s) => s.site === "hip" && s.mechanisms.includes("deep_flexion"));
+      expect(deepKnee, m.name).toBe(deepHip);
+    }
+  });
+
+  it("every site annotated on a movement is blocked by some contraindication", () => {
+    const movementSites = new Set(movements.flatMap((m) => m.stresses.map((s) => s.site)));
+    const blockedSites = new Set(injuries.flatMap((i) => i.avoidStresses.map((s) => s.site)));
+    for (const site of movementSites) expect(blockedSites.has(site), site).toBe(true);
+  });
 });
 
 describe("contraindication matching over real data", () => {
@@ -181,6 +195,19 @@ describe("contraindication matching over real data", () => {
       key: "neck_strain",
       blocked: ["Handstand Push-up", "Strict Handstand Push-up", "Wall-facing Handstand Push-up"],
       allowed: ["Handstand Hold", "Handstand Walk", "Wall Climb", "Shoulder Press", "Push-up", "Plank"],
+    },
+    {
+      key: "hip_impingement",
+      blocked: [
+        "Back Squat", "Front Squat", "Goblet Squat", "Overhead Squat", "Thruster", "Wall Ball",
+        "Squat Clean", "Squat Snatch", "Clean & Jerk",
+        "Dumbbell Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
+        "Dumbbell Squat Clean", "Dumbbell Squat Snatch",
+      ],
+      allowed: [
+        "Air Squat", "Box Squat", "Step-up", "Deadlift", "Kettlebell Swing",
+        "Power Clean", "Power Snatch", "Bike (Erg)", "Run",
+      ],
     },
     {
       key: "hip_flexor_strain",
