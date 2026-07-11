@@ -73,6 +73,16 @@ describe("domain data integrity", () => {
     expect(byName("Knees-to-Elbows").substitutes[0]).toBe("Hanging Knee Raise");
   });
 
+  it("the farmer carry is a loaded carry with a per-implement row", () => {
+    for (const name of ["Dumbbell Farmer Carry", "Kettlebell Farmer Carry"]) {
+      const m = byName(name);
+      expect(m.patterns).toEqual(["carry"]);
+      expect(m.stresses).toEqual([{ site: "lumbar", mechanisms: ["compression"] }]);
+    }
+    expect(byName("Dumbbell Farmer Carry").equipment).toEqual(["dumbbell"]);
+    expect(byName("Kettlebell Farmer Carry").equipment).toEqual(["kettlebell"]);
+  });
+
   it("the GHD sit-up requires a GHD and scales to the V-up", () => {
     expect(byName("GHD Sit-up").equipment).toEqual(["ghd"]);
     expect(byName("GHD Sit-up").substitutes[0]).toBe("V-up");
