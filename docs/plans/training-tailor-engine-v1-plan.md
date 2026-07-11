@@ -278,7 +278,7 @@ git commit -m "feat: domain types and Zod schemas (movement, injury, stimulus)"
 
 ### Task 2.2: Author the versioned domain data JSON — ✅ DONE
 
-> **Status: completed** in commits `3521d8a`…`db870b5`. The catalog is 90 movements and
+> **Status: completed** in commits `3521d8a`…`db870b5`. The catalog is 91 movements and
 > 18 contraindication entries (16 injuries + 2 positional limitations).
 
 > These files are the domain **source of truth** (nothing gets seeded into a DB — see Task 2.3). "Seed" in the test-file name just means "starting dataset".

@@ -357,7 +357,7 @@ describe("contraindication matching over real data", () => {
     },
     {
       key: "hamstring_strain",
-      blocked: ["Deadlift", "Romanian Deadlift", "Kettlebell Swing", "Run"],
+      blocked: ["Deadlift", "Romanian Deadlift", "Dumbbell Deadlift", "Kettlebell Deadlift", "Kettlebell Swing", "Run"],
       allowed: ["Bike (Erg)", "Air Squat", "Shoulder Press"],
     },
     {
