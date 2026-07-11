@@ -57,6 +57,14 @@ describe("domain schemas", () => {
     expect(m.stresses[0].site).toBe("triceps");
   });
 
+  it("accepts air_bike as equipment", () => {
+    const m = MovementSchema.parse({
+      name: "Air Bike", patterns: ["monostructural"], positions: [], stresses: [],
+      equipment: ["air_bike"], skill: "beginner", substitutes: [],
+    });
+    expect(m.equipment).toEqual(["air_bike"]);
+  });
+
   it("defaults aliases to an empty array when omitted", () => {
     const m = MovementSchema.parse({
       name: "X", patterns: ["squat"], positions: [], stresses: [],
