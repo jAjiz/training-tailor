@@ -44,11 +44,16 @@ describe("domain data integrity", () => {
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
   });
 
-  it("the goblet and dumbbell squats differ by implement and cover for each other", () => {
-    expect(byName("Goblet Squat").equipment).toEqual(["kettlebell"]);
-    expect(byName("Dumbbell Squat").equipment).toEqual(["dumbbell"]);
-    expect(byName("Goblet Squat").substitutes).toContain("Dumbbell Squat");
-    expect(byName("Dumbbell Squat").substitutes).toContain("Goblet Squat");
+  it("the goblet squat has one row per implement, each scaling only to the air squat", () => {
+    expect(byName("Dumbbell Goblet Squat").equipment).toEqual(["dumbbell"]);
+    expect(byName("Kettlebell Goblet Squat").equipment).toEqual(["kettlebell"]);
+    expect(byName("Dumbbell Goblet Squat").substitutes).toEqual(["Air Squat"]);
+    expect(byName("Kettlebell Goblet Squat").substitutes).toEqual(["Air Squat"]);
+    expect(byName("Kettlebell Goblet Squat").stresses).toEqual(byName("Dumbbell Goblet Squat").stresses);
+  });
+
+  it("removed the redundant dumbbell squat", () => {
+    expect(movements.some((m) => m.name === "Dumbbell Squat")).toBe(false);
   });
 
   it("no dumbbell movement loads the wrist in extension", () => {
@@ -172,7 +177,7 @@ describe("domain data integrity", () => {
     expect(has("Back Rack Lunge", "lumbar")).toBe(true);
   });
 
-  it("each kettlebell lift mirrors its dumbbell twin and they cover for each other", () => {
+  it("each kettlebell lift mirrors the stresses of its dumbbell twin", () => {
     const names = new Set(movements.map((m) => m.name));
     const twins = movements.filter(
       (m) => m.name.startsWith("Kettlebell ") && names.has("Dumbbell " + m.name.slice("Kettlebell ".length))
@@ -186,8 +191,6 @@ describe("domain data integrity", () => {
       expect(kb.patterns, kb.name).toEqual(db.patterns);
       expect(kb.skill, kb.name).toBe(db.skill);
       expect(kb.stresses, kb.name).toEqual(db.stresses);
-      expect(kb.substitutes, kb.name).toContain(db.name);
-      expect(db.substitutes, db.name).toContain(kb.name);
     }
   });
 
@@ -263,7 +266,7 @@ describe("contraindication matching over real data", () => {
         "Back Rack Lunge", "Front Rack Lunge", "Overhead Lunge",
       ],
       allowed: [
-        "Romanian Deadlift", "Goblet Squat", "Bike (Erg)", "V-up", "Sit-up",
+        "Romanian Deadlift", "Kettlebell Goblet Squat", "Bike (Erg)", "V-up", "Sit-up",
         "Lunge", "Dumbbell Lunge", "Kettlebell Lunge",
       ],
     },
@@ -272,7 +275,7 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Back Squat", "Front Squat", "Thruster", "Wall Ball", "Run", "Box Jump",
         "Overhead Squat", "Squat Clean", "Squat Snatch", "Clean & Jerk",
-        "Dumbbell Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
+        "Dumbbell Goblet Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
         "Dumbbell Squat Clean", "Dumbbell Squat Snatch", "Jumping Lunge",
       ],
       allowed: [
@@ -319,9 +322,9 @@ describe("contraindication matching over real data", () => {
     {
       key: "hip_impingement",
       blocked: [
-        "Back Squat", "Front Squat", "Goblet Squat", "Overhead Squat", "Thruster", "Wall Ball",
+        "Back Squat", "Front Squat", "Kettlebell Goblet Squat", "Overhead Squat", "Thruster", "Wall Ball",
         "Squat Clean", "Squat Snatch", "Clean & Jerk",
-        "Dumbbell Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
+        "Dumbbell Goblet Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
         "Dumbbell Squat Clean", "Dumbbell Squat Snatch",
       ],
       allowed: [
