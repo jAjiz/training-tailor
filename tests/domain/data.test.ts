@@ -203,6 +203,14 @@ describe("domain data integrity", () => {
     }
   });
 
+  it("the cluster is a clean into a thruster, driving the quads ballistically", () => {
+    const c = byName("Cluster");
+    expect(c.stresses.find((s) => s.site === "quads")?.mechanisms).toEqual(["eccentric", "ballistic"]);
+    expect(c.stresses.some((s) => s.site === "shoulder" && s.mechanisms.includes("overhead"))).toBe(true);
+    expect(c.stresses.some((s) => s.site === "hip_flexors" && s.mechanisms.includes("ballistic"))).toBe(true);
+    expect(c.substitutes).toEqual(["Thruster", "Clean & Jerk"]);
+  });
+
   it("only the jumping lunge carries impact", () => {
     for (const m of movements.filter((mv) => mv.patterns[0] === "lunge")) {
       const impact = m.stresses.some((s) => s.mechanisms.includes("impact"));
@@ -253,7 +261,7 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Shoulder Press", "Push Press", "Handstand Push-up", "Power Snatch",
         "Bar Muscle-up", "Ring Muscle-up", "Overhead Squat", "Push Jerk", "Split Jerk",
-        "Squat Snatch", "Clean & Jerk", "Dumbbell Push Press", "Dumbbell Push Jerk",
+        "Squat Snatch", "Clean & Jerk", "Cluster", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
         "Box Handstand Hold", "Knees-to-Elbows", "Ring Dip",
         "Overhead Lunge", "Dumbbell Overhead Lunge",
@@ -283,7 +291,7 @@ describe("contraindication matching over real data", () => {
       key: "knee_pain",
       blocked: [
         "Back Squat", "Front Squat", "Thruster", "Wall Ball", "Run", "Box Jump",
-        "Overhead Squat", "Squat Clean", "Squat Snatch", "Clean & Jerk",
+        "Overhead Squat", "Squat Clean", "Squat Snatch", "Clean & Jerk", "Cluster",
         "Dumbbell Goblet Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
         "Dumbbell Squat Clean", "Dumbbell Squat Snatch", "Jumping Lunge",
       ],
@@ -357,7 +365,7 @@ describe("contraindication matching over real data", () => {
     {
       key: "quad_strain",
       blocked: [
-        "Back Squat", "Thruster", "Wall Ball", "Box Jump", "Run",
+        "Back Squat", "Thruster", "Wall Ball", "Box Jump", "Run", "Cluster",
         "Jumping Lunge", "Dumbbell Lunge", "Kettlebell Lunge", "Front Rack Lunge",
         "Back Rack Lunge", "Overhead Lunge", "Dumbbell Overhead Lunge",
         "Dumbbell Front Rack Lunge",
