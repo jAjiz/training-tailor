@@ -131,7 +131,7 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
   ballistic | impact | traction | kipping | eccentric` — a mid-range mechanism and
   its end-range grade are mutually exclusive on any one site), equipment[] (required-equipment enum:
   `barbell | dumbbell | kettlebell | pullup_bar | rings | box | ramp | bench |
-  ghd | band | jump_rope | rower | bike | wall_ball` — an AND-set matched by subset against the
+  ghd | band | jump_rope | rower | bike | air_bike | wall_ball` — an AND-set matched by subset against the
   athlete's equipment; empty = needs nothing; values added lazily, only when
   availability-relevant), skill, substitutes[], aliases[] (ingestion shorthand —
   e.g. `T2B`, `DB Snatch` — used to match pasted workout text to the movement).
@@ -227,7 +227,7 @@ are versioned JSON in the repo (see Domain data above) — same shapes, no table
 - **Domain data authoring:** manually authored, enforced by schema-validation and
   referential-integrity tests (every substitute / avoided movement must exist in
   the movement library).
-- **Minimum viable seed size:** ~91 movements, 18 contraindication entries
+- **Minimum viable seed size:** ~92 movements, 18 contraindication entries
   (16 injuries + 2 positional limitations), 7 stimulus tags.
 
 ## Next steps

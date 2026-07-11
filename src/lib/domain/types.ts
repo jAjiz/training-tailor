@@ -16,7 +16,8 @@ export const Equipment = z.enum([
   "band",
   "jump_rope",
   "rower",
-  "bike",
+  "bike",      // heavy flywheel cycle-ergometer, legs only (e.g. BikeErg)
+  "air_bike",  // fan bike, arms and legs (e.g. Assault/Echo Bike)
   "wall_ball",
 ]);
 

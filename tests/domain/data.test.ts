@@ -79,6 +79,15 @@ describe("domain data integrity", () => {
     expect(byName("V-up").equipment).toEqual([]);
   });
 
+  it("the air bike and the bike erg are distinct machines that cover for each other", () => {
+    expect(byName("Air Bike").equipment).toEqual(["air_bike"]);
+    expect(byName("Bike (Erg)").equipment).toEqual(["bike"]);
+    expect(byName("Air Bike").substitutes).toContain("Bike (Erg)");
+    expect(byName("Bike (Erg)").substitutes).toContain("Air Bike");
+    expect(byName("Air Bike").aliases).toContain("Assault Bike");
+    expect(byName("Bike (Erg)").aliases).not.toContain("Assault Bike");
+  });
+
   it("the ring dip requires rings and scales to the push-up", () => {
     expect(byName("Ring Dip").equipment).toEqual(["rings"]);
     expect(byName("Ring Dip").substitutes[0]).toBe("Push-up");
