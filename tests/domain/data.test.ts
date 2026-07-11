@@ -196,6 +196,30 @@ describe("domain data integrity", () => {
     expect(has("Back Rack Lunge", "lumbar")).toBe(true);
   });
 
+  it("each d-ball lift mirrors the stresses of its sandbag twin", () => {
+    const names = new Set(movements.map((m) => m.name));
+    const twins = movements.filter(
+      (m) => m.name.startsWith("D-Ball ") && names.has("Sandbag " + m.name.slice("D-Ball ".length))
+    );
+    expect(twins.length).toBeGreaterThanOrEqual(5);
+    for (const db of twins) {
+      const sb = byName("Sandbag " + db.name.slice("D-Ball ".length));
+      expect(db.equipment, db.name).toEqual(["d_ball"]);
+      expect(db.patterns, db.name).toEqual(sb.patterns);
+      expect(db.skill, db.name).toBe(sb.skill);
+      expect(db.stresses, db.name).toEqual(sb.stresses);
+    }
+  });
+
+  it("the d-ball is the only odd object that goes overhead, and carries no quads there", () => {
+    expect(movements.some((m) => m.name === "Sandbag Ground-to-Overhead")).toBe(false);
+    const g2o = byName("D-Ball Ground-to-Overhead");
+    expect(g2o.equipment).toEqual(["d_ball"]);
+    expect(g2o.patterns).toEqual(["hinge", "vertical_push"]);
+    expect(g2o.stresses.some((s) => s.site === "shoulder" && s.mechanisms.includes("overhead"))).toBe(true);
+    expect(g2o.stresses.some((s) => s.site === "quads")).toBe(false);
+  });
+
   it("only barbell lifts carry the olympic pattern", () => {
     for (const m of movements.filter((mv) => mv.patterns.includes("olympic"))) {
       expect(m.equipment, m.name).toContain("barbell");
@@ -277,7 +301,8 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Shoulder Press", "Push Press", "Handstand Push-up", "Power Snatch",
         "Bar Muscle-up", "Ring Muscle-up", "Overhead Squat", "Push Jerk", "Split Jerk",
-        "Squat Snatch", "Clean & Jerk", "Cluster", "Dumbbell Push Press", "Dumbbell Push Jerk",
+        "Squat Snatch", "Clean & Jerk", "Cluster", "D-Ball Ground-to-Overhead",
+        "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
         "Box Handstand Hold", "Knees-to-Elbows", "Ring Dip",
         "Overhead Lunge", "Dumbbell Overhead Lunge",
@@ -297,6 +322,7 @@ describe("contraindication matching over real data", () => {
         "Deadlift", "Kettlebell Swing", "Power Clean", "Power Snatch", "GHD Sit-up",
         "Dumbbell Deadlift", "Dumbbell Clean", "Dumbbell Snatch",
         "Back Rack Lunge", "Front Rack Lunge", "Overhead Lunge",
+        "Sandbag Squat", "Sandbag Carry", "Sandbag Hold", "D-Ball Ground-to-Overhead",
       ],
       allowed: [
         "Romanian Deadlift", "Kettlebell Goblet Squat", "Bike (Erg)", "V-up", "Sit-up",
@@ -310,6 +336,7 @@ describe("contraindication matching over real data", () => {
         "Overhead Squat", "Squat Clean", "Squat Snatch", "Clean & Jerk", "Cluster",
         "Dumbbell Goblet Squat", "Dumbbell Front Squat", "Dumbbell Overhead Squat",
         "Dumbbell Squat Clean", "Dumbbell Squat Snatch", "Jumping Lunge",
+        "Sandbag Squat", "D-Ball Squat",
       ],
       allowed: [
         "Box Squat", "Air Squat", "Bike (Erg)", "Step-up", "Power Clean",
@@ -384,13 +411,13 @@ describe("contraindication matching over real data", () => {
         "Back Squat", "Thruster", "Wall Ball", "Box Jump", "Run", "Cluster",
         "Jumping Lunge", "Dumbbell Lunge", "Kettlebell Lunge", "Front Rack Lunge",
         "Back Rack Lunge", "Overhead Lunge", "Dumbbell Overhead Lunge",
-        "Dumbbell Front Rack Lunge",
+        "Dumbbell Front Rack Lunge", "Sandbag Lunge", "D-Ball Squat",
       ],
       allowed: ["Air Squat", "Box Squat", "Step-up", "Bike (Erg)", "Row (Erg)", "Lunge"],
     },
     {
       key: "hamstring_strain",
-      blocked: ["Deadlift", "Romanian Deadlift", "Dumbbell Deadlift", "Kettlebell Deadlift", "Kettlebell Swing", "Run"],
+      blocked: ["Deadlift", "Romanian Deadlift", "Dumbbell Deadlift", "Kettlebell Deadlift", "Kettlebell Swing", "Run", "Sandbag Clean", "D-Ball Ground-to-Overhead"],
       allowed: ["Bike (Erg)", "Air Squat", "Shoulder Press"],
     },
     {
