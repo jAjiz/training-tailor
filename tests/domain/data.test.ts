@@ -177,7 +177,9 @@ describe("domain data integrity", () => {
     const twins = movements.filter(
       (m) => m.name.startsWith("Kettlebell ") && names.has("Dumbbell " + m.name.slice("Kettlebell ".length))
     );
-    expect(twins.length).toBeGreaterThanOrEqual(13);
+    expect(twins.length).toBeGreaterThanOrEqual(11);
+    expect(names.has("Kettlebell Squat Snatch"), "dropped as non-standard").toBe(false);
+    expect(names.has("Kettlebell Split Jerk"), "dropped as non-standard").toBe(false);
     for (const kb of twins) {
       const db = byName("Dumbbell " + kb.name.slice("Kettlebell ".length));
       expect(kb.equipment, kb.name).toEqual(["kettlebell"]);
