@@ -57,6 +57,16 @@ describe("domain schemas", () => {
     expect(m.stresses[0].site).toBe("triceps");
   });
 
+  it("accepts sandbag and d_ball as equipment", () => {
+    for (const e of ["sandbag", "d_ball"] as const) {
+      const m = MovementSchema.parse({
+        name: "X", patterns: ["carry"], positions: [], stresses: [],
+        equipment: [e], skill: "beginner", substitutes: [],
+      });
+      expect(m.equipment).toEqual([e]);
+    }
+  });
+
   it("accepts air_bike as equipment", () => {
     const m = MovementSchema.parse({
       name: "Air Bike", patterns: ["monostructural"], positions: [], stresses: [],

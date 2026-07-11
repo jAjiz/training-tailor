@@ -19,6 +19,8 @@ export const Equipment = z.enum([
   "bike",      // heavy flywheel cycle-ergometer, legs only (e.g. BikeErg)
   "air_bike",  // fan bike, arms and legs (e.g. Assault/Echo Bike)
   "wall_ball",
+  "sandbag",
+  "d_ball",    // dead ball: heavy non-bouncing ball, distinct from the light wall_ball
 ]);
 
 // Ordered primary-first (e.g. Thruster = ["squat", "vertical_push"]).
