@@ -186,6 +186,12 @@ describe("domain data integrity", () => {
     expect(has("Back Rack Lunge", "lumbar")).toBe(true);
   });
 
+  it("only barbell lifts carry the olympic pattern", () => {
+    for (const m of movements.filter((mv) => mv.patterns.includes("olympic"))) {
+      expect(m.equipment, m.name).toContain("barbell");
+    }
+  });
+
   it("each kettlebell lift mirrors the stresses of its dumbbell twin", () => {
     const names = new Set(movements.map((m) => m.name));
     const twins = movements.filter(
