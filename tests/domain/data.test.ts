@@ -68,6 +68,18 @@ describe("domain data integrity", () => {
     }
   });
 
+  it("the rope climb pulls without kipping, and the legless variant scales from it", () => {
+    const rc = byName("Rope Climb");
+    expect(rc.equipment).toEqual(["rope"]);
+    expect(rc.positions).toEqual(["hanging"]);
+    expect(rc.patterns).toEqual(["vertical_pull"]);
+    expect(rc.stresses.some((s) => s.mechanisms.includes("kipping"))).toBe(false);
+    expect(rc.stresses.some((s) => s.site === "lats")).toBe(false);
+    const legless = byName("Legless Rope Climb");
+    expect(legless.skill).toBe("advanced");
+    expect(legless.substitutes[0]).toBe("Rope Climb");
+  });
+
   it("the toes-to-ring mirrors the toes-to-bar on rings", () => {
     const ttr = byName("Toes-to-Ring");
     expect(ttr.equipment).toEqual(["rings"]);
@@ -389,7 +401,7 @@ describe("contraindication matching over real data", () => {
         "Bar Muscle-up", "Ring Muscle-up", "Pull-up", "Toes-to-Bar",
         "Chest-to-Bar", "Knees-to-Elbows",
       ],
-      allowed: ["Banded Pull-up", "Ring Row", "Dead Hang", "Hanging Knee Raise"],
+      allowed: ["Banded Pull-up", "Ring Row", "Dead Hang", "Hanging Knee Raise", "Rope Climb"],
     },
     {
       key: "ankle_sprain",
@@ -475,7 +487,7 @@ describe("contraindication matching over real data", () => {
       blocked: [
         "Pull-up", "Banded Pull-up", "Bar Muscle-up", "Ring Muscle-up",
         "Toes-to-Bar", "Toes-to-Ring", "Hanging Knee Raise", "Chest-to-Bar", "Dead Hang",
-        "Knees-to-Elbows",
+        "Knees-to-Elbows", "Rope Climb", "Legless Rope Climb",
       ],
       allowed: ["Ring Row", "Sit-up", "Shoulder Press", "Handstand Hold"],
     },
