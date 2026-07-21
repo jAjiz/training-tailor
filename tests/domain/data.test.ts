@@ -98,6 +98,12 @@ describe("domain data integrity", () => {
     expect(byName("Bike (Erg)").aliases).not.toContain("Assault Bike");
   });
 
+  it("the ski erg is a distinct ergometer that covers for the rower and bike", () => {
+    expect(byName("Ski (Erg)").equipment).toEqual(["ski_erg"]);
+    expect(byName("Ski (Erg)").patterns).toEqual(["monostructural"]);
+    expect(byName("Ski (Erg)").substitutes).toEqual(["Row (Erg)", "Bike (Erg)"]);
+  });
+
   it("the ring dip requires rings and scales to the push-up", () => {
     expect(byName("Ring Dip").equipment).toEqual(["rings"]);
     expect(byName("Ring Dip").substitutes[0]).toBe("Push-up");
