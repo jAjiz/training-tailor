@@ -68,6 +68,14 @@ describe("domain data integrity", () => {
     }
   });
 
+  it("the toes-to-ring mirrors the toes-to-bar on rings", () => {
+    const ttr = byName("Toes-to-Ring");
+    expect(ttr.equipment).toEqual(["rings"]);
+    expect(ttr.positions).toEqual(["hanging"]);
+    expect(ttr.stresses).toEqual(byName("Toes-to-Bar").stresses);
+    expect(ttr.substitutes[0]).toBe("Toes-to-Bar");
+  });
+
   it("toes-to-bar scales through knees-to-elbows to the strict knee raise", () => {
     expect(byName("Toes-to-Bar").substitutes[0]).toBe("Knees-to-Elbows");
     expect(byName("Knees-to-Elbows").substitutes[0]).toBe("Hanging Knee Raise");
@@ -466,7 +474,7 @@ describe("contraindication matching over real data", () => {
       key: "no_hanging",
       blocked: [
         "Pull-up", "Banded Pull-up", "Bar Muscle-up", "Ring Muscle-up",
-        "Toes-to-Bar", "Hanging Knee Raise", "Chest-to-Bar", "Dead Hang",
+        "Toes-to-Bar", "Toes-to-Ring", "Hanging Knee Raise", "Chest-to-Bar", "Dead Hang",
         "Knees-to-Elbows",
       ],
       allowed: ["Ring Row", "Sit-up", "Shoulder Press", "Handstand Hold"],
