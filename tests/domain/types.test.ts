@@ -67,6 +67,14 @@ describe("domain schemas", () => {
     }
   });
 
+  it("accepts ski_erg as equipment", () => {
+    const m = MovementSchema.parse({
+      name: "Ski (Erg)", patterns: ["monostructural"], positions: [], stresses: [],
+      equipment: ["ski_erg"], skill: "beginner", substitutes: [],
+    });
+    expect(m.equipment).toEqual(["ski_erg"]);
+  });
+
   it("accepts air_bike as equipment", () => {
     const m = MovementSchema.parse({
       name: "Air Bike", patterns: ["monostructural"], positions: [], stresses: [],
