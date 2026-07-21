@@ -14,6 +14,7 @@ export const Equipment = z.enum([
   "bench",
   "ghd",
   "band",
+  "rope",      // climbing rope
   "jump_rope",
   "rower",
   "ski_erg",   // upper-body pull ergometer (e.g. SkiErg)

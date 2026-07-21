@@ -67,6 +67,14 @@ describe("domain schemas", () => {
     }
   });
 
+  it("accepts rope as equipment", () => {
+    const m = MovementSchema.parse({
+      name: "Rope Climb", patterns: ["vertical_pull"], positions: ["hanging"], stresses: [],
+      equipment: ["rope"], skill: "intermediate", substitutes: [],
+    });
+    expect(m.equipment).toEqual(["rope"]);
+  });
+
   it("accepts ski_erg as equipment", () => {
     const m = MovementSchema.parse({
       name: "Ski (Erg)", patterns: ["monostructural"], positions: [], stresses: [],
