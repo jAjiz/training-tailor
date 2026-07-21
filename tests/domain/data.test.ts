@@ -281,6 +281,14 @@ describe("domain data integrity", () => {
     expect(deepExtension("Shoulder Press")).toBe(false);
   });
 
+  it("the devil press is a dumbbell burpee into an overhead snatch", () => {
+    const dp = byName("Devil Press");
+    expect(dp.equipment).toEqual(["dumbbell"]);
+    expect(dp.stresses.some((s) => s.site === "shoulder" && s.mechanisms.includes("overhead"))).toBe(true);
+    expect(dp.stresses.some((s) => s.site === "wrist")).toBe(false);
+    expect(dp.substitutes).toEqual(["Dumbbell Snatch", "Burpee"]);
+  });
+
   it("every site annotated on a movement is blocked by some contraindication", () => {
     const movementSites = new Set(movements.flatMap((m) => m.stresses.map((s) => s.site)));
     const blockedSites = new Set(injuries.flatMap((i) => i.avoidStresses.map((s) => s.site)));
@@ -302,7 +310,7 @@ describe("contraindication matching over real data", () => {
         "Shoulder Press", "Push Press", "Handstand Push-up", "Power Snatch",
         "Bar Muscle-up", "Ring Muscle-up", "Overhead Squat", "Push Jerk", "Split Jerk",
         "Squat Snatch", "Clean & Jerk", "Cluster", "D-Ball Ground-to-Overhead",
-        "Dumbbell Push Press", "Dumbbell Push Jerk",
+        "Devil Press", "Dumbbell Push Press", "Dumbbell Push Jerk",
         "Chest-to-Bar", "Handstand Hold", "Handstand Walk", "Wall Climb",
         "Box Handstand Hold", "Knees-to-Elbows", "Ring Dip",
         "Overhead Lunge", "Dumbbell Overhead Lunge",
