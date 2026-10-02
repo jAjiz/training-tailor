@@ -14,6 +14,7 @@
 
 - Package manager **pnpm**; platform Windows (commands are cross-platform unless noted).
 - **Prisma 7:** client generated to `src/generated/prisma`; import from `@/generated/prisma/client`, never `@prisma/client`. Schema changes go through `prisma migrate dev` (no `db push` after Task S1).
+- **Database (Neon):** local `.env` points at the Neon branch `dev`, never `production`. `DATABASE_URL` is the pooled connection (host ends in `-pooler`), used by the app in `src/lib/db.ts`; `DIRECT_URL` is the direct connection, used by the Prisma CLI through `prisma.config.ts`. Both use `sslmode=verify-full`.
 - **Boundary rule:** only `src/lib/ai/gemini-provider.ts` imports `@google/genai`. `src/lib/engine/**` and `src/lib/domain/**` never import Prisma, Next.js or a concrete provider.
 - **Domain data** lives in `data/*.json`, is edited only through scripts that use `scripts/lib/domain-json.mjs` (keeps the one-row-per-line style), and is validated by `tests/domain/*`.
 - **Model pinned:** `GEMINI_MODEL` default `gemini-3.8-flash`; never a `-latest` alias.
@@ -4485,7 +4486,7 @@ model LlmUsage {
 
 - [ ] **Step 5: Reset the dev database and create the initial migration**
 
-The dev database only holds throwaway data from `db push`; resetting it is expected.
+The dev database only holds throwaway data from `db push`; resetting it is expected. Before running it, confirm `DIRECT_URL` in `.env` points at the Neon `dev` branch: `migrate reset` drops every table on whatever database it targets.
 
 ```bash
 pnpm exec prisma migrate reset --force
@@ -6232,16 +6233,16 @@ git commit -m "feat: history of saved tailored workouts"
 
 - [ ] **Step 1: Rewrite `README.md`** with these sections, each short and concrete:
   1. **What it is** — one paragraph from the spec's *Problem*.
-  2. **Prerequisites** — Node 20+, pnpm, Postgres (local or Neon), a Gemini API key, a Google OAuth client.
-  3. **Setup** — `pnpm install` (runs `prisma generate`), copy `.env.example` to `.env` and fill it, `pnpm db:migrate`, `pnpm dev`. No seed step: domain data ships in `data/`.
+  2. **Prerequisites** — Node 20+, pnpm, a Neon project with a `dev` branch for local work, a Gemini API key, a Google OAuth client.
+  3. **Setup** — `pnpm install` (runs `prisma generate`), copy `.env.example` to `.env` and fill it (`DATABASE_URL` = pooled and `DIRECT_URL` = direct connection string of the Neon `dev` branch), `pnpm db:migrate`, `pnpm dev`. No seed step: domain data ships in `data/`.
   4. **Commands** — `pnpm test` (deterministic, no network/DB), `pnpm eval [caseId]`, `pnpm coverage`, `pnpm lint`, `pnpm build`, `pnpm db:migrate`, `pnpm db:deploy`, `pnpm db:studio`.
   5. **Architecture** — the pipeline diagram from the spec and the boundary rule.
   6. **Domain data** — where it lives, that it is edited through scripts using `scripts/lib/domain-json.mjs`, and that `tests/domain` guards it.
   7. **Safety** — fail-closed validation; not medical advice.
   8. **Private corpus** — `data/corpus/` and `reports/` are gitignored because the repo is public.
-  9. **Deploy (Vercel + Neon)** — create the Neon database; set every `.env.example` variable in Vercel (with `BETTER_AUTH_URL` = the production URL); add `https://<domain>/api/auth/callback/google` to the Google client; set the build command to `pnpm db:deploy && pnpm build`.
+  9. **Deploy (Vercel + Neon)** — use the Neon `production` branch; set every `.env.example` variable in Vercel (with `DATABASE_URL` / `DIRECT_URL` = the `production` branch's pooled / direct connection strings and `BETTER_AUTH_URL` = the production URL); add `https://<domain>/api/auth/callback/google` to the Google client; set the build command to `pnpm db:deploy && pnpm build`.
 
-- [ ] **Step 2: Check `.env.example`** lists exactly: `DATABASE_URL`, `AI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DAILY_ENGINE_LIMIT` — and no `AUTH_SECRET` or `EMAIL_*` leftovers.
+- [ ] **Step 2: Check `.env.example`** lists exactly: `DATABASE_URL`, `DIRECT_URL`, `AI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DAILY_ENGINE_LIMIT` — and no `AUTH_SECRET` or `EMAIL_*` leftovers.
 
 - [ ] **Step 3: Full verification**
 
