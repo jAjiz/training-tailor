@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "eval": "tsx scripts/eval.ts",
+    "coverage": "tsx scripts/coverage.ts"
   },
   "dependencies": {
     "@google/genai": "^2.25.0",
@@ -37,6 +39,7 @@
     "jsdom": "^29.1.1",
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^4.1.9"
   }

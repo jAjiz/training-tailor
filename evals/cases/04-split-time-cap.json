@@ -1,0 +1,7 @@
+{
+  "id": "split-time-cap",
+  "description": "Three-block session squeezed into 30 minutes",
+  "input": { "kind": "paste", "rawText": "A) Back Squat 5x5 @ 75%, rest 2 min\n\nB) For time, 21-15-9:\nPower Cleans 61/43 kg\nBurpee Box Jump Overs\n\nC) Accessory\n3x12 Dumbbell Rows\n3x20 GHD Sit-ups" },
+  "request": { "timeCapMinutes": 30 },
+  "expect": { "maxTotalMinutes": 33 }
+}

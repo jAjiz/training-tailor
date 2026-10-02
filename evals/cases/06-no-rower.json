@@ -1,0 +1,7 @@
+{
+  "id": "no-rower",
+  "description": "Rowing workout when the rower is not available",
+  "input": { "kind": "paste", "rawText": "4 rounds for time\n500 m Row\n15 Thrusters 43/30 kg\n400 m Run" },
+  "request": { "situation": "No rower available today" },
+  "expect": { "mustAvoid": ["Row (Erg)"] }
+}
