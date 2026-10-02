@@ -7,7 +7,12 @@ export class GeminiProvider implements LlmProvider {
   private readonly client: GoogleGenAI;
 
   constructor(apiKey: string, readonly model: string) {
-    this.client = new GoogleGenAI({ apiKey });
+    // Without retryOptions the SDK never retries; transient 408/429/5xx (e.g. 503 "high demand")
+    // get bounded backoff that fits inside the route's maxDuration.
+    this.client = new GoogleGenAI({
+      apiKey,
+      httpOptions: { retryOptions: { attempts: 4, initialDelay: 1, maxDelay: 8 } },
+    });
   }
 
   async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
