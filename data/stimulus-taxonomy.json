@@ -1,9 +1,20 @@
-[
-  { "key": "aerobic_capacity", "label": "Aerobic capacity", "description": "Sustained sub-threshold conditioning, typically >8 min, steady breathing." },
-  { "key": "anaerobic_capacity", "label": "Anaerobic capacity", "description": "Short, high-intensity efforts with incomplete recovery; sprint conditioning." },
-  { "key": "heavy_strength", "label": "Heavy strength", "description": "Low reps at high load to build maximal strength." },
-  { "key": "muscular_endurance", "label": "Muscular endurance", "description": "High-rep, moderate-load work sustaining muscular output over time." },
-  { "key": "gymnastics_skill", "label": "Gymnastics skill", "description": "Bodyweight skill and control (e.g., muscle-ups, handstands, pull-ups)." },
-  { "key": "olympic_lifting", "label": "Olympic lifting", "description": "Snatch/clean & jerk technique and power expression." },
-  { "key": "mixed_modal", "label": "Mixed-modal conditioning", "description": "Blended monostructural + weightlifting + gymnastics intensity." }
-]
+{
+  "qualities": [
+    { "key": "strength", "label": "Strength", "description": "Heavy loads, low reps, full recovery between efforts; the goal is force production." },
+    { "key": "power", "label": "Power", "description": "Fast, explosive efforts (olympic lifts, jumps, speed work) at moderate-to-heavy load with full recovery." },
+    { "key": "skill", "label": "Skill", "description": "Technique practice in gymnastics or lifting at low fatigue; movement quality over output." },
+    { "key": "conditioning", "label": "Conditioning", "description": "Metabolic work against the clock (AMRAP, for time, intervals, EMOM sprints); the goal is sustained output." },
+    { "key": "muscular_endurance", "label": "Muscular endurance", "description": "High-rep sets at light-to-moderate load, not primarily against the clock (accessory work, volume sets)." },
+    { "key": "preparation", "label": "Preparation", "description": "Warm-up, mobility, activation or cool-down; low intensity by design." }
+  ],
+  "energySystems": [
+    { "key": "phosphagen", "label": "Phosphagen", "description": "Maximal efforts under ~15 s with long rests: heavy singles, sprints, max jumps." },
+    { "key": "glycolytic", "label": "Glycolytic", "description": "Hard efforts from ~30 s to a few minutes, or short workouts near redline (roughly 2-8 min)." },
+    { "key": "oxidative", "label": "Oxidative", "description": "Sustainable, paced efforts: long workouts and steady intervals (roughly over 8 min)." }
+  ],
+  "loadIntensities": [
+    { "key": "light", "label": "Light", "description": "Below ~60% of 1RM, or bodyweight movements the athlete can cycle unbroken." },
+    { "key": "moderate", "label": "Moderate", "description": "Roughly 60-80% of 1RM; sets need some breaking for most athletes." },
+    { "key": "heavy", "label": "Heavy", "description": "Above ~80% of 1RM; low reps, form is the limiter." }
+  ]
+}

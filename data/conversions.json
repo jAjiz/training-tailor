@@ -1,0 +1,29 @@
+{
+  "effort": [
+    {
+      "key": "monostructural_400m_run",
+      "note": "Approximate coaching equivalents of a 400 m run.",
+      "equivalents": [
+        { "movement": "Run", "unit": "meters", "male": 400, "female": 400 },
+        { "movement": "Row (Erg)", "unit": "meters", "male": 500, "female": 500 },
+        { "movement": "Row (Erg)", "unit": "calories", "male": 25, "female": 20 },
+        { "movement": "Ski (Erg)", "unit": "meters", "male": 500, "female": 500 },
+        { "movement": "Ski (Erg)", "unit": "calories", "male": 25, "female": 20 },
+        { "movement": "Bike (Erg)", "unit": "meters", "male": 1000, "female": 1000 },
+        { "movement": "Air Bike", "unit": "calories", "male": 20, "female": 15 }
+      ]
+    },
+    {
+      "key": "jump_rope",
+      "note": "Common scaling of double-unders; three singles keep the work time close.",
+      "equivalents": [
+        { "movement": "Double-under", "unit": "reps", "male": 1, "female": 1 },
+        { "movement": "Single-under", "unit": "reps", "male": 3, "female": 3 }
+      ]
+    }
+  ],
+  "implementLoad": [
+    { "from": "barbell", "to": "dumbbell", "perHandFraction": { "low": 0.3, "high": 0.4 }, "note": "Two dumbbells replacing a two-handed barbell lift; adjust to the athlete's benchmarks." },
+    { "from": "barbell", "to": "kettlebell", "perHandFraction": { "low": 0.3, "high": 0.4 }, "note": "Two kettlebells replacing a two-handed barbell lift; adjust to the athlete's benchmarks." }
+  ]
+}

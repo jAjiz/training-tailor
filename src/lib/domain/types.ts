@@ -155,3 +155,39 @@ export const StimulusDefSchema = z.object({
   description: z.string().min(1),
 });
 export type StimulusDef = z.infer<typeof StimulusDefSchema>;
+
+export const StimulusTaxonomySchema = z.object({
+  qualities: z.array(StimulusDefSchema).min(1),
+  energySystems: z.array(StimulusDefSchema).min(1),
+  loadIntensities: z.array(StimulusDefSchema).min(1),
+});
+export type StimulusTaxonomy = z.infer<typeof StimulusTaxonomySchema>;
+
+export const EffortUnit = z.enum(["meters", "calories", "reps"]);
+export type EffortUnit = z.infer<typeof EffortUnit>;
+
+export const EffortEquivalentSchema = z.object({
+  movement: z.string().min(1),
+  unit: EffortUnit,
+  male: z.number().positive(),
+  female: z.number().positive(),
+});
+
+export const EffortEquivalenceSchema = z.object({
+  key: z.string().min(1),
+  note: z.string().min(1),
+  equivalents: z.array(EffortEquivalentSchema).min(2),
+});
+
+export const ImplementLoadSchema = z.object({
+  from: Equipment,
+  to: Equipment,
+  perHandFraction: z.object({ low: z.number().positive(), high: z.number().positive() }),
+  note: z.string().min(1),
+});
+
+export const ConversionsSchema = z.object({
+  effort: z.array(EffortEquivalenceSchema),
+  implementLoad: z.array(ImplementLoadSchema),
+});
+export type Conversions = z.infer<typeof ConversionsSchema>;

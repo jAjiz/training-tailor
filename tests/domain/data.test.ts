@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import movementsJson from "../../data/movements.json";
 import contraindicationsJson from "../../data/contraindications.json";
-import stimuli from "../../data/stimulus-taxonomy.json";
-import { MovementSchema, ContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
+import taxonomyJson from "../../data/stimulus-taxonomy.json";
+import { MovementSchema, ContraindicationSchema, StimulusTaxonomySchema } from "@/lib/domain/types";
 import type { Movement, Severity, Side } from "@/lib/domain/types";
 import { assessMovement, matchesContraindication } from "@/lib/domain/assess";
 
@@ -182,14 +182,13 @@ describe("domain data integrity", () => {
     for (const i of injuries) expect(i.avoidMovements, i.key).toEqual([]);
   });
 
-  it("stimulus taxonomy is valid with unique keys", () => {
-    const keys = new Set<string>();
-    for (const s of stimuli) {
-      StimulusDefSchema.parse(s);
-      expect(keys.has(s.key)).toBe(false);
-      keys.add(s.key);
+  it("stimulus taxonomy has three vocabularies with unique keys", () => {
+    const taxonomy = StimulusTaxonomySchema.parse(taxonomyJson);
+    for (const list of [taxonomy.qualities, taxonomy.energySystems, taxonomy.loadIntensities]) {
+      const keys = list.map((d) => d.key);
+      expect(new Set(keys).size).toBe(keys.length);
     }
-    expect(keys.has("aerobic_capacity")).toBe(true);
+    expect(taxonomy.qualities.map((q) => q.key)).toContain("conditioning");
   });
 
   it("loaded deep knee flexion always travels with deep hip flexion", () => {
