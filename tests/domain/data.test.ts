@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import movementsJson from "../../data/movements.json";
-import injuriesJson from "../../data/injury-contraindications.json";
+import contraindicationsJson from "../../data/contraindications.json";
 import stimuli from "../../data/stimulus-taxonomy.json";
-import { MovementSchema, InjuryContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
+import { MovementSchema, ContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
 import type { Movement } from "@/lib/domain/types";
-import { matchesContraindication } from "@/lib/domain/matching";
+import { matchesContraindication } from "@/lib/domain/assess";
 
 const movements = movementsJson.map((m) => MovementSchema.parse(m));
-const injuries = injuriesJson.map((i) => InjuryContraindicationSchema.parse(i));
+const injuries = contraindicationsJson.map((i) => ContraindicationSchema.parse(i));
 
 function byName(name: string): Movement {
   const m = movements.find((mv) => mv.name === name);
@@ -97,7 +97,7 @@ describe("domain data integrity", () => {
     for (const name of ["Dumbbell Farmer Carry", "Kettlebell Farmer Carry"]) {
       const m = byName(name);
       expect(m.patterns).toEqual(["carry"]);
-      expect(m.stresses).toEqual([{ site: "lumbar", mechanisms: ["compression"] }]);
+      expect(m.stresses).toEqual([{ site: "lumbar", mechanisms: ["compression"], load: "high" }]);
     }
     expect(byName("Dumbbell Farmer Carry").equipment).toEqual(["dumbbell"]);
     expect(byName("Kettlebell Farmer Carry").equipment).toEqual(["kettlebell"]);
@@ -176,7 +176,7 @@ describe("domain data integrity", () => {
   });
 
   it("no contraindication relies on an explicit movement override", () => {
-    for (const i of injuries) expect(i.avoidMovements, i.injuryKey).toEqual([]);
+    for (const i of injuries) expect(i.avoidMovements, i.key).toEqual([]);
   });
 
   it("stimulus taxonomy is valid with unique keys", () => {
@@ -317,14 +317,16 @@ describe("domain data integrity", () => {
 
   it("every site annotated on a movement is blocked by some contraindication", () => {
     const movementSites = new Set(movements.flatMap((m) => m.stresses.map((s) => s.site)));
-    const blockedSites = new Set(injuries.flatMap((i) => i.avoidStresses.map((s) => s.site)));
+    const blockedSites = new Set(
+      injuries.flatMap((i) => i.rules.filter((r) => r.tier === "avoid").map((r) => r.site))
+    );
     for (const site of movementSites) expect(blockedSites.has(site), site).toBe(true);
   });
 });
 
 describe("contraindication matching over real data", () => {
   function injury(key: string) {
-    const i = injuries.find((x) => x.injuryKey === key);
+    const i = injuries.find((x) => x.key === key);
     if (!i) throw new Error(`injury not found: ${key}`);
     return i;
   }
@@ -547,18 +549,18 @@ describe("contraindication matching over real data", () => {
 
   it("the bodyweight lunge survives every contraindication", () => {
     const lunge = byName("Lunge");
-    for (const i of injuries) expect(matchesContraindication(lunge, i), i.injuryKey).toBe(false);
+    for (const i of injuries) expect(matchesContraindication(lunge, i), i.key).toBe(false);
   });
 
   it("the plank survives every contraindication", () => {
     const plank = byName("Plank");
-    for (const i of injuries) expect(matchesContraindication(plank, i), i.injuryKey).toBe(false);
+    for (const i of injuries) expect(matchesContraindication(plank, i), i.key).toBe(false);
   });
 
   it("every injury leaves at least five movements available", () => {
     for (const i of injuries) {
       const remaining = movements.filter((m) => !matchesContraindication(m, i));
-      expect(remaining.length, i.injuryKey).toBeGreaterThanOrEqual(5);
+      expect(remaining.length, i.key).toBeGreaterThanOrEqual(5);
     }
   });
 });
