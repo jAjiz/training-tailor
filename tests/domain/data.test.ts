@@ -660,3 +660,57 @@ describe("v2 annotations", () => {
     expect(byName("Thruster").unilateral).toBeNull();
   });
 });
+
+describe("strict variants and known gaps", () => {
+  const kips = (name: string) => byName(name).stresses.some((s) => s.mechanisms.includes("kipping"));
+  const elbow = () => {
+    const c = injuries.find((x) => x.key === "elbow_tendinopathy");
+    if (!c) throw new Error("elbow_tendinopathy missing");
+    return c;
+  };
+
+  it("kipping and strict variants are separate rows", () => {
+    for (const [kipping, strict] of [
+      ["Pull-up", "Strict Pull-up"], ["Chest-to-Bar", "Strict Chest-to-Bar"], ["Toes-to-Bar", "Strict Toes-to-Bar"],
+    ]) {
+      expect(kips(kipping), kipping).toBe(true);
+      expect(kips(strict), strict).toBe(false);
+      expect(byName(kipping).substitutes, kipping).toContain(strict);
+    }
+    expect(byName("Pull-up").substitutes[0]).toBe("Strict Pull-up");
+  });
+
+  it("an elbow tendinopathy keeps the strict pull-up and blocks the kipping one", () => {
+    expect(matchesContraindication(byName("Pull-up"), elbow())).toBe(true);
+    expect(matchesContraindication(byName("Strict Pull-up"), elbow())).toBe(false);
+  });
+
+  it("the burpee family starts prone", () => {
+    for (const name of ["Burpee", "Burpee Pull-up", "Burpee Box Jump Over", "Bar-facing Burpee", "Devil Press", "Up-Down"]) {
+      expect(byName(name).positions, name).toContain("prone");
+    }
+  });
+
+  it("hang variants mirror their floor lifts", () => {
+    expect(byName("Hang Power Clean").stresses).toEqual(byName("Power Clean").stresses);
+    expect(byName("Hang Squat Clean").stresses).toEqual(byName("Squat Clean").stresses);
+    expect(byName("Hang Power Snatch").stresses).toEqual(byName("Power Snatch").stresses);
+  });
+
+  it("the pistol is a single-leg deep squat", () => {
+    const p = byName("Pistol");
+    expect(p.unilateral).toBe("lower");
+    expect(p.stresses.some((s) => s.site === "knee" && s.mechanisms.includes("deep_flexion") && s.load === "high")).toBe(true);
+  });
+
+  it("horizontal pulling has a bodyweight, dumbbell and barbell option", () => {
+    expect(byName("Ring Row").substitutes).toEqual(["Dumbbell Row"]);
+    expect(byName("Dumbbell Row").unilateral).toBe("upper");
+    expect(byName("Bent-over Row").equipment).toEqual(["barbell"]);
+    expect(movements.filter((m) => m.patterns[0] === "horizontal_pull")).toHaveLength(3);
+  });
+
+  it("the catalog has 126 movements", () => {
+    expect(movements).toHaveLength(126);
+  });
+});
