@@ -1,551 +1,1623 @@
-# Training Tailor v1 — Implementation Plan
+# Training Tailor v1 — Implementation Plan (revision 2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the athlete self-serve v1 of Training Tailor — an athlete sets up a profile, supplies a functional fitness workout (paste or manual entry), states today's constraint, gets an individualized, stimulus-preserving modification with rationale, and can refine it with feedback.
+**Goal:** Ship the v1 athlete self-serve app: paste or enter a workout, describe today's situation, and get a stimulus-preserving modification that is deterministically verified against the athlete's injuries, limitations and equipment.
 
-**Architecture:** Next.js (App Router, TypeScript) full-stack app. A server-side **engine pipeline** (parse → classify stimulus → tailor → refine) depends only on a provider-agnostic **AI service abstraction** (`LlmProvider`); v1 ships a **Gemini** adapter. Domain knowledge (movement library, injury→contraindication map, stimulus taxonomy) is **versioned JSON in the repo**, schema-validated and read through a repository module. **Postgres** via **Prisma** holds user data only (auth, profiles, saved tailored workouts). Auth is Auth.js (NextAuth v5) email magic-link.
+**Architecture:** Next.js 16 App Router app. A provider-agnostic engine (`src/lib/engine`) runs analyze (LLM) → resolve/plan (code) → tailor (LLM) → validate (code, fail-closed) over versioned domain JSON (`data/`) loaded through `src/lib/domain`. Postgres (Prisma 7) stores users (Better Auth, Google OAuth), profiles, saved results and the quota ledger. Engine routes stream NDJSON progress.
 
-**Tech Stack:** Next.js 16 (App Router) · TypeScript · Prisma 7 (driver adapter `@prisma/adapter-pg`, generated client at `src/generated/prisma`) + PostgreSQL · Zod 4 · Vitest · `@google/genai` (Gemini) · Auth.js v5 · Tailwind CSS 4.
+**Tech Stack:** Next.js 16, React 19, TypeScript 5, Tailwind 4, Zod 4, Vitest 4, Prisma 7 + `@prisma/adapter-pg`, Better Auth, `@google/genai`, tsx (scripts), pnpm.
 
----
+**Spec:** `docs/specs/training-tailor-engine-v1-design.md` (revision 2). Read it before any task: every rule here argues from it.
 
-## Reference spec
+## Global Constraints
 
-`docs/specs/training-tailor-engine-v1-design.md`
+- Package manager **pnpm**; platform Windows (commands are cross-platform unless noted).
+- **Prisma 7:** client generated to `src/generated/prisma`; import from `@/generated/prisma/client`, never `@prisma/client`. Schema changes go through `prisma migrate dev` (no `db push` after Task S1).
+- **Boundary rule:** only `src/lib/ai/gemini-provider.ts` imports `@google/genai`. `src/lib/engine/**` and `src/lib/domain/**` never import Prisma, Next.js or a concrete provider.
+- **Domain data** lives in `data/*.json`, is edited only through scripts that use `scripts/lib/domain-json.mjs` (keeps the one-row-per-line style), and is validated by `tests/domain/*`.
+- **Model pinned:** `GEMINI_MODEL` default `gemini-3.8-flash`; never a `-latest` alias.
+- **Fail closed:** the engine never returns a tailored workout containing a movement assessed `avoid`.
+- **Errors:** never return exception text to the client; log server-side, return a code (`unauthorized`, `invalid_request`, `quota_exceeded`, `engine_unavailable`, `engine_failed`, `engine_unsafe`).
+- **Public repo:** nothing under `data/corpus/` or `reports/` is committed; eval cases are synthetic or public benchmarks.
+- **Tests:** `pnpm test` is deterministic — no network, no DB, no API key. TDD for every code task: failing test → see it fail → minimal code → see it pass → commit.
+- **Commits:** Conventional Commits; end every message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Status
 
-**Phases 0–1 and Phase 2 Tasks 2.1–2.2 are already implemented and committed** (`d5ea79e` scaffold, `eb8937f` Prisma schema + db client, fix-ups `822cfe2`, `2513c5d`, `b1350b3`, and `2265875`, which reworked the schema to hold user data only — domain data is JSON-backed, not DB-backed; then `1f1acd9`…`db870b5` for the domain types, matching, and data catalog). Execution resumes at Task 2.3.
+Revision 1 of this plan delivered Phase 0 (scaffold, Vitest), Phase 1 (Prisma 7 + driver adapter; its schema is **replaced** in Task S1) and the domain catalog (types, matching, 111 movements, 18 contraindications, 7 stimulus tags — 85 tests green at `41faad1`). Revision 2 restarts at **Task D1**. Completed tasks are not repeated here: the code is the source of truth.
 
-A completed step **references the file it produced instead of reproducing it** — the code is the source of truth and a copy here only rots. Snippets survive only for unimplemented tasks, where they are the spec.
+## Execution order
 
-## Conventions for the implementing engineer
+`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 … U6` (API + UI) → `F1` (README, verification).
 
-- **Package manager:** `pnpm`. Platform is Windows; commands are cross-platform unless noted.
-- **Prisma 7:** the client is generated to `src/generated/prisma` and instantiated with the `@prisma/adapter-pg` driver adapter (see `src/lib/db.ts`). Import Prisma types from `@/generated/prisma`, **not** `@prisma/client`. The datasource URL lives in `prisma.config.ts` (reads `DATABASE_URL`).
-- **Testing:** Vitest. Engine/business logic is unit-tested against a **fake `LlmProvider`** so tests are deterministic and need no network/API key. The domain repository reads in-repo JSON, so its tests need no DB either. The only integration test is the real Gemini adapter, which **skips** when `GEMINI_API_KEY` is unset — `pnpm test` is fully deterministic without any infrastructure.
-- **TDD loop for every code task:** write failing test → run it, see it fail → minimal implementation → run, see it pass → commit.
-- **Commit style:** Conventional Commits (`feat:`, `test:`, `chore:`, `refactor:`).
-- **No secrets in git.** All keys come from `.env` (gitignored). `.env.example` documents required vars.
-- **Error responses:** never return raw exception text (`String(e)`) to the client — log server-side, return a generic error code.
+The engine and its evaluation come before auth and UI on purpose: the LLM loop is validated end-to-end (`pnpm eval`) before any screen exists.
 
-## File structure (what each unit owns)
+## File structure (target)
 
 ```
-training-tailor/
-├─ src/
-│  ├─ lib/
-│  │  ├─ ai/
-│  │  │  ├─ provider.ts          # LlmProvider interface + GenerateStructuredArgs
-│  │  │  ├─ gemini-provider.ts   # Gemini adapter (only file that imports @google/genai)
-│  │  │  ├─ fake-provider.ts     # Test double: scripted/echo responses
-│  │  │  └─ index.ts             # getProvider() factory (reads env, returns provider)
-│  │  ├─ engine/
-│  │  │  ├─ types.ts             # StructuredWorkout, StimulusTag, TailoringResult, etc. + Zod schemas
-│  │  │  ├─ parse-workout.ts     # raw text -> StructuredWorkout (with graceful fallback)
-│  │  │  ├─ classify-stimulus.ts # StructuredWorkout -> StimulusClassification
-│  │  │  ├─ tailor.ts            # (workout + profile + request + domain [+ previous attempt]) -> TailoringResult
-│  │  │  ├─ render-text.ts       # StructuredWorkout -> plain-text rendering (manual entry rawText)
-│  │  │  └─ pipeline.ts          # orchestrates parse/classify/tailor
-│  │  ├─ domain/
-│  │  │  ├─ types.ts             # Movement, InjuryContraindication, StimulusDef domain types
-│  │  │  └─ repository.ts        # loads + validates versioned JSON from data/ (no DB)
-│  │  ├─ profile.ts              # profile normalization / body parsing helpers
-│  │  ├─ tailor-service.ts       # composes domain data + pipeline (runTailorForAthlete, runRefineForAthlete)
-│  │  └─ db.ts                   # Prisma client singleton (driver adapter)
-│  ├─ app/
-│  │  ├─ layout.tsx, globals.css
-│  │  ├─ page.tsx                # landing / dashboard
-│  │  ├─ signin/page.tsx         # magic-link sign-in
-│  │  ├─ profile/page.tsx + ProfileForm.tsx
-│  │  ├─ tailor/page.tsx + TailorClient.tsx + ManualEntryForm.tsx
-│  │  ├─ history/page.tsx        # saved tailored workouts
-│  │  └─ api/
-│  │     ├─ tailor/route.ts        # POST: run pipeline (no persistence)
-│  │     ├─ tailor/save/route.ts   # POST: persist a reviewed result (no re-run)
-│  │     ├─ tailor/refine/route.ts # POST: re-tailor with athlete feedback
-│  │     └─ profile/route.ts       # GET/PUT athlete profile
-│  ├─ components/WorkoutView.tsx  # renders a StructuredWorkout
-│  ├─ types/next-auth.d.ts        # session.user.id type augmentation
-│  ├─ generated/prisma/           # Prisma 7 generated client (gitignored/generated)
-│  └─ auth.ts                     # Auth.js config
-├─ prisma/
-│  └─ schema.prisma               # user data only: auth models, AthleteProfile, TailoredWorkout
-├─ prisma.config.ts               # Prisma 7 config (schema path, DATABASE_URL)
-├─ data/                          # versioned domain JSON (the domain source of truth — no DB tables)
-│  ├─ movements.json
-│  ├─ injury-contraindications.json
-│  └─ stimulus-taxonomy.json
-├─ tests/                         # mirrors src/ where useful
-├─ .env.example
-├─ vitest.config.ts
-└─ package.json
-```
-
-**Boundary rule:** only `src/lib/ai/gemini-provider.ts` imports the Gemini SDK. The engine imports `LlmProvider` from `provider.ts` and never a concrete provider. This is what makes adding Claude/OpenAI later a one-file change.
-
----
-
-## Phase 0 — Scaffolding & tooling
-
-### Task 0.1: Initialize repo, Next.js, and Vitest — ✅ DONE
-
-> **Status: completed** in commits `d5ea79e`, `822cfe2`, `2513c5d`, `b1350b3`. Steps below record what was actually done (some details differ from the original draft: Next.js 16 was installed, `vite-tsconfig-paths` was replaced by Vitest's native `resolve.tsconfigPaths`, and the default model is `gemini-flash-latest`).
-
-**Files:**
-- Create: `package.json`, `tsconfig.json`, `next.config.ts`, `vitest.config.ts`, `.gitignore`, `.env.example`, `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`
-
-- [x] **Step 1: Initialize git and Next.js app**
-
-Run from `C:\Dev\training-tailor`:
-
-```bash
-git init
-pnpm create next-app@latest . --ts --app --tailwind --eslint --src-dir --import-alias "@/*" --use-pnpm
-```
-
-(Installed Next.js 16.2, React 19.2.)
-
-- [x] **Step 2: Add Vitest and supporting dev deps**
-
-```bash
-pnpm add -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing-library/jest-dom
-```
-
-- [x] **Step 3: Create `vitest.config.ts`** (uses Vitest's built-in tsconfig-paths resolution)
-
-Implemented in `vitest.config.ts`.
-
-- [x] **Step 4: Add test script to `package.json`**
-
-In `package.json` `"scripts"`, add:
-
-```json
-"test": "vitest run",
-"test:watch": "vitest"
-```
-
-- [x] **Step 5: Create a smoke test**
-
-Implemented in `tests/smoke.test.ts`.
-
-- [x] **Step 6: Run the test, verify it passes**
-
-Run: `pnpm test`
-Expected: 1 passed.
-
-- [x] **Step 7: Create `.env.example`**
-
-Implemented in `.env.example`.
-
-`.gitignore` includes `.env` and `.env*.local` (create-next-app adds these; verified).
-
-- [x] **Step 8: Commit**
-
-```bash
-git add -A
-git commit -m "chore: scaffold Next.js app with Vitest and env template"
+data/
+  movements.json              # Movement[] (one row per line)
+  contraindications.json      # Contraindication[] (renamed from injury-contraindications.json)
+  stimulus-taxonomy.json      # { qualities, energySystems, loadIntensities }
+  conversions.json            # { effort, implementLoad }
+  corpus/                     # PRIVATE real programming (gitignored)
+evals/cases/*.json            # synthetic/public eval cases
+scripts/
+  lib/domain-json.mjs         # readRows/writeRows/fmt — keeps the data file style
+  eval.ts                     # pnpm eval
+  coverage.ts                 # pnpm coverage
+src/
+  proxy.ts                    # Next 16 route protection (pages)
+  lib/
+    domain/
+      types.ts                # Zod schemas: Movement, Contraindication, taxonomy, conversions, Side, Severity
+      assess.ts               # assessMovement, matchesContraindication, ActiveCondition
+      resolve.ts              # normalizeMovementName, createMovementResolver
+      conversions.ts          # convertEffort
+      repository.ts           # getDomainData (JSON, validated once)
+    ai/
+      provider.ts             # LlmProvider, StructuredOutputError, parseStructured
+      retry.ts                # withValidationRetry
+      fake-provider.ts        # FakeProvider, sequence()
+      gemini-provider.ts      # the only @google/genai importer
+      index.ts                # getProvider()
+    engine/
+      types.ts                # workout/stimulus/analysis/tailoring/profile/request/finding/pipeline schemas
+      render-text.ts          # manual workout → text
+      resolve-blocks.ts       # attach canonical names to components
+      analyze.ts              # analyzePaste, analyzeManual, analyzeSituation
+      conditions.ts           # activateConditions, hydrateConditions
+      plan.ts                 # availableEquipment, planComponents, goalFamily
+      tailor.ts               # buildTailorPrompt, tailor
+      validate.ts             # validateTailoring
+      pipeline.ts             # runTailorPipeline, runRefinePipeline, EngineUnsafeError
+    eval/grade.ts             # EvalCaseSchema, gradeCase
+    db.ts                     # Prisma client + toJson
+    auth.ts                   # Better Auth server instance
+    auth-client.ts            # Better Auth React client
+    session.ts                # getUserId()
+    profile.ts                # normalizeProfile, sanitizeProfile
+    quota.ts                  # consumeQuota, prismaQuotaStore
+    engine-stream.ts          # engineStreamResponse, readEngineStream, EngineEvent
+    api-schemas.ts            # request bodies for the engine/save routes
+    tailor-service.ts         # loadProfile
+  app/
+    layout.tsx, page.tsx, signin/page.tsx
+    profile/page.tsx + ProfileForm.tsx
+    tailor/page.tsx + TailorClient.tsx + ManualEntryForm.tsx + ResultView.tsx
+    history/page.tsx
+    api/auth/[...all]/route.ts
+    api/profile/route.ts
+    api/tailor/route.ts, api/tailor/refine/route.ts, api/tailor/save/route.ts
+  components/WorkoutView.tsx, SignOutButton.tsx
+tests/                        # mirrors src/
 ```
 
 ---
 
-## Phase 1 — Database & data model
+## Phase D — Domain data v2
 
-### Task 1.1: Set up Prisma and the schema — ✅ DONE
+### Task D1: Domain schema v2 and tiered assessment (behavior-preserving)
 
-> **Status: completed** in commits `eb8937f` and `2265875`. Prisma 7 was installed: the client generates to `src/generated/prisma`, connects through the `@prisma/adapter-pg` driver adapter, and the datasource URL lives in `prisma.config.ts`. The schema holds **user data only** (auth models, `AthleteProfile`, `TailoredWorkout`) — domain knowledge (movements, contraindications, stimulus taxonomy) is versioned JSON in `data/` (Phase 2), never DB tables. Snippets below match the committed code.
-
-**Files:**
-- Create: `prisma/schema.prisma`, `prisma.config.ts`, `src/lib/db.ts`
-- Modify: `package.json` (scripts)
-
-- [x] **Step 1: Install Prisma**
-
-```bash
-pnpm add -D prisma
-pnpm add @prisma/client @prisma/adapter-pg pg
-pnpm add -D @types/pg dotenv
-pnpm exec prisma init --datasource-provider postgresql
-```
-
-This creates `prisma/schema.prisma` and `prisma.config.ts` (which reads `DATABASE_URL` via `dotenv`). Set `DATABASE_URL` in `.env` to a reachable Postgres (local Docker or a cloud dev instance).
-
-- [x] **Step 2: Write `prisma/schema.prisma`**
-
-Implemented in `prisma/schema.prisma`.
-
-> **Why workouts stay in `Json` columns:** a real training day is a sequence of blocks with
-> different formats (strength piece, conditioning AMRAP, partner WOD), each carrying load-bearing
-> prose (tempo, intensity cues, Rx+/Rx/Int scaling tiers). Modeling that relationally (a table per
-> block format) is over-engineering against open-ended programming. Instead the workout is one
-> `StructuredWorkout` JSON value — verbatim `rawText` as the durable source of truth plus a derived
-> `blocks[]` extraction the engine reasons over (see Task 3.1). No migration is needed to support
-> new formats; the schema absorbs them.
-
-- [x] **Step 3: Add Prisma scripts to `package.json`**
-
-```json
-"db:push": "prisma db push",
-"db:studio": "prisma studio"
-```
-
-(No `db:seed` script — domain data is JSON-backed, nothing is seeded into the DB.)
-
-- [x] **Step 4: Push schema to the database**
-
-Run: `pnpm db:push`
-Expected: "Your database is now in sync with your Prisma schema." (Requires a reachable Postgres in `DATABASE_URL`.)
-
-- [x] **Step 5: Create the Prisma client singleton `src/lib/db.ts`** (Prisma 7 driver adapter)
-
-Implemented in `src/lib/db.ts`.
-
-- [x] **Step 6: Commit**
-
-```bash
-git add -A
-git commit -m "feat: add Prisma schema and db client (auth, profile, tailored)"
-```
-
----
-
-## Phase 2 — Domain types & versioned domain data (JSON, no DB)
-
-### Task 2.1: Define domain TypeScript types — ✅ DONE
-
-> **Status: completed** in commits `1f1acd9`…`d5c0118`. The schema evolved through the
-> pattern/stress/position/equipment revisions; the files referenced below are the source of truth.
-
-Movements are classified on four orthogonal, enum-backed axes: **patterns[]**
-(functional movement pattern — drives substitution and programming balance),
-**positions[]** (whole-body positional demand — `hanging | inverted |
-partial_inversion` — a body position the movement requires, which an athlete can
-be categorically unable to adopt regardless of any specific injured tissue;
-inversion is graded, so a contraindication may avoid full inversion without
-avoiding the wall-supported kind), **stresses[]** (per-site
-stress mechanisms — drive safety filtering), and **equipment[]** (required
-equipment — an AND-set matched by subset against the athlete's available
-equipment; empty = needs nothing; drives availability filtering, NOT
-contraindication — a missing item filters substitution candidates, it does not
-hard-block like an injury). A site is an anatomical site:
-joints/spine regions plus muscle groups, so the same model covers joint injuries
-and muscle strains. Contraindications declare `avoidStresses` in the same
-`{ site, mechanisms[] }` shape, matched programmatically (site equal AND at least
-one shared mechanism), and `avoidPositions` matched on simple membership — used
-by limitation entries (e.g. `no_hanging`, `no_inversion`) that the LLM activates
-from the athlete's situation; `avoidMovements` is an explicit-name override for
-cases the stress and position vocabularies cannot capture — every use signals a
-mechanism the vocabulary is missing, so the seeded data leaves it empty and a
-guardrail test keeps it empty.
+Introduces the v2 vocabulary (new sites, positions, stress `load`, `unilateral`, tiered contraindications with `kind`) and replaces `matching.ts` with `assess.ts`. The data is migrated mechanically — every existing rule becomes `tier: "avoid"` — so every existing data test keeps its meaning.
 
 **Files:**
-- Create: `src/lib/domain/types.ts`, `src/lib/domain/matching.ts`
-- Test: `tests/domain/types.test.ts`
-
-- [x] **Step 1: Write the failing test**
-
-Implemented in `tests/domain/types.test.ts`.
-
-- [x] **Step 2: Run the test, verify it fails**
-
-Run: `pnpm exec vitest run tests/domain/types.test.ts`
-Expected: FAIL — cannot find module `@/lib/domain/types`.
-
-- [x] **Step 3: Implement `src/lib/domain/types.ts` and `src/lib/domain/matching.ts`**
-
-Implemented in `src/lib/domain/types.ts` and `src/lib/domain/matching.ts`.
-
-Install Zod if not already present:
-
-```bash
-pnpm add zod
-```
-
-> This installs **Zod 4.x**. The project relies on Zod 4's native `z.toJSONSchema()` in the Gemini adapter (Task 3.3) — do **not** add `zod-to-json-schema` (it targets Zod 3 and is incompatible).
-
-- [x] **Step 4: Run the test, verify it passes**
-
-Run: `pnpm exec vitest run tests/domain/types.test.ts`
-Expected: PASS.
-
-- [x] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: domain types and Zod schemas (movement, injury, stimulus)"
-```
-
-### Task 2.2: Author the versioned domain data JSON — ✅ DONE
-
-> **Status: completed** in commits `3521d8a`…`db870b5`. The catalog is 111 movements and
-> 18 contraindication entries (16 injuries + 2 positional limitations).
-
-> These files are the domain **source of truth** (nothing gets seeded into a DB — see Task 2.3). "Seed" in the test-file name just means "starting dataset".
-
-**Files:**
-- Create: `data/stimulus-taxonomy.json`, `data/movements.json`, `data/injury-contraindications.json`
-- Test: `tests/domain/data.test.ts`
-
-- [x] **Step 1: Write the failing test (validates the JSON against schemas and the matching semantics)**
-
-Beyond schema validity, uniqueness, and referential checks (substitutes and
-`avoidMovements` must name real movements), the test runs `matchesContraindication`
-over the real data with blocked/allowed guardrail cases for every injury and
-positional-limitation entry, and asserts every entry leaves at least five
-movements available.
-
-Implemented in `tests/domain/data.test.ts`.
-
-Enable JSON imports in `tsconfig.json` if needed (`"resolveJsonModule": true` — create-next-app sets this).
-
-- [x] **Step 2: Run the test, verify it fails**
-
-Run: `pnpm exec vitest run tests/domain/data.test.ts`
-Expected: FAIL — cannot find the JSON files.
-
-- [x] **Step 3: Create `data/stimulus-taxonomy.json`**
-
-Implemented in `data/stimulus-taxonomy.json`.
-
-- [x] **Step 4: Create `data/movements.json`** (>=25 common functional fitness movements; each substitute MUST also appear as a `name`)
-
-Annotation conventions: `patterns` is ordered primary-first, and separates
-locomotion under load (`carry`) from isometric maintenance of a position
-(`hold`); `positions` lists the body positions the movement requires (`hanging` =
-suspended from a bar or rings, `inverted` = upside down with bodyweight fully on
-the hands, `partial_inversion` = load shared with the feet on a surface) and is
-empty for most movements; `equipment`
-lists only availability-relevant gear (don't model the floor or the wall — a
-bodyweight movement with no gear gets `[]`); `stresses`
-lists only *clinically significant* (loaded or forceful) stress — a site merely
-participating is not listed, and muscle sites are listed only for primary movers
-under substantial load. In particular, unloaded bodyweight range of motion is not
-`deep_flexion` (Air Squat has no knee entry, so it stays available for knee pain),
-strict variants drop `kipping`/`ballistic` (Banded Pull-up stays available for
-elbow tendinopathy), and reduced-load variants drop muscle entries (Knee Push-up
-has no chest entry, so it stays available for a pec strain).
-
-Implemented in `data/movements.json`.
-
-- [x] **Step 5: Create `data/injury-contraindications.json`** (every `avoidMovements` entry MUST name a movement in `data/movements.json`)
-
-Each injury declares `avoidStresses` rules matched programmatically against
-movement stresses; derivation replaces hand-listing, so `avoidMovements` stays
-empty except for true exceptions the stress vocabulary cannot capture. The
-catalog also contains **limitation entries** (`no_hanging`, `no_inversion`) that
-carry only `avoidPositions` — they are not injuries; the LLM activates them from
-the athlete's stated situation (cast, grip injury, vertigo, pregnancy) and the
-matching code enforces them deterministically.
-
-Implemented in `data/injury-contraindications.json`.
-
-- [x] **Step 6: Run the test, verify it passes**
-
-Run: `pnpm exec vitest run tests/domain/data.test.ts`
-Expected: PASS. If referential or guardrail checks fail, fix the offending name/annotation in the JSON.
-
-- [x] **Step 7: Commit**
-
-```bash
-git add -A
-git commit -m "feat: seed domain data (movements, injuries, stimulus taxonomy) with integrity tests"
-```
-
-### Task 2.3: JSON-backed domain repository
-
-The domain data (movements, contraindications, stimulus taxonomy) is read-only, tiny, and ships with the code — the versioned JSON in `data/` **is** the source of truth. No DB tables, no seed script, no DB-dependent tests. The repository keeps `Promise`-returning signatures so a later move to the DB (Phase C, when coaches edit domain data at runtime) changes only this file.
-
-**Files:**
-- Create: `src/lib/domain/repository.ts`
-- Test: `tests/domain/repository.test.ts`
+- Create: `scripts/lib/domain-json.mjs`, `src/lib/domain/assess.ts`, `tests/domain/assess.test.ts`
+- Modify: `src/lib/domain/types.ts`, `tests/domain/types.test.ts`, `tests/domain/data.test.ts`
+- Rename: `data/injury-contraindications.json` → `data/contraindications.json` (content migrated)
+- Delete: `src/lib/domain/matching.ts`
 
 **Interfaces:**
-- Consumes: `MovementSchema`, `InjuryContraindicationSchema`, `StimulusDefSchema` and their types from `@/lib/domain/types` (Task 2.1); the JSON files from Task 2.2.
-- Produces: `getAllMovements(): Promise<Movement[]>`, `getContraindicationsForInjuries(injuryKeys: string[]): Promise<InjuryContraindication[]>`, `getStimulusDefs(): Promise<StimulusDef[]>` — used by `tailor-service.ts` (Task 6.3).
+- Produces (`@/lib/domain/types`): `Equipment`, `Position` (+`supine`, `prone`), `Site` (+`abdominals`, `grip`), `UPPER_LIMB_SITES`, `LOWER_LIMB_SITES`, `StressLoad`, `SiteStressSchema` (`load` default `"high"`), `Limb`, `MovementSchema` (`unilateral` default `null`), `Tier`, `ContraindicationKind`, `ContraindicationSchema` / `Contraindication`, `Side`, `Severity`, `StimulusDefSchema` (unchanged).
+- Produces (`@/lib/domain/assess`): `type Verdict = "ok" | "caution" | "avoid"`, `interface ActiveCondition { contraindication: Contraindication; side: Side | null; severity: Severity }`, `interface AssessmentReason { conditionKey: string; verdict: "caution" | "avoid"; detail: string; healthySideOnly: boolean }`, `interface Assessment { verdict: Verdict; reasons: AssessmentReason[] }`, `worstVerdict(a, b)`, `effectiveVerdict(tier, load, severity, kind)`, `assessMovement(movement, active): Assessment`, `matchesContraindication(movement, contraindication): boolean`.
+- Produces (`scripts/lib/domain-json.mjs`): `fmt(value)`, `readRows(path)`, `writeRows(path, rows)`.
 
-- [ ] **Step 1: Write the failing repository test** (pure — no DB)
+- [ ] **Step 1: Create the data-file formatter `scripts/lib/domain-json.mjs`**
+
+```js
+// Reads and writes the domain JSON files in their committed style: a top-level
+// array with one compact row per line ("{ "k": v, ... }"). Every data migration
+// goes through writeRows so diffs stay one line per changed row.
+import fs from "node:fs";
+
+export const fmt = (v) =>
+  Array.isArray(v)
+    ? `[${v.map(fmt).join(", ")}]`
+    : v && typeof v === "object"
+      ? `{ ${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}: ${fmt(x)}`).join(", ")} }`
+      : JSON.stringify(v);
+
+export function readRows(path) {
+  return JSON.parse(fs.readFileSync(path, "utf8"));
+}
+
+export function writeRows(path, rows) {
+  fs.writeFileSync(path, `[\n${rows.map((r) => `  ${fmt(r)}`).join(",\n")}\n]\n`);
+}
+```
+
+- [ ] **Step 2: Verify the formatter round-trips the current files byte-for-byte**
+
+Run:
+```bash
+node --input-type=module -e "import { readRows, writeRows } from './scripts/lib/domain-json.mjs'; for (const f of ['data/movements.json','data/injury-contraindications.json','data/stimulus-taxonomy.json']) writeRows(f, readRows(f));"
+git status --short data/
+```
+Expected: no output from `git status` (files unchanged). If a file shows as modified, the formatter is wrong — fix it before continuing.
+
+- [ ] **Step 3: Write the failing assessment test `tests/domain/assess.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { MovementSchema, ContraindicationSchema, type Contraindication } from "@/lib/domain/types";
+import { assessMovement, effectiveVerdict, matchesContraindication, worstVerdict } from "@/lib/domain/assess";
+
+const injury = (rules: Contraindication["rules"], extra: Partial<Contraindication> = {}) =>
+  ContraindicationSchema.parse({
+    key: "test_injury", label: "Test injury", kind: "injury", rules,
+    positionRules: [], avoidMovements: [], notes: null, ...extra,
+  });
+
+const squat = MovementSchema.parse({
+  name: "Back Squat", patterns: ["squat"], positions: [],
+  stresses: [{ site: "knee", mechanisms: ["deep_flexion", "compression"] }],
+  equipment: ["barbell"], skill: "beginner", substitutes: [],
+});
+const airSquat = MovementSchema.parse({
+  name: "Air Squat", patterns: ["squat"], positions: [],
+  stresses: [{ site: "knee", mechanisms: ["deep_flexion"], load: "low" }],
+  equipment: [], skill: "beginner", substitutes: [],
+});
+const dbPress = MovementSchema.parse({
+  name: "Dumbbell Shoulder Press", patterns: ["vertical_push"], positions: [],
+  stresses: [{ site: "shoulder", mechanisms: ["overhead"] }],
+  equipment: ["dumbbell"], skill: "beginner", substitutes: [], unilateral: "upper",
+});
+const dbSnatch = MovementSchema.parse({
+  name: "Dumbbell Snatch", patterns: ["hinge"], positions: [],
+  stresses: [{ site: "lumbar", mechanisms: ["ballistic"] }, { site: "shoulder", mechanisms: ["overhead", "ballistic"] }],
+  equipment: ["dumbbell"], skill: "intermediate", substitutes: [], unilateral: "upper",
+});
+const hang = MovementSchema.parse({
+  name: "Dead Hang", patterns: ["hold"], positions: ["hanging"], stresses: [],
+  equipment: ["pullup_bar"], skill: "beginner", substitutes: [],
+});
+
+const kneeAvoid = injury([{ site: "knee", mechanisms: ["deep_flexion"], tier: "avoid" }]);
+const shoulderAvoid = injury([{ site: "shoulder", mechanisms: ["overhead"], tier: "avoid" }]);
+const lumbarAvoid = injury([{ site: "lumbar", mechanisms: ["ballistic"], tier: "avoid" }]);
+
+describe("schema defaults", () => {
+  it("defaults stress load to high and unilateral to null", () => {
+    expect(squat.stresses[0].load).toBe("high");
+    expect(squat.unilateral).toBeNull();
+  });
+
+  it("rejects a contraindication without a kind", () => {
+    expect(() => ContraindicationSchema.parse({
+      key: "x", label: "X", rules: [], positionRules: [], avoidMovements: [],
+    })).toThrow();
+  });
+});
+
+describe("effectiveVerdict", () => {
+  it("follows the severity table for injuries", () => {
+    expect(effectiveVerdict("avoid", "high", "mild", "injury")).toBe("caution");
+    expect(effectiveVerdict("avoid", "high", "moderate", "injury")).toBe("avoid");
+    expect(effectiveVerdict("avoid", "low", "mild", "injury")).toBe("ok");
+    expect(effectiveVerdict("avoid", "low", "moderate", "injury")).toBe("caution");
+    expect(effectiveVerdict("avoid", "low", "acute", "injury")).toBe("avoid");
+    expect(effectiveVerdict("caution", "high", "moderate", "injury")).toBe("caution");
+    expect(effectiveVerdict("caution", "high", "acute", "injury")).toBe("avoid");
+    expect(effectiveVerdict("caution", "low", "moderate", "injury")).toBe("ok");
+    expect(effectiveVerdict("caution", "low", "acute", "injury")).toBe("caution");
+  });
+
+  it("uses the moderate column for limitations and conditions", () => {
+    expect(effectiveVerdict("avoid", "high", "mild", "limitation")).toBe("avoid");
+    expect(effectiveVerdict("avoid", "low", "acute", "condition")).toBe("caution");
+  });
+});
+
+describe("assessMovement", () => {
+  it("is ok with no active conditions", () => {
+    expect(assessMovement(squat, [])).toEqual({ verdict: "ok", reasons: [] });
+  });
+
+  it("scales a low-load stress with severity", () => {
+    expect(assessMovement(airSquat, [{ contraindication: kneeAvoid, side: null, severity: "mild" }]).verdict).toBe("ok");
+    expect(assessMovement(airSquat, [{ contraindication: kneeAvoid, side: null, severity: "moderate" }]).verdict).toBe("caution");
+    expect(assessMovement(airSquat, [{ contraindication: kneeAvoid, side: null, severity: "acute" }]).verdict).toBe("avoid");
+  });
+
+  it("reports the matched site and shared mechanisms", () => {
+    const a = assessMovement(squat, [{ contraindication: kneeAvoid, side: null, severity: "moderate" }]);
+    expect(a.verdict).toBe("avoid");
+    expect(a.reasons).toEqual([
+      { conditionKey: "test_injury", verdict: "avoid", detail: "knee: deep_flexion", healthySideOnly: false },
+    ]);
+  });
+
+  it("applies a position rule tier as written", () => {
+    const noHang = ContraindicationSchema.parse({
+      key: "no_hanging", label: "No hanging", kind: "limitation", rules: [],
+      positionRules: [{ position: "hanging", tier: "avoid" }], avoidMovements: [], notes: null,
+    });
+    expect(assessMovement(hang, [{ contraindication: noHang, side: null, severity: "mild" }]).verdict).toBe("avoid");
+  });
+
+  it("blocks an explicitly listed movement", () => {
+    const explicit = injury([], { avoidMovements: ["Dead Hang"] });
+    expect(assessMovement(hang, [{ contraindication: explicit, side: null, severity: "moderate" }]).verdict).toBe("avoid");
+  });
+
+  it("lets a one-sided limb injury train the healthy side of a unilateral movement", () => {
+    const a = assessMovement(dbPress, [{ contraindication: shoulderAvoid, side: "right", severity: "moderate" }]);
+    expect(a.verdict).toBe("caution");
+    expect(a.reasons[0].healthySideOnly).toBe(true);
+  });
+
+  it("gives no laterality exemption without a side or for both sides", () => {
+    expect(assessMovement(dbPress, [{ contraindication: shoulderAvoid, side: null, severity: "moderate" }]).verdict).toBe("avoid");
+    expect(assessMovement(dbPress, [{ contraindication: shoulderAvoid, side: "both", severity: "moderate" }]).verdict).toBe("avoid");
+  });
+
+  it("never exempts an axial site", () => {
+    const a = assessMovement(dbSnatch, [{ contraindication: lumbarAvoid, side: "left", severity: "moderate" }]);
+    expect(a.verdict).toBe("avoid");
+  });
+
+  it("takes the worst verdict across conditions", () => {
+    const a = assessMovement(dbSnatch, [
+      { contraindication: shoulderAvoid, side: "left", severity: "moderate" },
+      { contraindication: lumbarAvoid, side: null, severity: "moderate" },
+    ]);
+    expect(a.verdict).toBe("avoid");
+    expect(a.reasons.map((r) => r.verdict).sort()).toEqual(["avoid", "caution"]);
+  });
+});
+
+describe("helpers", () => {
+  it("worstVerdict ranks avoid over caution over ok", () => {
+    expect(worstVerdict("ok", "caution")).toBe("caution");
+    expect(worstVerdict("avoid", "caution")).toBe("avoid");
+  });
+
+  it("matchesContraindication means avoid at moderate severity with no side", () => {
+    expect(matchesContraindication(squat, kneeAvoid)).toBe(true);
+    expect(matchesContraindication(airSquat, kneeAvoid)).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 4: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/domain/assess.test.ts`
+Expected: FAIL — `@/lib/domain/assess` not found / `ContraindicationSchema` not exported.
+
+- [ ] **Step 5: Rewrite `src/lib/domain/types.ts`**
+
+Replace the file with:
+
+```ts
+import { z } from "zod";
+
+export const SkillLevel = z.enum(["beginner", "intermediate", "advanced"]);
+export type SkillLevel = z.infer<typeof SkillLevel>;
+
+// An AND-set, matched by subset against the athlete's equipment. Empty = needs nothing.
+export const Equipment = z.enum([
+  "barbell",
+  "dumbbell",
+  "kettlebell",
+  "pullup_bar",
+  "rings",
+  "box",
+  "ramp",
+  "bench",
+  "ghd",
+  "band",
+  "rope",      // climbing rope
+  "jump_rope",
+  "rower",
+  "ski_erg",   // upper-body pull ergometer (e.g. SkiErg)
+  "bike",      // heavy flywheel cycle-ergometer, legs only (e.g. BikeErg)
+  "air_bike",  // fan bike, arms and legs (e.g. Assault/Echo Bike)
+  "wall_ball",
+  "sandbag",
+  "d_ball",    // dead ball: heavy non-bouncing ball, distinct from the light wall_ball
+]);
+export type Equipment = z.infer<typeof Equipment>;
+
+// Ordered primary-first (e.g. Thruster = ["squat", "vertical_push"]).
+export const MovementPattern = z.enum([
+  "squat",
+  "hinge",
+  "lunge",
+  "vertical_push",
+  "horizontal_push",
+  "vertical_pull",
+  "horizontal_pull",
+  "core",
+  "carry", // locomotion while holding a loaded position
+  "hold",  // isometric maintenance of a loaded position
+  "olympic",
+  "jump",
+  "monostructural",
+]);
+export type MovementPattern = z.infer<typeof MovementPattern>;
+
+export const Position = z.enum([
+  "hanging",           // suspended from a bar or rings
+  "inverted",          // bodyweight fully on the hands
+  "partial_inversion", // head below the hips, load shared with the feet on a surface
+  "supine",            // lying on the back under load or effort (bench, sit-up)
+  "prone",             // chest/belly to the floor (burpee family, wall walk start)
+]);
+export type Position = z.infer<typeof Position>;
+
+export const Site = z.enum([
+  // joints & spine
+  "shoulder", "elbow", "wrist", "neck", "lumbar", "hip", "knee", "ankle",
+  // muscle groups
+  "quads", "hamstrings", "calves", "hip_flexors", "chest", "biceps", "lats", "triceps", "abdominals",
+  // hands & forearms: hanging traction, kipping friction, heavy carries
+  "grip",
+]);
+export type Site = z.infer<typeof Site>;
+
+// Limb groups for the laterality exemption; axial sites (neck, lumbar, abdominals) belong to neither.
+export const UPPER_LIMB_SITES = ["shoulder", "elbow", "wrist", "grip", "chest", "biceps", "lats", "triceps"] as const satisfies readonly Site[];
+export const LOWER_LIMB_SITES = ["hip", "knee", "ankle", "quads", "hamstrings", "calves", "hip_flexors"] as const satisfies readonly Site[];
+
+// Clinically significant (loaded or forceful) stress only, so load is implied and
+// a site merely participating in a movement is not listed.
+export const StressMechanism = z.enum([
+  "compression",
+  "flexion",        // through mid-range
+  "deep_flexion",   // end-range (a site gets flexion OR deep_flexion, never both)
+  "extension",      // held extended under load (front rack, push-up wrist)
+  "deep_extension", // end-range (a site gets extension OR deep_extension, never both)
+  "overhead",
+  "ballistic",      // explosive, high-velocity
+  "impact",
+  "traction",       // hanging/distraction
+  "kipping",        // dynamic swinging while hanging
+  "eccentric",      // forceful lengthening, or loading at long muscle length
+]);
+export type StressMechanism = z.infer<typeof StressMechanism>;
+
+// "high" = clinically significant; "low" = the same mechanism at bodyweight/unloaded.
+export const StressLoad = z.enum(["high", "low"]);
+export type StressLoad = z.infer<typeof StressLoad>;
+
+export const SiteStressSchema = z.object({
+  site: Site,
+  mechanisms: z.array(StressMechanism).min(1),
+  load: StressLoad.default("high"),
+});
+export type SiteStress = z.infer<typeof SiteStressSchema>;
+
+export const Limb = z.enum(["upper", "lower"]);
+export type Limb = z.infer<typeof Limb>;
+
+export const MovementSchema = z.object({
+  name: z.string().min(1),
+  patterns: z.array(MovementPattern).min(1),
+  positions: z.array(Position),
+  stresses: z.array(SiteStressSchema),
+  equipment: z.array(Equipment),
+  skill: SkillLevel,
+  substitutes: z.array(z.string()),
+  // Ingestion synonyms: shorthand a pasted workout may use for this movement.
+  aliases: z.array(z.string()).default([]),
+  // A standard single-limb variant keeps the stresses on the working side only.
+  unilateral: Limb.nullable().default(null),
+});
+export type Movement = z.infer<typeof MovementSchema>;
+
+export const Tier = z.enum(["avoid", "caution"]);
+export type Tier = z.infer<typeof Tier>;
+
+// injury: severity-scaled; limitation/condition: tiers apply as written.
+export const ContraindicationKind = z.enum(["injury", "limitation", "condition"]);
+export type ContraindicationKind = z.infer<typeof ContraindicationKind>;
+
+export const StressRuleSchema = z.object({
+  site: Site,
+  mechanisms: z.array(StressMechanism).min(1),
+  tier: Tier,
+});
+export type StressRule = z.infer<typeof StressRuleSchema>;
+
+export const PositionRuleSchema = z.object({ position: Position, tier: Tier });
+export type PositionRule = z.infer<typeof PositionRuleSchema>;
+
+export const ContraindicationSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  kind: ContraindicationKind,
+  rules: z.array(StressRuleSchema),
+  positionRules: z.array(PositionRuleSchema),
+  // Escape hatch: each use signals a mechanism the vocabulary is missing.
+  avoidMovements: z.array(z.string()),
+  notes: z.string().nullable().optional(),
+});
+export type Contraindication = z.infer<typeof ContraindicationSchema>;
+
+export const Side = z.enum(["left", "right", "both"]);
+export type Side = z.infer<typeof Side>;
+
+export const Severity = z.enum(["mild", "moderate", "acute"]);
+export type Severity = z.infer<typeof Severity>;
+
+export const StimulusDefSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().min(1),
+});
+export type StimulusDef = z.infer<typeof StimulusDefSchema>;
+```
+
+- [ ] **Step 6: Create `src/lib/domain/assess.ts` and delete `src/lib/domain/matching.ts`**
+
+```ts
+import {
+  LOWER_LIMB_SITES, UPPER_LIMB_SITES,
+  type Contraindication, type ContraindicationKind, type Movement, type Severity,
+  type Side, type Site, type StressLoad, type Tier,
+} from "./types";
+
+export type Verdict = "ok" | "caution" | "avoid";
+
+export interface ActiveCondition {
+  contraindication: Contraindication;
+  side: Side | null;
+  severity: Severity;
+}
+
+export interface AssessmentReason {
+  conditionKey: string;
+  verdict: Exclude<Verdict, "ok">;
+  detail: string; // "knee: deep_flexion" | "position: hanging" | "explicit"
+  healthySideOnly: boolean;
+}
+
+export interface Assessment {
+  verdict: Verdict;
+  reasons: AssessmentReason[];
+}
+
+const RANK: Record<Verdict, number> = { ok: 0, caution: 1, avoid: 2 };
+
+export function worstVerdict(a: Verdict, b: Verdict): Verdict {
+  return RANK[a] >= RANK[b] ? a : b;
+}
+
+// Spec "Assessment": rule tier × stress load × severity.
+const TABLE: Record<Tier, Record<StressLoad, Record<Severity, Verdict>>> = {
+  avoid: {
+    high: { mild: "caution", moderate: "avoid", acute: "avoid" },
+    low: { mild: "ok", moderate: "caution", acute: "avoid" },
+  },
+  caution: {
+    high: { mild: "caution", moderate: "caution", acute: "avoid" },
+    low: { mild: "ok", moderate: "ok", acute: "caution" },
+  },
+};
+
+export function effectiveVerdict(
+  tier: Tier, load: StressLoad, severity: Severity, kind: ContraindicationKind,
+): Verdict {
+  return TABLE[tier][load][kind === "injury" ? severity : "moderate"];
+}
+
+function limbOf(site: Site): "upper" | "lower" | null {
+  if ((UPPER_LIMB_SITES as readonly Site[]).includes(site)) return "upper";
+  if ((LOWER_LIMB_SITES as readonly Site[]).includes(site)) return "lower";
+  return null;
+}
+
+export function assessMovement(movement: Movement, active: ActiveCondition[]): Assessment {
+  const reasons: AssessmentReason[] = [];
+  for (const { contraindication: c, side, severity } of active) {
+    if (c.avoidMovements.includes(movement.name)) {
+      reasons.push({ conditionKey: c.key, verdict: "avoid", detail: "explicit", healthySideOnly: false });
+    }
+    for (const rule of c.positionRules) {
+      if (movement.positions.includes(rule.position)) {
+        reasons.push({ conditionKey: c.key, verdict: rule.tier, detail: `position: ${rule.position}`, healthySideOnly: false });
+      }
+    }
+    for (const stress of movement.stresses) {
+      for (const rule of c.rules) {
+        if (rule.site !== stress.site) continue;
+        const shared = rule.mechanisms.filter((m) => stress.mechanisms.includes(m));
+        if (shared.length === 0) continue;
+        let verdict = effectiveVerdict(rule.tier, stress.load, severity, c.kind);
+        if (verdict === "ok") continue;
+        let healthySideOnly = false;
+        if (
+          verdict === "avoid" && (side === "left" || side === "right") &&
+          movement.unilateral !== null && movement.unilateral === limbOf(stress.site)
+        ) {
+          verdict = "caution";
+          healthySideOnly = true;
+        }
+        reasons.push({ conditionKey: c.key, verdict, detail: `${stress.site}: ${shared.join("/")}`, healthySideOnly });
+      }
+    }
+  }
+  return { verdict: reasons.reduce<Verdict>((v, r) => worstVerdict(v, r.verdict), "ok"), reasons };
+}
+
+/** Shorthand used by integrity tests: assessed "avoid" at moderate severity, no side. */
+export function matchesContraindication(movement: Movement, contraindication: Contraindication): boolean {
+  return assessMovement(movement, [{ contraindication, side: null, severity: "moderate" }]).verdict === "avoid";
+}
+```
+
+```bash
+git rm src/lib/domain/matching.ts
+```
+
+- [ ] **Step 7: Run the assessment test, verify it passes**
+
+Run: `pnpm exec vitest run tests/domain/assess.test.ts`
+Expected: PASS.
+
+- [ ] **Step 8: Migrate the contraindication data**
+
+```bash
+git mv data/injury-contraindications.json data/contraindications.json
+```
+
+Create `scripts/migrations/d1-contraindications.mjs`:
+
+```js
+import { readRows, writeRows } from "../lib/domain-json.mjs";
+
+const LIMITATIONS = new Set(["no_hanging", "no_inversion"]);
+const rows = readRows("data/contraindications.json").map((c) => ({
+  key: c.injuryKey,
+  label: c.label,
+  kind: LIMITATIONS.has(c.injuryKey) ? "limitation" : "injury",
+  rules: c.avoidStresses.map((r) => ({ site: r.site, mechanisms: r.mechanisms, tier: "avoid" })),
+  positionRules: c.avoidPositions.map((p) => ({ position: p, tier: "avoid" })),
+  avoidMovements: c.avoidMovements,
+  notes: c.notes,
+}));
+writeRows("data/contraindications.json", rows);
+```
+
+Run, then delete the one-off script (the data diff is the record):
+```bash
+node scripts/migrations/d1-contraindications.mjs
+rm scripts/migrations/d1-contraindications.mjs
+```
+
+- [ ] **Step 9: Update `tests/domain/types.test.ts`**
+
+Change the imports at the top to:
+```ts
+import { describe, it, expect } from "vitest";
+import { MovementSchema, ContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
+import { matchesContraindication } from "@/lib/domain/assess";
+```
+
+Replace the test `it("validates an injury contraindication and stimulus def", ...)` with:
+```ts
+  it("validates a contraindication and stimulus def", () => {
+    expect(
+      ContraindicationSchema.parse({
+        key: "shoulder_impingement", label: "Shoulder impingement", kind: "injury",
+        rules: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"], tier: "avoid" }],
+        positionRules: [], avoidMovements: [], notes: null,
+      }).key
+    ).toBe("shoulder_impingement");
+    expect(
+      StimulusDefSchema.parse({ key: "aerobic_capacity", label: "Aerobic capacity", description: "Sustained..." }).key
+    ).toBe("aerobic_capacity");
+  });
+```
+
+In `describe("matchesContraindication", ...)`, replace the two fixtures `overheadInjury` and `noInversion` with:
+```ts
+  const overheadInjury = ContraindicationSchema.parse({
+    key: "shoulder_impingement", label: "Shoulder impingement", kind: "injury",
+    rules: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"], tier: "avoid" }],
+    positionRules: [], avoidMovements: ["Bench Press"], notes: null,
+  });
+  const noInversion = ContraindicationSchema.parse({
+    key: "no_inversion", label: "Unable to go inverted", kind: "limitation",
+    rules: [], positionRules: [{ position: "inverted", tier: "avoid" }], avoidMovements: [], notes: null,
+  });
+```
+(The five `it(...)` cases in that block stay unchanged.)
+
+- [ ] **Step 10: Update `tests/domain/data.test.ts`**
+
+1. Imports and parsing (top of file):
+```ts
+import { describe, it, expect } from "vitest";
+import movementsJson from "../../data/movements.json";
+import contraindicationsJson from "../../data/contraindications.json";
+import stimuli from "../../data/stimulus-taxonomy.json";
+import { MovementSchema, ContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
+import type { Movement } from "@/lib/domain/types";
+import { matchesContraindication } from "@/lib/domain/assess";
+
+const movements = movementsJson.map((m) => MovementSchema.parse(m));
+const injuries = contraindicationsJson.map((i) => ContraindicationSchema.parse(i));
+```
+2. Replace every `.injuryKey` with `.key` (5 places: the explicit-override test, the `injury()` helper, the lunge, plank and five-movements tests).
+3. In `it("every site annotated on a movement is blocked by some contraindication", ...)` replace the `blockedSites` line with:
+```ts
+    const blockedSites = new Set(
+      injuries.flatMap((i) => i.rules.filter((r) => r.tier === "avoid").map((r) => r.site))
+    );
+```
+4. In `it("the farmer carry is a loaded carry with a per-implement row", ...)` the parsed stresses now carry the `load` default:
+```ts
+      expect(m.stresses).toEqual([{ site: "lumbar", mechanisms: ["compression"], load: "high" }]);
+```
+
+- [ ] **Step 11: Run the full suite, verify green**
+
+Run: `pnpm test`
+Expected: PASS — every previous test plus `assess.test.ts`.
+
+- [ ] **Step 12: Commit**
+
+```bash
+git add -A
+git commit -m "feat: domain schema v2 with tiered, severity-aware contraindication assessment"
+```
+
+---
+
+### Task D2: Annotate grip, abdominals, lying positions, low-load stresses and laterality; add caution rules and new entries
+
+**Files:**
+- Modify: `data/movements.json`, `data/contraindications.json` (via a one-off script)
+- Test: `tests/domain/data.test.ts` (extend + one assertion updated)
+
+**Interfaces:**
+- Consumes: `assessMovement`, `matchesContraindication`, `ActiveCondition` (Task D1).
+- Produces: contraindication keys `hand_tear`, `abdominal_strain` (kind `injury`), `pregnancy` (kind `condition`) — 21 entries total.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/domain/data.test.ts`:
+
+1. Add to the imports:
+```ts
+import { assessMovement } from "@/lib/domain/assess";
+import type { Severity, Side } from "@/lib/domain/types";
+```
+2. In `it("the farmer carry is a loaded carry with a per-implement row", ...)` replace the stresses assertion with:
+```ts
+      expect(m.stresses).toEqual([
+        { site: "lumbar", mechanisms: ["compression"], load: "high" },
+        { site: "grip", mechanisms: ["traction"], load: "high" },
+      ]);
+```
+3. In `it("no_inversion blocks partially inverted movements, not only full inversion", ...)` replace `expect(wallClimb.positions).toEqual(["partial_inversion"]);` with:
+```ts
+    expect(wallClimb.positions).toContain("partial_inversion");
+```
+4. Append at the end of the file:
+```ts
+describe("v2 annotations", () => {
+  function condition(key: string) {
+    const c = injuries.find((x) => x.key === key);
+    if (!c) throw new Error(`contraindication not found: ${key}`);
+    return c;
+  }
+  const verdict = (name: string, key: string, severity: Severity = "moderate", side: Side | null = null) =>
+    assessMovement(byName(name), [{ contraindication: condition(key), side, severity }]);
+
+  it("every hanging movement loads the grip", () => {
+    for (const m of movements.filter((mv) => mv.positions.includes("hanging"))) {
+      expect(m.stresses.some((s) => s.site === "grip"), m.name).toBe(true);
+    }
+  });
+
+  it("trunk-flexion core work loads the abdominals", () => {
+    for (const name of ["Sit-up", "V-up", "GHD Sit-up", "Toes-to-Bar", "Toes-to-Ring", "Knees-to-Elbows", "Hanging Knee Raise"]) {
+      expect(byName(name).stresses.some((s) => s.site === "abdominals" && s.mechanisms.includes("flexion")), name).toBe(true);
+    }
+  });
+
+  it("lying positions are annotated", () => {
+    for (const name of ["Bench Press", "Dumbbell Bench Press", "Sit-up", "V-up", "GHD Sit-up"]) {
+      expect(byName(name).positions, name).toContain("supine");
+    }
+    for (const name of ["Burpee", "Devil Press", "Up-Down", "Wall Climb"]) {
+      expect(byName(name).positions, name).toContain("prone");
+    }
+  });
+
+  it("the catalog has 21 entries with the expected kinds", () => {
+    expect(injuries).toHaveLength(21);
+    expect(injuries.filter((c) => c.kind === "limitation").map((c) => c.key).sort()).toEqual(["no_hanging", "no_inversion"]);
+    expect(injuries.filter((c) => c.kind === "condition").map((c) => c.key)).toEqual(["pregnancy"]);
+  });
+
+  it("hand_tear blocks kipping on the bar and only cautions strict hanging", () => {
+    expect(matchesContraindication(byName("Pull-up"), condition("hand_tear"))).toBe(true);
+    expect(verdict("Dead Hang", "hand_tear").verdict).toBe("caution");
+    expect(verdict("Ring Row", "hand_tear").verdict).toBe("ok");
+  });
+
+  it("abdominal_strain blocks trunk flexion and spares the plank", () => {
+    for (const name of ["Sit-up", "GHD Sit-up", "Toes-to-Bar"]) {
+      expect(matchesContraindication(byName(name), condition("abdominal_strain")), name).toBe(true);
+    }
+    expect(verdict("Plank", "abdominal_strain").verdict).toBe("ok");
+  });
+
+  it("pregnancy avoids inversion and trunk flexion, and cautions lying positions and impact", () => {
+    expect(verdict("Handstand Push-up", "pregnancy").verdict).toBe("avoid");
+    expect(verdict("Sit-up", "pregnancy").verdict).toBe("avoid");
+    expect(verdict("Bench Press", "pregnancy").verdict).toBe("caution");
+    expect(verdict("Burpee", "pregnancy").verdict).toBe("caution");
+    expect(verdict("Plank", "pregnancy").verdict).toBe("ok");
+    expect(condition("pregnancy").notes).toMatch(/healthcare provider/);
+  });
+
+  it("knee pain severity scales the bodyweight and the loaded squat", () => {
+    expect(verdict("Air Squat", "knee_pain", "mild").verdict).toBe("ok");
+    expect(verdict("Air Squat", "knee_pain", "moderate").verdict).toBe("caution");
+    expect(verdict("Air Squat", "knee_pain", "acute").verdict).toBe("avoid");
+    expect(verdict("Back Squat", "knee_pain", "mild").verdict).toBe("caution");
+    expect(verdict("Back Squat", "knee_pain", "moderate").verdict).toBe("avoid");
+  });
+
+  it("a one-sided shoulder injury leaves single-arm dumbbell work for the healthy side", () => {
+    const a = verdict("Dumbbell Shoulder Press", "shoulder_impingement", "moderate", "right");
+    expect(a.verdict).toBe("caution");
+    expect(a.reasons.every((r) => r.healthySideOnly)).toBe(true);
+    expect(verdict("Shoulder Press", "shoulder_impingement", "moderate", "right").verdict).toBe("avoid");
+    expect(verdict("Dumbbell Shoulder Press", "shoulder_impingement").verdict).toBe("avoid");
+  });
+
+  it("laterality never exempts the spine", () => {
+    expect(verdict("Dumbbell Snatch", "lower_back_strain", "moderate", "left").verdict).toBe("avoid");
+  });
+
+  it("limitations ignore severity", () => {
+    expect(verdict("Pull-up", "no_hanging", "mild").verdict).toBe("avoid");
+  });
+
+  it("unilateral twins match", () => {
+    for (const m of movements.filter((mv) => mv.name.startsWith("Kettlebell "))) {
+      const twin = movements.find((mv) => mv.name === "Dumbbell " + m.name.slice("Kettlebell ".length));
+      if (twin) expect(m.unilateral, m.name).toBe(twin.unilateral);
+    }
+    expect(byName("Dumbbell Snatch").unilateral).toBe("upper");
+    expect(byName("Step-up").unilateral).toBe("lower");
+    expect(byName("Thruster").unilateral).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/domain/data.test.ts`
+Expected: FAIL — the farmer carry, grip, abdominals, positions, catalog size and contraindication tests fail.
+
+- [ ] **Step 3: Write and run the migration**
+
+Create `scripts/migrations/d2-annotations.mjs`:
+
+```js
+import { readRows, writeRows } from "../lib/domain-json.mjs";
+
+// ---- movements ----
+const movements = readRows("data/movements.json");
+const byName = new Map(movements.map((m) => [m.name, m]));
+const get = (name) => {
+  const m = byName.get(name);
+  if (!m) throw new Error(`missing movement: ${name}`);
+  return m;
+};
+const addStress = (name, site, mechanisms, load) =>
+  get(name).stresses.push(load ? { site, mechanisms, load } : { site, mechanisms });
+const addPosition = (name, position) => {
+  const m = get(name);
+  if (!m.positions.includes(position)) m.positions.push(position);
+};
+const addAlias = (name, alias) => {
+  const m = get(name);
+  m.aliases = [...(m.aliases ?? []), alias];
+};
+const setUnilateral = (name, limb) => {
+  get(name).unilateral = limb;
+};
+
+// grip: kipping on a bar/rings tears hands; hanging and heavy carries load it statically
+for (const n of ["Pull-up", "Chest-to-Bar", "Bar Muscle-up", "Ring Muscle-up", "Toes-to-Bar", "Toes-to-Ring", "Knees-to-Elbows"]) {
+  addStress(n, "grip", ["traction", "kipping"]);
+}
+for (const n of ["Rope Climb", "Legless Rope Climb", "Banded Pull-up", "Dead Hang", "Hanging Knee Raise", "Dumbbell Farmer Carry", "Kettlebell Farmer Carry"]) {
+  addStress(n, "grip", ["traction"]);
+}
+
+// abdominals: forceful trunk flexion; the GHD also loads them at length
+for (const n of ["Sit-up", "V-up", "Toes-to-Bar", "Toes-to-Ring", "Knees-to-Elbows", "Hanging Knee Raise"]) {
+  addStress(n, "abdominals", ["flexion"]);
+}
+addStress("GHD Sit-up", "abdominals", ["flexion", "eccentric"]);
+
+// lying positions
+for (const n of ["Bench Press", "Dumbbell Bench Press", "Sit-up", "V-up", "GHD Sit-up"]) addPosition(n, "supine");
+for (const n of ["Burpee", "Devil Press", "Up-Down", "Wall Climb"]) addPosition(n, "prone");
+
+// low-load stresses on bodyweight movements (matter at higher severities)
+addStress("Air Squat", "knee", ["deep_flexion"], "low");
+addStress("Air Squat", "hip", ["deep_flexion"], "low");
+addStress("Box Squat", "knee", ["flexion"], "low");
+addStress("Box Squat", "hip", ["flexion"], "low");
+addStress("Lunge", "knee", ["flexion"], "low");
+addStress("Lunge", "quads", ["eccentric"], "low");
+addStress("Step-up", "knee", ["flexion"], "low");
+addStress("Up-Down", "knee", ["impact"], "low");
+addStress("Up-Down", "ankle", ["impact"], "low");
+
+// laterality: a standard single-limb variant exists
+for (const n of [
+  "Dumbbell Snatch", "Kettlebell Snatch", "Dumbbell Shoulder Press", "Kettlebell Shoulder Press",
+  "Dumbbell Push Press", "Kettlebell Push Press", "Dumbbell Push Jerk", "Kettlebell Push Jerk",
+  "Dumbbell Overhead Hold", "Kettlebell Overhead Hold", "Dumbbell Clean", "Kettlebell Clean",
+  "Dumbbell Bench Press", "Dumbbell Farmer Carry", "Kettlebell Farmer Carry",
+]) setUnilateral(n, "upper");
+setUnilateral("Step-up", "lower");
+
+// aliases
+addAlias("Wall Climb", "Wall Walk");
+addAlias("Pull-up", "Kipping Pull-up");
+addAlias("Pull-up", "Butterfly Pull-up");
+
+writeRows("data/movements.json", movements);
+
+// ---- contraindications ----
+const conditions = readRows("data/contraindications.json");
+const getC = (key) => {
+  const c = conditions.find((x) => x.key === key);
+  if (!c) throw new Error(`missing contraindication: ${key}`);
+  return c;
+};
+const caution = (key, site, mechanisms) => getC(key).rules.push({ site, mechanisms, tier: "caution" });
+
+caution("shoulder_impingement", "shoulder", ["traction"]);
+caution("lower_back_strain", "lumbar", ["flexion"]);
+caution("knee_pain", "knee", ["flexion", "compression"]);
+caution("elbow_tendinopathy", "elbow", ["traction"]);
+caution("hip_impingement", "hip", ["flexion"]);
+
+const handTear = {
+  key: "hand_tear", label: "Torn or blistered palms", kind: "injury",
+  rules: [
+    { site: "grip", mechanisms: ["kipping"], tier: "avoid" },
+    { site: "grip", mechanisms: ["traction"], tier: "caution" },
+  ],
+  positionRules: [], avoidMovements: [],
+  notes: "Avoid kipping on a bar or rings, where friction reopens the tear; strict hanging and heavy carries as tolerated, taped or with grips.",
+};
+const abdominalStrain = {
+  key: "abdominal_strain", label: "Abdominal strain", kind: "injury",
+  rules: [{ site: "abdominals", mechanisms: ["flexion", "eccentric"], tier: "avoid" }],
+  positionRules: [], avoidMovements: [],
+  notes: "Avoid forceful trunk flexion and loading the abdominals at length (sit-ups, toes-to-bar, GHD); bracing holds such as the plank are acceptable as tolerated.",
+};
+const pregnancy = {
+  key: "pregnancy", label: "Pregnancy", kind: "condition",
+  rules: [
+    { site: "abdominals", mechanisms: ["flexion", "eccentric"], tier: "avoid" },
+    { site: "knee", mechanisms: ["impact"], tier: "caution" },
+    { site: "ankle", mechanisms: ["impact"], tier: "caution" },
+    { site: "lumbar", mechanisms: ["compression"], tier: "caution" },
+  ],
+  positionRules: [
+    { position: "inverted", tier: "avoid" },
+    { position: "partial_inversion", tier: "caution" },
+    { position: "supine", tier: "caution" },
+    { position: "prone", tier: "caution" },
+  ],
+  avoidMovements: [],
+  notes: "Conservative defaults only: no loaded trunk flexion or full inversion; lying positions, impact and heavy axial loading with caution. Always follow the athlete's healthcare provider.",
+};
+const firstLimitation = conditions.findIndex((c) => c.kind === "limitation");
+conditions.splice(firstLimitation, 0, handTear, abdominalStrain);
+conditions.push(pregnancy);
+writeRows("data/contraindications.json", conditions);
+```
+
+Run it and delete it:
+```bash
+node scripts/migrations/d2-annotations.mjs
+rm scripts/migrations/d2-annotations.mjs
+```
+
+- [ ] **Step 4: Run the data tests, verify they pass**
+
+Run: `pnpm exec vitest run tests/domain/data.test.ts`
+Expected: PASS. If an earlier test now fails, the annotation changed a verdict it pins — read the failing assertion against the spec before touching data.
+
+- [ ] **Step 5: Run the full suite and commit**
+
+Run: `pnpm test` → all PASS.
+
+```bash
+git add -A
+git commit -m "feat: annotate grip, abdominals, lying positions, low-load stresses and laterality; add hand tear, abdominal strain and pregnancy"
+```
+
+---
+
+### Task D3: Strict variants and known-gap movements
+
+Adds 15 rows: strict variants (strict and kipping are separate rows whenever both are programmed) and the most common movements missing from the catalog (the corpus pass in Task E10 finds the rest).
+
+**Files:**
+- Modify: `data/movements.json` (via a one-off script)
+- Test: `tests/domain/data.test.ts` (extend)
+
+**Interfaces:**
+- Produces movement names used later by eval cases: `Strict Pull-up`, `Strict Chest-to-Bar`, `Strict Toes-to-Bar`, `Burpee Pull-up`, `Box Jump Over`, `Burpee Box Jump Over`, `Bar-facing Burpee`, `Hang Power Clean`, `Hang Squat Clean`, `Hang Power Snatch`, `Sumo Deadlift High Pull`, `Pistol`, `GHD Hip Extension`, `Dumbbell Row`, `Bent-over Row`.
+
+- [ ] **Step 1: Write the failing tests** (append to `tests/domain/data.test.ts`)
+
+```ts
+describe("strict variants and known gaps", () => {
+  const kips = (name: string) => byName(name).stresses.some((s) => s.mechanisms.includes("kipping"));
+  const elbow = () => {
+    const c = injuries.find((x) => x.key === "elbow_tendinopathy");
+    if (!c) throw new Error("elbow_tendinopathy missing");
+    return c;
+  };
+
+  it("kipping and strict variants are separate rows", () => {
+    for (const [kipping, strict] of [
+      ["Pull-up", "Strict Pull-up"], ["Chest-to-Bar", "Strict Chest-to-Bar"], ["Toes-to-Bar", "Strict Toes-to-Bar"],
+    ]) {
+      expect(kips(kipping), kipping).toBe(true);
+      expect(kips(strict), strict).toBe(false);
+      expect(byName(kipping).substitutes, kipping).toContain(strict);
+    }
+    expect(byName("Pull-up").substitutes[0]).toBe("Strict Pull-up");
+  });
+
+  it("an elbow tendinopathy keeps the strict pull-up and blocks the kipping one", () => {
+    expect(matchesContraindication(byName("Pull-up"), elbow())).toBe(true);
+    expect(matchesContraindication(byName("Strict Pull-up"), elbow())).toBe(false);
+  });
+
+  it("the burpee family starts prone", () => {
+    for (const name of ["Burpee", "Burpee Pull-up", "Burpee Box Jump Over", "Bar-facing Burpee", "Devil Press", "Up-Down"]) {
+      expect(byName(name).positions, name).toContain("prone");
+    }
+  });
+
+  it("hang variants mirror their floor lifts", () => {
+    expect(byName("Hang Power Clean").stresses).toEqual(byName("Power Clean").stresses);
+    expect(byName("Hang Squat Clean").stresses).toEqual(byName("Squat Clean").stresses);
+    expect(byName("Hang Power Snatch").stresses).toEqual(byName("Power Snatch").stresses);
+  });
+
+  it("the pistol is a single-leg deep squat", () => {
+    const p = byName("Pistol");
+    expect(p.unilateral).toBe("lower");
+    expect(p.stresses.some((s) => s.site === "knee" && s.mechanisms.includes("deep_flexion") && s.load === "high")).toBe(true);
+  });
+
+  it("horizontal pulling has a bodyweight, dumbbell and barbell option", () => {
+    expect(byName("Ring Row").substitutes).toEqual(["Dumbbell Row"]);
+    expect(byName("Dumbbell Row").unilateral).toBe("upper");
+    expect(byName("Bent-over Row").equipment).toEqual(["barbell"]);
+    expect(movements.filter((m) => m.patterns[0] === "horizontal_pull")).toHaveLength(3);
+  });
+
+  it("the catalog has 126 movements", () => {
+    expect(movements).toHaveLength(126);
+  });
+});
+```
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/domain/data.test.ts`
+Expected: FAIL — `movement not found: Strict Pull-up` (and the others).
+
+- [ ] **Step 3: Write and run the migration**
+
+Create `scripts/migrations/d3-movements.mjs`:
+
+```js
+import { readRows, writeRows } from "../lib/domain-json.mjs";
+
+const movements = readRows("data/movements.json");
+const indexOf = (name) => {
+  const i = movements.findIndex((m) => m.name === name);
+  if (i < 0) throw new Error(`missing movement: ${name}`);
+  return i;
+};
+const get = (name) => movements[indexOf(name)];
+const insertAfter = (name, row) => movements.splice(indexOf(name) + 1, 0, row);
+const stressesOf = (name) => structuredClone(get(name).stresses);
+const s = (site, ...mechanisms) => ({ site, mechanisms });
+
+insertAfter("Pull-up", {
+  name: "Strict Pull-up", patterns: ["vertical_pull"], positions: ["hanging"],
+  stresses: [s("shoulder", "traction"), s("elbow", "traction"), s("biceps", "eccentric"), s("grip", "traction")],
+  equipment: ["pullup_bar"], skill: "intermediate", substitutes: ["Banded Pull-up", "Ring Row"],
+});
+insertAfter("Chest-to-Bar", {
+  name: "Strict Chest-to-Bar", patterns: ["vertical_pull"], positions: ["hanging"],
+  stresses: [s("shoulder", "traction"), s("elbow", "traction"), s("biceps", "eccentric"), s("grip", "traction")],
+  equipment: ["pullup_bar"], skill: "advanced", substitutes: ["Strict Pull-up", "Banded Pull-up"], aliases: ["Strict C2B"],
+});
+insertAfter("Toes-to-Bar", {
+  name: "Strict Toes-to-Bar", patterns: ["core"], positions: ["hanging"],
+  stresses: [s("shoulder", "traction"), s("hip_flexors", "flexion"), s("lumbar", "flexion"), s("abdominals", "flexion"), s("grip", "traction")],
+  equipment: ["pullup_bar"], skill: "advanced", substitutes: ["Hanging Knee Raise", "Sit-up"], aliases: ["Strict T2B"],
+});
+insertAfter("Ring Row", {
+  name: "Dumbbell Row", patterns: ["horizontal_pull"], positions: [], stresses: [],
+  equipment: ["dumbbell"], skill: "beginner", substitutes: ["Ring Row", "Bent-over Row"],
+  aliases: ["DB Row", "Single-arm Dumbbell Row"], unilateral: "upper",
+});
+insertAfter("Dumbbell Row", {
+  name: "Bent-over Row", patterns: ["horizontal_pull"], positions: [], stresses: [s("lumbar", "flexion")],
+  equipment: ["barbell"], skill: "intermediate", substitutes: ["Dumbbell Row", "Ring Row"],
+  aliases: ["Barbell Row", "Pendlay Row"],
+});
+insertAfter("Air Squat", {
+  name: "Pistol", patterns: ["squat"], positions: [],
+  stresses: [s("knee", "deep_flexion"), s("hip", "deep_flexion"), s("quads", "eccentric")],
+  equipment: [], skill: "advanced", substitutes: ["Air Squat", "Lunge"],
+  aliases: ["Pistol Squat", "Single-leg Squat"], unilateral: "lower",
+});
+insertAfter("Romanian Deadlift", {
+  name: "GHD Hip Extension", patterns: ["hinge"], positions: ["prone"], stresses: [s("hamstrings", "eccentric")],
+  equipment: ["ghd"], skill: "intermediate", substitutes: ["Romanian Deadlift", "Kettlebell Swing"], aliases: ["Hip Extension"],
+});
+insertAfter("Power Clean", {
+  name: "Hang Power Clean", patterns: ["olympic", "hinge"], positions: [], stresses: stressesOf("Power Clean"),
+  equipment: ["barbell"], skill: "intermediate", substitutes: ["Power Clean", "Dumbbell Clean", "Kettlebell Swing"], aliases: ["HPC"],
+});
+insertAfter("Power Snatch", {
+  name: "Hang Power Snatch", patterns: ["olympic", "hinge"], positions: [], stresses: stressesOf("Power Snatch"),
+  equipment: ["barbell"], skill: "advanced", substitutes: ["Power Snatch", "Dumbbell Snatch"], aliases: ["HPS"],
+});
+insertAfter("Squat Clean", {
+  name: "Hang Squat Clean", patterns: ["olympic", "hinge", "squat"], positions: [], stresses: stressesOf("Squat Clean"),
+  equipment: ["barbell"], skill: "advanced", substitutes: ["Hang Power Clean", "Squat Clean", "Front Squat"], aliases: ["Hang Clean", "HSC"],
+});
+insertAfter("Kettlebell Swing", {
+  name: "Sumo Deadlift High Pull", patterns: ["hinge"], positions: [],
+  stresses: [s("lumbar", "compression", "ballistic"), s("hamstrings", "ballistic"), s("shoulder", "ballistic")],
+  equipment: ["barbell"], skill: "intermediate", substitutes: ["Kettlebell Swing", "Deadlift"], aliases: ["SDHP"],
+});
+const burpee = stressesOf("Burpee");
+insertAfter("Burpee", {
+  name: "Burpee Pull-up", patterns: ["vertical_pull", "jump", "horizontal_push"], positions: ["hanging", "prone"],
+  stresses: [
+    ...burpee,
+    s("shoulder", "traction", "kipping"), s("elbow", "traction", "kipping"), s("biceps", "eccentric"),
+    s("lats", "kipping", "eccentric"), s("grip", "traction", "kipping"),
+  ],
+  equipment: ["pullup_bar"], skill: "intermediate", substitutes: ["Burpee", "Pull-up"],
+});
+insertAfter("Burpee Pull-up", {
+  name: "Bar-facing Burpee", patterns: ["jump", "horizontal_push"], positions: ["prone"], stresses: stressesOf("Burpee"),
+  equipment: ["barbell"], skill: "beginner", substitutes: ["Burpee"], aliases: ["BFB"],
+});
+insertAfter("Box Jump", {
+  name: "Box Jump Over", patterns: ["jump"], positions: [], stresses: stressesOf("Box Jump"),
+  equipment: ["box"], skill: "intermediate", substitutes: ["Box Jump", "Step-up"], aliases: ["BJO"],
+});
+insertAfter("Box Jump Over", {
+  name: "Burpee Box Jump Over", patterns: ["jump", "horizontal_push"], positions: ["prone"],
+  stresses: [
+    s("wrist", "extension", "impact"), s("knee", "impact", "ballistic"), s("ankle", "impact", "ballistic"),
+    s("chest", "eccentric"), s("calves", "ballistic"), s("quads", "ballistic", "eccentric"),
+  ],
+  equipment: ["box"], skill: "intermediate", substitutes: ["Burpee", "Box Jump Over", "Step-up"], aliases: ["BBJO"],
+});
+
+get("Pull-up").substitutes = ["Strict Pull-up", ...get("Pull-up").substitutes];
+get("Chest-to-Bar").substitutes = ["Strict Chest-to-Bar", ...get("Chest-to-Bar").substitutes];
+get("Toes-to-Bar").substitutes = [...get("Toes-to-Bar").substitutes, "Strict Toes-to-Bar"];
+get("Ring Row").substitutes = ["Dumbbell Row"];
+
+writeRows("data/movements.json", movements);
+```
+
+```bash
+node scripts/migrations/d3-movements.mjs
+rm scripts/migrations/d3-movements.mjs
+```
+
+- [ ] **Step 4: Run the suite, verify green**
+
+Run: `pnpm test`
+Expected: PASS (all data invariants — grip on hanging rows, lats only with kipping, olympic only on barbell, KB/DB twins — hold for the new rows).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: add strict variants and the most common missing movements"
+```
+
+---
+
+### Task D4: Structured stimulus taxonomy and conversions
+
+**Files:**
+- Modify: `data/stimulus-taxonomy.json` (rewrite), `src/lib/domain/types.ts` (append), `tests/domain/data.test.ts` (replace the taxonomy test)
+- Create: `data/conversions.json`, `src/lib/domain/conversions.ts`, `tests/domain/conversions.test.ts`
+
+**Interfaces:**
+- Produces (`@/lib/domain/types`): `StimulusTaxonomySchema` / `StimulusTaxonomy` (`{ qualities, energySystems, loadIntensities }: StimulusDef[]` each), `EffortUnit`, `EffortEquivalenceSchema`, `ImplementLoadSchema`, `ConversionsSchema` / `Conversions`.
+- Produces (`@/lib/domain/conversions`): `convertEffort(conversions: Conversions, from: { movement: string; unit: EffortUnit; amount: number }, to: { movement: string; unit: EffortUnit }, sex: "male" | "female" | null): number | null`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/domain/conversions.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import conversionsJson from "../../data/conversions.json";
+import movementsJson from "../../data/movements.json";
+import { ConversionsSchema } from "@/lib/domain/types";
+import { convertEffort } from "@/lib/domain/conversions";
+
+const conversions = ConversionsSchema.parse(conversionsJson);
+const names = new Set(movementsJson.map((m) => m.name));
+
+describe("conversions data", () => {
+  it("every equivalent names a real movement, once per unit", () => {
+    for (const group of conversions.effort) {
+      const seen = new Set<string>();
+      for (const e of group.equivalents) {
+        expect(names.has(e.movement), e.movement).toBe(true);
+        const id = `${e.movement}/${e.unit}`;
+        expect(seen.has(id), id).toBe(false);
+        seen.add(id);
+      }
+    }
+  });
+
+  it("implement load fractions are ordered ranges below 1", () => {
+    for (const r of conversions.implementLoad) {
+      expect(r.perHandFraction.low).toBeLessThanOrEqual(r.perHandFraction.high);
+      expect(r.perHandFraction.high).toBeLessThan(1);
+    }
+  });
+});
+
+describe("convertEffort", () => {
+  it("converts a run distance to rowing meters", () => {
+    expect(convertEffort(conversions, { movement: "Run", unit: "meters", amount: 400 }, { movement: "Row (Erg)", unit: "meters" }, "male")).toBe(500);
+  });
+
+  it("uses the sex-specific amount and rounds calories to integers", () => {
+    const from = { movement: "Run", unit: "meters" as const, amount: 800 };
+    const to = { movement: "Air Bike", unit: "calories" as const };
+    expect(convertEffort(conversions, from, to, "male")).toBe(40);
+    expect(convertEffort(conversions, from, to, "female")).toBe(30);
+    expect(convertEffort(conversions, from, to, null)).toBe(35);
+  });
+
+  it("rounds meters to the nearest 10", () => {
+    expect(convertEffort(conversions, { movement: "Run", unit: "meters", amount: 300 }, { movement: "Row (Erg)", unit: "meters" }, "male")).toBe(380);
+  });
+
+  it("converts double-unders to single-unders", () => {
+    expect(convertEffort(conversions, { movement: "Double-under", unit: "reps", amount: 50 }, { movement: "Single-under", unit: "reps" }, null)).toBe(150);
+  });
+
+  it("returns null when no group holds both efforts", () => {
+    expect(convertEffort(conversions, { movement: "Run", unit: "meters", amount: 400 }, { movement: "Single-under", unit: "reps" }, null)).toBeNull();
+  });
+});
+```
+
+In `tests/domain/data.test.ts`, replace the import `import stimuli from "../../data/stimulus-taxonomy.json";` with `import taxonomyJson from "../../data/stimulus-taxonomy.json";`, add `StimulusTaxonomySchema` to the `@/lib/domain/types` import, and replace the test `it("stimulus taxonomy is valid with unique keys", ...)` with:
+
+```ts
+  it("stimulus taxonomy has three vocabularies with unique keys", () => {
+    const taxonomy = StimulusTaxonomySchema.parse(taxonomyJson);
+    for (const list of [taxonomy.qualities, taxonomy.energySystems, taxonomy.loadIntensities]) {
+      const keys = list.map((d) => d.key);
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+    expect(taxonomy.qualities.map((q) => q.key)).toContain("conditioning");
+  });
+```
+Remove `StimulusDefSchema` from that import if it is no longer used in the file.
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/domain`
+Expected: FAIL — `data/conversions.json` missing; `StimulusTaxonomySchema` not exported.
+
+- [ ] **Step 3: Append the schemas to `src/lib/domain/types.ts`**
+
+```ts
+export const StimulusTaxonomySchema = z.object({
+  qualities: z.array(StimulusDefSchema).min(1),
+  energySystems: z.array(StimulusDefSchema).min(1),
+  loadIntensities: z.array(StimulusDefSchema).min(1),
+});
+export type StimulusTaxonomy = z.infer<typeof StimulusTaxonomySchema>;
+
+export const EffortUnit = z.enum(["meters", "calories", "reps"]);
+export type EffortUnit = z.infer<typeof EffortUnit>;
+
+export const EffortEquivalentSchema = z.object({
+  movement: z.string().min(1),
+  unit: EffortUnit,
+  male: z.number().positive(),
+  female: z.number().positive(),
+});
+
+export const EffortEquivalenceSchema = z.object({
+  key: z.string().min(1),
+  note: z.string().min(1),
+  equivalents: z.array(EffortEquivalentSchema).min(2),
+});
+
+export const ImplementLoadSchema = z.object({
+  from: Equipment,
+  to: Equipment,
+  perHandFraction: z.object({ low: z.number().positive(), high: z.number().positive() }),
+  note: z.string().min(1),
+});
+
+export const ConversionsSchema = z.object({
+  effort: z.array(EffortEquivalenceSchema),
+  implementLoad: z.array(ImplementLoadSchema),
+});
+export type Conversions = z.infer<typeof ConversionsSchema>;
+```
+
+- [ ] **Step 4: Write the data files**
+
+`data/stimulus-taxonomy.json` (replace):
+
+```json
+{
+  "qualities": [
+    { "key": "strength", "label": "Strength", "description": "Heavy loads, low reps, full recovery between efforts; the goal is force production." },
+    { "key": "power", "label": "Power", "description": "Fast, explosive efforts (olympic lifts, jumps, speed work) at moderate-to-heavy load with full recovery." },
+    { "key": "skill", "label": "Skill", "description": "Technique practice in gymnastics or lifting at low fatigue; movement quality over output." },
+    { "key": "conditioning", "label": "Conditioning", "description": "Metabolic work against the clock (AMRAP, for time, intervals, EMOM sprints); the goal is sustained output." },
+    { "key": "muscular_endurance", "label": "Muscular endurance", "description": "High-rep sets at light-to-moderate load, not primarily against the clock (accessory work, volume sets)." },
+    { "key": "preparation", "label": "Preparation", "description": "Warm-up, mobility, activation or cool-down; low intensity by design." }
+  ],
+  "energySystems": [
+    { "key": "phosphagen", "label": "Phosphagen", "description": "Maximal efforts under ~15 s with long rests: heavy singles, sprints, max jumps." },
+    { "key": "glycolytic", "label": "Glycolytic", "description": "Hard efforts from ~30 s to a few minutes, or short workouts near redline (roughly 2-8 min)." },
+    { "key": "oxidative", "label": "Oxidative", "description": "Sustainable, paced efforts: long workouts and steady intervals (roughly over 8 min)." }
+  ],
+  "loadIntensities": [
+    { "key": "light", "label": "Light", "description": "Below ~60% of 1RM, or bodyweight movements the athlete can cycle unbroken." },
+    { "key": "moderate", "label": "Moderate", "description": "Roughly 60-80% of 1RM; sets need some breaking for most athletes." },
+    { "key": "heavy", "label": "Heavy", "description": "Above ~80% of 1RM; low reps, form is the limiter." }
+  ]
+}
+```
+
+`data/conversions.json` (new):
+
+```json
+{
+  "effort": [
+    {
+      "key": "monostructural_400m_run",
+      "note": "Approximate coaching equivalents of a 400 m run.",
+      "equivalents": [
+        { "movement": "Run", "unit": "meters", "male": 400, "female": 400 },
+        { "movement": "Row (Erg)", "unit": "meters", "male": 500, "female": 500 },
+        { "movement": "Row (Erg)", "unit": "calories", "male": 25, "female": 20 },
+        { "movement": "Ski (Erg)", "unit": "meters", "male": 500, "female": 500 },
+        { "movement": "Ski (Erg)", "unit": "calories", "male": 25, "female": 20 },
+        { "movement": "Bike (Erg)", "unit": "meters", "male": 1000, "female": 1000 },
+        { "movement": "Air Bike", "unit": "calories", "male": 20, "female": 15 }
+      ]
+    },
+    {
+      "key": "jump_rope",
+      "note": "Common scaling of double-unders; three singles keep the work time close.",
+      "equivalents": [
+        { "movement": "Double-under", "unit": "reps", "male": 1, "female": 1 },
+        { "movement": "Single-under", "unit": "reps", "male": 3, "female": 3 }
+      ]
+    }
+  ],
+  "implementLoad": [
+    { "from": "barbell", "to": "dumbbell", "perHandFraction": { "low": 0.3, "high": 0.4 }, "note": "Two dumbbells replacing a two-handed barbell lift; adjust to the athlete's benchmarks." },
+    { "from": "barbell", "to": "kettlebell", "perHandFraction": { "low": 0.3, "high": 0.4 }, "note": "Two kettlebells replacing a two-handed barbell lift; adjust to the athlete's benchmarks." }
+  ]
+}
+```
+
+- [ ] **Step 5: Implement `src/lib/domain/conversions.ts`**
+
+```ts
+import type { Conversions, EffortUnit } from "./types";
+
+export interface EffortAmount { movement: string; unit: EffortUnit; amount: number }
+export interface EffortTarget { movement: string; unit: EffortUnit }
+
+/** Deterministic effort conversion within an equivalence group; null when no group holds both. */
+export function convertEffort(
+  conversions: Conversions, from: EffortAmount, to: EffortTarget, sex: "male" | "female" | null,
+): number | null {
+  for (const group of conversions.effort) {
+    const a = group.equivalents.find((e) => e.movement === from.movement && e.unit === from.unit);
+    const b = group.equivalents.find((e) => e.movement === to.movement && e.unit === to.unit);
+    if (!a || !b) continue;
+    const amountOf = (e: typeof a) => (sex === null ? (e.male + e.female) / 2 : e[sex]);
+    const raw = (from.amount * amountOf(b)) / amountOf(a);
+    return to.unit === "meters" ? Math.round(raw / 10) * 10 : Math.max(1, Math.round(raw));
+  }
+  return null;
+}
+```
+
+- [ ] **Step 6: Run the suite, verify green**
+
+Run: `pnpm test` → PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add -A
+git commit -m "feat: structured stimulus taxonomy and effort/load conversions"
+```
+
+---
+
+### Task D5: Movement resolver and the JSON-backed repository
+
+**Files:**
+- Create: `src/lib/domain/resolve.ts`, `src/lib/domain/repository.ts`, `tests/domain/resolve.test.ts`, `tests/domain/repository.test.ts`
+
+**Interfaces:**
+- Produces (`@/lib/domain/resolve`): `normalizeMovementName(name: string): string`, `type MovementResolver = (name: string) => Movement | null`, `createMovementResolver(movements: Movement[]): MovementResolver`.
+- Produces (`@/lib/domain/repository`): `interface DomainData { movements: Movement[]; contraindications: Contraindication[]; taxonomy: StimulusTaxonomy; conversions: Conversions }`, `getDomainData(): Promise<DomainData>`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/domain/resolve.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import movementsJson from "../../data/movements.json";
+import { MovementSchema } from "@/lib/domain/types";
+import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
+
+const movements = movementsJson.map((m) => MovementSchema.parse(m));
+const resolve = createMovementResolver(movements);
+
+describe("normalizeMovementName", () => {
+  it("ignores case, spacing and punctuation, and spells out ampersands", () => {
+    expect(normalizeMovementName("Pull-up")).toBe(normalizeMovementName("pull up"));
+    expect(normalizeMovementName("Pull-up")).toBe(normalizeMovementName("PULLUP"));
+    expect(normalizeMovementName("Clean & Jerk")).toBe(normalizeMovementName("clean and jerk"));
+  });
+});
+
+describe("createMovementResolver", () => {
+  it("resolves every canonical name and alias to its own movement", () => {
+    for (const m of movements) {
+      for (const n of [m.name, ...m.aliases]) expect(resolve(n)?.name, n).toBe(m.name);
+    }
+  });
+
+  it("no normalized name or alias points to two different movements", () => {
+    const owner = new Map<string, string>();
+    for (const m of movements) {
+      for (const n of [m.name, ...m.aliases]) {
+        const key = normalizeMovementName(n);
+        const previous = owner.get(key);
+        expect(previous === undefined || previous === m.name, `${n} collides with ${previous}`).toBe(true);
+        owner.set(key, m.name);
+      }
+    }
+  });
+
+  it("resolves workout shorthand, spelling variants and plurals", () => {
+    expect(resolve("T2B")?.name).toBe("Toes-to-Bar");
+    expect(resolve("toes to bar")?.name).toBe("Toes-to-Bar");
+    expect(resolve("Pull ups")?.name).toBe("Pull-up");
+    expect(resolve("Thrusters")?.name).toBe("Thruster");
+    expect(resolve("box jumps")?.name).toBe("Box Jump");
+    expect(resolve("wall walks")?.name).toBe("Wall Climb");
+    expect(resolve("  Burpees ")?.name).toBe("Burpee");
+  });
+
+  it("returns null for an unknown movement", () => {
+    expect(resolve("Zercher Carry")).toBeNull();
+  });
+});
+```
 
 `tests/domain/repository.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { getAllMovements, getContraindicationsForInjuries, getStimulusDefs } from "@/lib/domain/repository";
+import { getDomainData } from "@/lib/domain/repository";
 
-describe("domain repository (JSON-backed)", () => {
-  it("loads the movement library", async () => {
-    const all = await getAllMovements();
-    expect(all.find((m) => m.name === "Back Squat")).toBeTruthy();
-  });
-
-  it("returns contraindications for given injury keys", async () => {
-    const c = await getContraindicationsForInjuries(["shoulder_impingement"]);
-    expect(c).toHaveLength(1);
-    expect(c[0].avoidStresses.some((r) => r.site === "shoulder")).toBe(true);
-  });
-
-  it("returns an empty list for no injury keys", async () => {
-    expect(await getContraindicationsForInjuries([])).toEqual([]);
-  });
-
-  it("loads the stimulus taxonomy", async () => {
-    const s = await getStimulusDefs();
-    expect(s.some((d) => d.key === "aerobic_capacity")).toBe(true);
+describe("getDomainData", () => {
+  it("loads and validates every domain file", async () => {
+    const d = await getDomainData();
+    expect(d.movements.find((m) => m.name === "Back Squat")?.stresses[0].load).toBe("high");
+    expect(d.contraindications.some((c) => c.key === "pregnancy")).toBe(true);
+    expect(d.taxonomy.energySystems.map((e) => e.key)).toEqual(["phosphagen", "glycolytic", "oxidative"]);
+    expect(d.conversions.effort.length).toBeGreaterThan(0);
   });
 });
 ```
 
-- [ ] **Step 2: Run it, verify it fails**
+- [ ] **Step 2: Run them, verify they fail**
 
-Run: `pnpm exec vitest run tests/domain/repository.test.ts`
-Expected: FAIL — module `@/lib/domain/repository` not found.
+Run: `pnpm exec vitest run tests/domain/resolve.test.ts tests/domain/repository.test.ts`
+Expected: FAIL — modules not found.
 
-- [ ] **Step 3: Implement `src/lib/domain/repository.ts`**
+- [ ] **Step 3: Implement `src/lib/domain/resolve.ts`**
 
-The JSON is validated once at module load, so a malformed edit to `data/*.json` fails loudly at startup, not silently at tailor time.
+```ts
+import type { Movement } from "./types";
+
+/** Case-, spacing- and punctuation-insensitive key; "&" is spelled out as "and". */
+export function normalizeMovementName(name: string): string {
+  return name.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]/g, "");
+}
+
+export type MovementResolver = (name: string) => Movement | null;
+
+/** exact name/alias → normalized name/alias → normalized singular (trailing "s" dropped). */
+export function createMovementResolver(movements: Movement[]): MovementResolver {
+  const exact = new Map<string, Movement>();
+  const normalized = new Map<string, Movement>();
+  for (const m of movements) {
+    for (const n of [m.name, ...m.aliases]) {
+      exact.set(n, m);
+      normalized.set(normalizeMovementName(n), m);
+    }
+  }
+  return (name) => {
+    const trimmed = name.trim();
+    const direct = exact.get(trimmed);
+    if (direct) return direct;
+    const key = normalizeMovementName(trimmed);
+    const hit = normalized.get(key);
+    if (hit) return hit;
+    return key.endsWith("s") ? normalized.get(key.slice(0, -1)) ?? null : null;
+  };
+}
+```
+
+- [ ] **Step 4: Implement `src/lib/domain/repository.ts`**
+
+The JSON is validated once at module load, so a malformed edit fails loudly at startup. The `Promise`-returning signature keeps a later move to the DB (Phase C) contained in this file.
 
 ```ts
 import { z } from "zod";
 import movementsJson from "../../../data/movements.json";
-import injuriesJson from "../../../data/injury-contraindications.json";
-import stimuliJson from "../../../data/stimulus-taxonomy.json";
+import contraindicationsJson from "../../../data/contraindications.json";
+import taxonomyJson from "../../../data/stimulus-taxonomy.json";
+import conversionsJson from "../../../data/conversions.json";
 import {
-  MovementSchema, InjuryContraindicationSchema, StimulusDefSchema,
-  type Movement, type InjuryContraindication, type StimulusDef,
-} from "@/lib/domain/types";
+  ContraindicationSchema, ConversionsSchema, MovementSchema, StimulusTaxonomySchema,
+  type Contraindication, type Conversions, type Movement, type StimulusTaxonomy,
+} from "./types";
 
-const movements = z.array(MovementSchema).parse(movementsJson);
-const injuries = z.array(InjuryContraindicationSchema).parse(injuriesJson);
-const stimuli = z.array(StimulusDefSchema).parse(stimuliJson);
-
-export async function getAllMovements(): Promise<Movement[]> {
-  return movements;
+export interface DomainData {
+  movements: Movement[];
+  contraindications: Contraindication[];
+  taxonomy: StimulusTaxonomy;
+  conversions: Conversions;
 }
 
-export async function getContraindicationsForInjuries(injuryKeys: string[]): Promise<InjuryContraindication[]> {
-  if (injuryKeys.length === 0) return [];
-  const wanted = new Set(injuryKeys);
-  return injuries.filter((i) => wanted.has(i.injuryKey));
-}
+const data: DomainData = {
+  movements: z.array(MovementSchema).parse(movementsJson),
+  contraindications: z.array(ContraindicationSchema).parse(contraindicationsJson),
+  taxonomy: StimulusTaxonomySchema.parse(taxonomyJson),
+  conversions: ConversionsSchema.parse(conversionsJson),
+};
 
-export async function getStimulusDefs(): Promise<StimulusDef[]> {
-  return stimuli;
+export async function getDomainData(): Promise<DomainData> {
+  return data;
 }
 ```
 
-- [ ] **Step 4: Run it, verify it passes**
+- [ ] **Step 5: Run the suite, verify green**
 
-Run: `pnpm exec vitest run tests/domain/repository.test.ts`
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Run the full suite, verify green**
-
-Run: `pnpm test`
-Expected: all tests pass, with no DB required.
+Run: `pnpm test` → PASS. If the collision test fails, two movements share a normalized alias: rename or drop the alias on the movement it does not belong to.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: JSON-backed domain repository"
+git commit -m "feat: movement name resolver and JSON-backed domain repository"
 ```
 
 ---
+## Phase E — Engine and evaluation
 
-## Phase 3 — Engine types & AI abstraction
-
-### Task 3.1: Engine types & Zod schemas
+### Task E1: Engine types and shared test fixtures
 
 **Files:**
-- Create: `src/lib/engine/types.ts`
-- Test: `tests/engine/types.test.ts`
+- Create: `src/lib/engine/types.ts`, `tests/fixtures/workouts.ts`, `tests/engine/types.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+**Interfaces:**
+- Consumes: `Equipment`, `Side`, `Severity` from `@/lib/domain/types`.
+- Produces (`@/lib/engine/types`): enums `Quality`, `EnergySystem`, `LoadIntensity`, `BlockFormat`, `WorkoutSource`, `BenchmarkKind`, `BenchmarkUnit`, `Weekday`, `Sex`, `ScalingLevel`, `FindingKind`; schemas + types `StimulusProfile`, `ComponentDraft`, `WorkoutComponent` (`+canonical`), `BlockDraft`, `WorkoutBlock`, `WorkoutDraft`, `StructuredWorkout`, `ManualBlock`, `ManualWorkout`, `DetectedCondition`, `SituationAnalysis`, `PasteAnalysis`, `ManualAnalysis`, `TailoredBlockDraft`, `TailoredBlock` (`+sourceBlocks`), `DroppedBlock`, `ChangeItem`, `TailoringDraft`, `TailoringResult`, `ProfileInjury`, `Benchmark`, `Goal`, `Availability`, `AthleteProfile`, `TailorRequest`, `Finding`, `ConditionRef`, `PipelineResult`; helpers `emptyProfile()`, `emptyRequest()`.
+- Produces (`tests/fixtures/workouts.ts`): `component(movement, extra?)`, `sprint`, `heavy`, `FRAN_TEXT`, `franDraft()`, `fran()`, `SPLIT_TEXT`, `split()`, `toTailoringDraft(workout, overrides?)` (model-shaped, no `canonical`), `identityResult(workout)` (resolved, `TailoringResult`).
 
-`tests/engine/types.test.ts`:
+- [ ] **Step 1: Write the failing test `tests/engine/types.test.ts`**
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { StructuredWorkoutSchema, StimulusClassificationSchema, TailoringResultSchema, StimulusTag } from "@/lib/engine/types";
-import stimuli from "../../data/stimulus-taxonomy.json";
+import taxonomy from "../../data/stimulus-taxonomy.json";
+import {
+  AthleteProfileSchema, EnergySystem, LoadIntensity, PasteAnalysisSchema, PipelineResultSchema, Quality,
+  StructuredWorkoutSchema, TailorRequestSchema, TailoringDraftSchema, TailoringResultSchema, emptyProfile, emptyRequest,
+} from "@/lib/engine/types";
+import { fran, franDraft, identityResult, split, toTailoringDraft } from "../fixtures/workouts";
 
 describe("engine schemas", () => {
-  it("StimulusTag stays in sync with data/stimulus-taxonomy.json", () => {
-    // The z.enum gives compile-time literal types; this test pins it to the JSON,
-    // which is the single authoritative taxonomy. Add a stimulus in BOTH places.
-    expect([...StimulusTag.options].sort()).toEqual(stimuli.map((s) => s.key).sort());
+  it("stimulus enums stay in sync with data/stimulus-taxonomy.json", () => {
+    // The z.enums give literal types; the JSON is the authoritative vocabulary. Add a key in BOTH.
+    expect([...Quality.options].sort()).toEqual(taxonomy.qualities.map((d) => d.key).sort());
+    expect([...EnergySystem.options].sort()).toEqual(taxonomy.energySystems.map((d) => d.key).sort());
+    expect([...LoadIntensity.options].sort()).toEqual(taxonomy.loadIntensities.map((d) => d.key).sort());
   });
 
-  it("parses a single-block session", () => {
-    const workout = StructuredWorkoutSchema.parse({
-      name: "Fran",
-      rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
-      source: "adhoc",
-      blocks: [
-        {
-          title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
-          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
-          components: [
-            { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-            { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-          ],
-        },
-      ],
-    });
-    expect(workout.blocks[0].components).toHaveLength(2);
+  it("parses single- and multi-block sessions", () => {
+    expect(StructuredWorkoutSchema.parse(fran()).blocks[0].components[0].canonical).toBe("Thruster");
+    expect(StructuredWorkoutSchema.parse(split()).blocks).toHaveLength(2);
   });
 
-  it("parses a multi-block session (strength + conditioning) and preserves coaching prose", () => {
-    const workout = StructuredWorkoutSchema.parse({
-      name: "Planificación RX",
-      rawText: "Power Snatch\n8 sets every 2 min...\n\nConditioning barbell\nAMRAP 10 min\n3 burpee pull-up / 6 power clean @61/43kg / 9 box jump over",
-      source: "adhoc",
-      blocks: [
-        {
-          title: "Power Snatch", rawText: "Power Snatch\n8 sets every 2 min...",
-          format: "strength", scheme: "8 sets every 2 min", timeDomainMinutes: 16,
-          coachingNotes: "Técnica: mantener buena posición en las pausas; recibir la barra lo más alta posible.",
-          components: [{ movement: "Power Snatch", reps: "2-5", load: "54–65 kg", distanceMeters: null, calories: null, durationSeconds: null, notes: "tempo with pauses" }],
-        },
-        {
-          title: "Conditioning barbell", rawText: "AMRAP 10 min\n3 burpee pull-up / 6 power clean @61/43kg / 9 box jump over",
-          format: "amrap", scheme: "AMRAP 10 min", timeDomainMinutes: 10,
-          coachingNotes: "Ritmo sostenido. Marca objetivo: Rx+ +7 rondas / Rx +6 / Int +5. Int load 52/35 kg.",
-          components: [
-            { movement: "Burpee Pull-up", reps: 3, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-            { movement: "Power Clean", reps: 6, load: "61/43 kg", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-            { movement: "Box Jump Over", reps: 9, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-          ],
-        },
-      ],
+  it("parses a paste analysis with detected conditions", () => {
+    const a = PasteAnalysisSchema.parse({
+      workout: franDraft(),
+      conditions: [{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: "me duele el hombro" }],
+      unavailableEquipment: ["rower"],
     });
-    expect(workout.blocks).toHaveLength(2);
-    expect(workout.blocks[1].format).toBe("amrap");
-    expect(workout.blocks[0].coachingNotes).toContain("pausas");
+    expect(a.conditions[0].side).toBe("right");
   });
 
-  it("parses a stimulus classification with valid tags", () => {
-    const c = StimulusClassificationSchema.parse({
-      primary: "anaerobic_capacity", secondary: ["muscular_endurance"], rationale: "Short, intense couplet.",
-    });
-    expect(StimulusTag.options).toContain(c.primary);
+  it("parses a tailoring draft (model output) and a resolved tailoring result", () => {
+    const draft = TailoringDraftSchema.parse(toTailoringDraft(fran(), { droppedBlocks: [{ index: 1, reason: "No time." }] }));
+    expect(draft.blocks[0].sourceBlocks).toEqual([0]);
+    expect("canonical" in draft.blocks[0].components[0]).toBe(false);
+    expect(TailoringResultSchema.parse(identityResult(fran())).blocks[0].components[0].canonical).toBe("Thruster");
   });
 
-  it("parses a tailored workout", () => {
-    const t = TailoringResultSchema.parse({
-      workout: {
-        name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
-        blocks: [{
-          title: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows",
-          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
-          components: [{ movement: "Goblet Squat", reps: "21-15-9", load: "35 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }],
-        }],
-      },
-      changes: [{ original: "Thruster 95 lb", modified: "Goblet Squat 35 lb", reason: "Avoid overhead due to shoulder." }],
-      rationale: "Preserves the short anaerobic couplet stimulus.",
-      safetyNote: "Stop if pain increases.",
+  it("empty profile and request are valid", () => {
+    expect(AthleteProfileSchema.parse(emptyProfile()).equipment).toBeNull();
+    expect(TailorRequestSchema.parse(emptyRequest()).situation).toBe("");
+  });
+
+  it("rejects an over-long situation", () => {
+    expect(() => TailorRequestSchema.parse({ ...emptyRequest(), situation: "x".repeat(2001) })).toThrow();
+  });
+
+  it("parses a pipeline result", () => {
+    const r = PipelineResultSchema.parse({
+      original: fran(), conditions: [], unavailableEquipment: [],
+      tailored: identityResult(fran()), findings: [], feedbackHistory: [], model: "fake",
     });
-    expect(t.changes[0].reason).toContain("shoulder");
+    expect(r.model).toBe("fake");
   });
 });
 ```
@@ -553,1175 +1625,3093 @@ describe("engine schemas", () => {
 - [ ] **Step 2: Run it, verify it fails**
 
 Run: `pnpm exec vitest run tests/engine/types.test.ts`
-Expected: FAIL — module not found.
+Expected: FAIL — modules not found.
 
 - [ ] **Step 3: Implement `src/lib/engine/types.ts`**
 
 ```ts
 import { z } from "zod";
+import { Equipment, Severity, Side } from "@/lib/domain/types";
 
-// Must mirror data/stimulus-taxonomy.json keys — enforced by the sync test above.
-// (Kept as a literal z.enum rather than derived from the JSON so the tags stay
-// compile-time literal types.)
-export const StimulusTag = z.enum([
-  "aerobic_capacity", "anaerobic_capacity", "heavy_strength",
-  "muscular_endurance", "gymnastics_skill", "olympic_lifting", "mixed_modal",
-]);
-export type StimulusTag = z.infer<typeof StimulusTag>;
+// ---- stimulus (mirrors data/stimulus-taxonomy.json; pinned by a sync test) ----
+export const Quality = z.enum(["strength", "power", "skill", "conditioning", "muscular_endurance", "preparation"]);
+export type Quality = z.infer<typeof Quality>;
+export const EnergySystem = z.enum(["phosphagen", "glycolytic", "oxidative"]);
+export type EnergySystem = z.infer<typeof EnergySystem>;
+export const LoadIntensity = z.enum(["light", "moderate", "heavy"]);
+export type LoadIntensity = z.infer<typeof LoadIntensity>;
 
-export const BlockFormat = z.enum([
-  "amrap", "for_time", "emom", "intervals", "strength", "skill", "partner", "rest", "other",
-]);
+export const StimulusProfileSchema = z.object({
+  quality: Quality,
+  energySystem: EnergySystem.nullable(),
+  loadIntensity: LoadIntensity.nullable(),
+  rationale: z.string().min(1),
+});
+export type StimulusProfile = z.infer<typeof StimulusProfileSchema>;
+
+// ---- workout ----
+export const BlockFormat = z.enum(["amrap", "for_time", "emom", "intervals", "strength", "skill", "partner", "rest", "other"]);
 export type BlockFormat = z.infer<typeof BlockFormat>;
 
-export const WorkoutComponentSchema = z.object({
-  movement: z.string().min(1),                          // canonical name, resolvable to Movement library
-  reps: z.union([z.number(), z.string()]).nullable(),   // 21, "21-15-9", "AMRAP", ...
-  load: z.string().nullable(),                          // raw string incl. tiers e.g. "61/43 kg"
-  distanceMeters: z.number().nullable(),
-  calories: z.number().nullable(),
-  durationSeconds: z.number().nullable(),
+export const SexLoadsSchema = z.object({
+  male: z.number().positive().nullable(),
+  female: z.number().positive().nullable(),
+});
+
+// What the model emits. `canonical` is never asked of the model: code resolves it.
+export const ComponentDraftSchema = z.object({
+  movement: z.string().min(1),
+  reps: z.union([z.number(), z.string()]).nullable(), // 21, "21-15-9", "max"
+  load: z.string().nullable(),                         // as written, incl. tiers: "61/43 kg"
+  loadKg: SexLoadsSchema.nullable(),
+  percent1RM: z.number().positive().max(120).nullable(),
+  distanceMeters: z.number().nonnegative().nullable(),
+  calories: z.number().nonnegative().nullable(),
+  durationSeconds: z.number().nonnegative().nullable(),
   notes: z.string().nullable(),
 });
+export type ComponentDraft = z.infer<typeof ComponentDraftSchema>;
+
+export const WorkoutComponentSchema = ComponentDraftSchema.extend({ canonical: z.string().nullable() });
 export type WorkoutComponent = z.infer<typeof WorkoutComponentSchema>;
 
-// One training block within a session (a day can hold several with different formats).
-export const WorkoutBlockSchema = z.object({
+const blockFields = {
   title: z.string().nullable(),
-  rawText: z.string().min(1),                           // verbatim slice — source of truth for this block
+  rawText: z.string().min(1),                       // verbatim slice of the input
+  day: z.number().int().positive().nullable(),      // multi-day pastes (missed days)
   format: BlockFormat,
-  scheme: z.string().nullable(),                        // e.g. "AMRAP 10 min", "21-15-9 for time", "8 sets every 2 min"
-  timeDomainMinutes: z.number().nullable(),
-  components: z.array(WorkoutComponentSchema),              // extracted movements (may be empty for rest/unparseable blocks)
-  coachingNotes: z.string().nullable(),                 // intensity/tempo/scaling tiers kept as prose, not modeled into columns
-});
+  scheme: z.string().nullable(),
+  timeDomainMinutes: z.number().nonnegative().nullable(),
+  coachingNotes: z.string().nullable(),             // intensity/tempo/scaling tiers as prose
+  stimulus: StimulusProfileSchema.nullable(),       // null only for rest blocks or a failed analysis
+};
+
+export const BlockDraftSchema = z.object({ ...blockFields, components: z.array(ComponentDraftSchema) });
+export type BlockDraft = z.infer<typeof BlockDraftSchema>;
+export const WorkoutBlockSchema = z.object({ ...blockFields, components: z.array(WorkoutComponentSchema) });
 export type WorkoutBlock = z.infer<typeof WorkoutBlockSchema>;
 
-// A training SESSION (one day). Raw text is the durable source of truth; the rest is a derived extraction.
+export const WorkoutDraftSchema = z.object({ name: z.string().nullable(), blocks: z.array(BlockDraftSchema).min(1) });
+export type WorkoutDraft = z.infer<typeof WorkoutDraftSchema>;
+
+export const WorkoutSource = z.enum(["paste", "manual"]);
+export type WorkoutSource = z.infer<typeof WorkoutSource>;
+
+// A training SESSION. rawText is the durable source of truth; blocks are a derived extraction.
 export const StructuredWorkoutSchema = z.object({
   name: z.string().nullable(),
-  rawText: z.string().min(1),                           // verbatim paste of the whole session
+  rawText: z.string().min(1),
+  source: WorkoutSource,
   blocks: z.array(WorkoutBlockSchema).min(1),
-  source: z.literal("adhoc"),
 });
 export type StructuredWorkout = z.infer<typeof StructuredWorkoutSchema>;
 
-export const StimulusClassificationSchema = z.object({
-  primary: StimulusTag,
-  secondary: z.array(StimulusTag),
-  rationale: z.string().min(1),
+// ---- manual entry ----
+export const ManualBlockSchema = z.object({
+  title: z.string().nullable(),
+  format: BlockFormat,
+  scheme: z.string().nullable(),
+  timeDomainMinutes: z.number().nonnegative().nullable(),
+  coachingNotes: z.string().nullable(),
+  components: z.array(ComponentDraftSchema),
 });
-export type StimulusClassification = z.infer<typeof StimulusClassificationSchema>;
+export type ManualBlock = z.infer<typeof ManualBlockSchema>;
+export const ManualWorkoutSchema = z.object({ name: z.string().nullable(), blocks: z.array(ManualBlockSchema).min(1) });
+export type ManualWorkout = z.infer<typeof ManualWorkoutSchema>;
+
+// ---- analysis ----
+export const DetectedConditionSchema = z.object({
+  key: z.string().min(1),
+  side: Side.nullable(),
+  severity: Severity,
+  evidence: z.string().min(1), // the athlete's words
+});
+export type DetectedCondition = z.infer<typeof DetectedConditionSchema>;
+
+export const SituationAnalysisSchema = z.object({
+  conditions: z.array(DetectedConditionSchema),
+  unavailableEquipment: z.array(Equipment),
+});
+export type SituationAnalysis = z.infer<typeof SituationAnalysisSchema>;
+export const PasteAnalysisSchema = SituationAnalysisSchema.extend({ workout: WorkoutDraftSchema });
+export type PasteAnalysis = z.infer<typeof PasteAnalysisSchema>;
+export const ManualAnalysisSchema = SituationAnalysisSchema.extend({ stimuli: z.array(StimulusProfileSchema.nullable()) });
+export type ManualAnalysis = z.infer<typeof ManualAnalysisSchema>;
+
+// ---- tailoring ----
+const sourceBlocks = z.array(z.number().int().nonnegative()); // original block indices
+export const TailoredBlockDraftSchema = BlockDraftSchema.extend({ sourceBlocks });
+export type TailoredBlockDraft = z.infer<typeof TailoredBlockDraftSchema>;
+export const TailoredBlockSchema = WorkoutBlockSchema.extend({ sourceBlocks });
+export type TailoredBlock = z.infer<typeof TailoredBlockSchema>;
+
+export const DroppedBlockSchema = z.object({ index: z.number().int().nonnegative(), reason: z.string().min(1) });
+export type DroppedBlock = z.infer<typeof DroppedBlockSchema>;
 
 export const ChangeItemSchema = z.object({
+  blockIndex: z.number().int().nonnegative().nullable(), // tailored block index
   original: z.string().min(1),
   modified: z.string().min(1),
   reason: z.string().min(1),
 });
 export type ChangeItem = z.infer<typeof ChangeItemSchema>;
 
-export const TailoringResultSchema = z.object({
-  workout: StructuredWorkoutSchema,
+const tailoringFields = {
+  name: z.string().nullable(),
+  rawText: z.string().min(1),
+  droppedBlocks: z.array(DroppedBlockSchema),
   changes: z.array(ChangeItemSchema),
   rationale: z.string().min(1),
   safetyNote: z.string().nullable(),
-});
+};
+export const TailoringDraftSchema = z.object({ ...tailoringFields, blocks: z.array(TailoredBlockDraftSchema).min(1) });
+export type TailoringDraft = z.infer<typeof TailoringDraftSchema>;
+export const TailoringResultSchema = z.object({ ...tailoringFields, blocks: z.array(TailoredBlockSchema).min(1) });
 export type TailoringResult = z.infer<typeof TailoringResultSchema>;
 
-// Athlete profile (mirrors AthleteProfile JSON columns)
-export const AvailabilitySchema = z.object({
-  hoursPerDay: z.number().nullable().optional(),
-  daysPerWeek: z.number().nullable().optional(),
-  days: z.array(z.string()).optional(),
+// ---- athlete profile ----
+export const BenchmarkKind = z.enum(["1rm", "max_reps", "time"]);
+export const BenchmarkUnit = z.enum(["kg", "lb", "reps", "seconds"]);
+export const Weekday = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
+export const Sex = z.enum(["male", "female"]);
+export const ScalingLevel = z.enum(["scaled", "intermediate", "rx", "rx_plus"]);
+
+export const ProfileInjurySchema = z.object({
+  key: z.string().min(1),
+  side: Side.nullable(),
+  severity: Severity,
+  notes: z.string().nullable(),
+  since: z.string().nullable(), // ISO date
 });
+export type ProfileInjury = z.infer<typeof ProfileInjurySchema>;
+
+export const BenchmarkSchema = z.object({
+  movement: z.string().min(1), // canonical
+  kind: BenchmarkKind,
+  value: z.number().positive(),
+  unit: BenchmarkUnit,
+  recordedAt: z.string().nullable(),
+});
+export type Benchmark = z.infer<typeof BenchmarkSchema>;
+
+export const GoalSchema = z.object({ movement: z.string().nullable(), description: z.string().min(1) });
+export type Goal = z.infer<typeof GoalSchema>;
+
+export const AvailabilitySchema = z.object({
+  minutesPerDay: z.number().int().positive().nullable(),
+  daysPerWeek: z.number().int().min(1).max(7).nullable(),
+  days: z.array(Weekday),
+});
+export type Availability = z.infer<typeof AvailabilitySchema>;
+
 export const AthleteProfileSchema = z.object({
-  injuries: z.array(z.string()),
-  benchmarks: z.record(z.string(), z.union([z.number(), z.boolean(), z.string()])),
-  equipment: z.array(z.string()),
-  goals: z.array(z.string()),
+  sex: Sex.nullable(),
+  scalingLevel: ScalingLevel.nullable(),
+  injuries: z.array(ProfileInjurySchema),
+  benchmarks: z.array(BenchmarkSchema),
+  equipment: z.array(Equipment).nullable(), // null = not specified → a full box
+  goals: z.array(GoalSchema),
   availability: AvailabilitySchema,
 });
-export type AthleteProfileInput = z.infer<typeof AthleteProfileSchema>;
+export type AthleteProfile = z.infer<typeof AthleteProfileSchema>;
 
-// Today's request
-export const ConstraintType = z.enum(["injury", "time", "missed_days", "movement_goal", "none"]);
+export function emptyProfile(): AthleteProfile {
+  return {
+    sex: null, scalingLevel: null, injuries: [], benchmarks: [], equipment: null, goals: [],
+    availability: { minutesPerDay: null, daysPerWeek: null, days: [] },
+  };
+}
+
+// ---- today's request (constraints combine) ----
 export const TailorRequestSchema = z.object({
-  constraintType: ConstraintType,
-  details: z.string(),                       // free text the athlete adds
-  timeCapMinutes: z.number().nullable().optional(),
-  targetMovement: z.string().nullable().optional(),
+  situation: z.string().max(2000),             // the athlete's words: pain, fatigue, missing kit
+  timeCapMinutes: z.number().int().positive().nullable(),
+  targetMovement: z.string().nullable(),       // canonical, movement-improvement bias
+  equipmentToday: z.array(Equipment).nullable(), // overrides the profile for today
 });
 export type TailorRequest = z.infer<typeof TailorRequestSchema>;
+
+export function emptyRequest(): TailorRequest {
+  return { situation: "", timeCapMinutes: null, targetMovement: null, equipmentToday: null };
+}
+
+// ---- findings and results ----
+export const FindingKind = z.enum([
+  "contraindicated_movement", "equipment_unavailable", "unrecognized_movement", "caution_movement",
+  "time_cap_exceeded", "stimulus_drift", "unaccounted_block",
+]);
+export type FindingKind = z.infer<typeof FindingKind>;
+
+export const FindingSchema = z.object({
+  kind: FindingKind,
+  severity: z.enum(["violation", "warning"]),
+  blockIndex: z.number().int().nonnegative().nullable(),
+  movement: z.string().nullable(),
+  message: z.string().min(1),
+});
+export type Finding = z.infer<typeof FindingSchema>;
+
+export const ConditionRefSchema = z.object({
+  key: z.string().min(1),
+  side: Side.nullable(),
+  severity: Severity,
+  source: z.enum(["profile", "today"]),
+  evidence: z.string().nullable(),
+});
+export type ConditionRef = z.infer<typeof ConditionRefSchema>;
+
+export const PipelineResultSchema = z.object({
+  original: StructuredWorkoutSchema,
+  conditions: z.array(ConditionRefSchema),
+  unavailableEquipment: z.array(Equipment),
+  tailored: TailoringResultSchema,
+  findings: z.array(FindingSchema),
+  feedbackHistory: z.array(z.string()),
+  model: z.string().min(1),
+});
+export type PipelineResult = z.infer<typeof PipelineResultSchema>;
 ```
 
-- [ ] **Step 4: Run it, verify it passes**
+- [ ] **Step 4: Create the shared fixtures `tests/fixtures/workouts.ts`**
 
-Run: `pnpm exec vitest run tests/engine/types.test.ts`
-Expected: PASS (5 tests).
+```ts
+import type {
+  ComponentDraft, StimulusProfile, StructuredWorkout, TailoringDraft, TailoringResult, WorkoutDraft,
+} from "@/lib/engine/types";
 
-- [ ] **Step 5: Commit**
+export const component = (movement: string, extra: Partial<ComponentDraft> = {}): ComponentDraft => ({
+  movement, reps: null, load: null, loadKg: null, percent1RM: null,
+  distanceMeters: null, calories: null, durationSeconds: null, notes: null, ...extra,
+});
+
+export const sprint: StimulusProfile = {
+  quality: "conditioning", energySystem: "glycolytic", loadIntensity: "moderate", rationale: "Short couplet near redline.",
+};
+export const heavy: StimulusProfile = {
+  quality: "strength", energySystem: "phosphagen", loadIntensity: "heavy", rationale: "Heavy low-rep sets.",
+};
+
+export const FRAN_TEXT = "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups";
+
+export function franDraft(): WorkoutDraft {
+  return {
+    name: "Fran",
+    blocks: [{
+      title: "Fran", rawText: FRAN_TEXT, day: null, format: "for_time", scheme: "21-15-9 for time",
+      timeDomainMinutes: 6, coachingNotes: null, stimulus: sprint,
+      components: [
+        component("Thruster", { reps: "21-15-9", load: "43/30 kg", loadKg: { male: 43, female: 30 } }),
+        component("Pull-up", { reps: "21-15-9" }),
+      ],
+    }],
+  };
+}
+
+function resolved(draft: WorkoutDraft, rawText: string): StructuredWorkout {
+  return {
+    name: draft.name, rawText, source: "paste",
+    blocks: draft.blocks.map((b) => ({ ...b, components: b.components.map((c) => ({ ...c, canonical: c.movement })) })),
+  };
+}
+
+export const fran = (): StructuredWorkout => resolved(franDraft(), FRAN_TEXT);
+
+export const SPLIT_TEXT = "A) Back Squat 5x3 @ 85%\n\nB) AMRAP 10 min\n10 Burpees\n10 Box Jumps";
+
+export function split(): StructuredWorkout {
+  return resolved({
+    name: null,
+    blocks: [
+      {
+        title: "A", rawText: "A) Back Squat 5x3 @ 85%", day: null, format: "strength", scheme: "5x3 @ 85%",
+        timeDomainMinutes: 15, coachingNotes: null, stimulus: heavy,
+        components: [component("Back Squat", { reps: "5x3", percent1RM: 85 })],
+      },
+      {
+        title: "B", rawText: "B) AMRAP 10 min\n10 Burpees\n10 Box Jumps", day: null, format: "amrap", scheme: "AMRAP 10 min",
+        timeDomainMinutes: 10, coachingNotes: null, stimulus: sprint,
+        components: [component("Burpee", { reps: 10 }), component("Box Jump", { reps: 10 })],
+      },
+    ],
+  }, SPLIT_TEXT);
+}
+
+/** The identity modification of `workout`, as the model would return it (no canonical names). */
+export function toTailoringDraft(workout: StructuredWorkout, overrides: Partial<TailoringDraft> = {}): TailoringDraft {
+  return {
+    name: workout.name, rawText: workout.rawText, droppedBlocks: [], changes: [],
+    rationale: "No change needed.", safetyNote: null,
+    blocks: workout.blocks.map((b, i) => ({
+      ...b,
+      sourceBlocks: [i],
+      components: b.components.map((c): ComponentDraft => {
+        const { canonical, ...draft } = c;
+        void canonical;
+        return draft;
+      }),
+    })),
+    ...overrides,
+  };
+}
+
+/** The identity modification of `workout` after code resolution (canonical names kept). */
+export function identityResult(workout: StructuredWorkout): TailoringResult {
+  return {
+    name: workout.name, rawText: workout.rawText, droppedBlocks: [], changes: [],
+    rationale: "No change needed.", safetyNote: null,
+    blocks: workout.blocks.map((b, i) => ({ ...b, sourceBlocks: [i] })),
+  };
+}
+```
+
+- [ ] **Step 5: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/engine/types.test.ts` → PASS (7 tests).
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: engine types and Zod schemas (workout, stimulus, tailored, profile, request)"
+git commit -m "feat: engine schemas for per-block stimulus, analysis, tailoring, profile and findings"
 ```
 
-### Task 3.2: The `LlmProvider` interface + fake provider
+---
+
+### Task E2: `LlmProvider`, structured-output errors, retry decorator and `FakeProvider`
 
 **Files:**
-- Create: `src/lib/ai/provider.ts`, `src/lib/ai/fake-provider.ts`
-- Test: `tests/ai/fake-provider.test.ts`
+- Create: `src/lib/ai/provider.ts`, `src/lib/ai/retry.ts`, `src/lib/ai/fake-provider.ts`
+- Test: `tests/ai/fake-provider.test.ts`, `tests/ai/retry.test.ts`
 
-- [ ] **Step 1: Implement `src/lib/ai/provider.ts`** (interface first — no test needed for a type-only file)
+**Interfaces:**
+- Produces (`@/lib/ai/provider`): `interface GenerateStructuredArgs<T> { systemPrompt?: string; prompt: string; schema: z.ZodType<T>; schemaName: string }`, `interface LlmProvider { readonly model: string; generateStructured<T>(args): Promise<T> }`, `class StructuredOutputError extends Error { details: string }`, `parseStructured<T>(schema, value, source): T`.
+- Produces (`@/lib/ai/retry`): `withValidationRetry(provider): LlmProvider`.
+- Produces (`@/lib/ai/fake-provider`): `class FakeProvider` (`model = "fake"`, `calls: GenerateStructuredArgs<unknown>[]`, constructor `(scripts: Record<string, unknown>)`; a scripted `Error` is thrown), `sequence(...values): unknown` (one value per call, in order).
 
-```ts
-import type { z } from "zod";
-
-export interface GenerateStructuredArgs<T> {
-  systemPrompt?: string;
-  prompt: string;
-  schema: z.ZodType<T>;
-  schemaName: string; // used by providers that need a named response schema
-}
-
-export interface LlmProvider {
-  /** Send prompt to the model and return a value validated against `schema`. */
-  generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T>;
-}
-```
-
-- [ ] **Step 2: Write the failing test for the fake provider**
+- [ ] **Step 1: Write the failing tests**
 
 `tests/ai/fake-provider.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { FakeProvider } from "@/lib/ai/fake-provider";
+import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
+import { StructuredOutputError } from "@/lib/ai/provider";
+
+const schema = z.object({ ok: z.boolean() });
 
 describe("FakeProvider", () => {
-  it("returns the scripted value for a matching schemaName", async () => {
-    const schema = z.object({ ok: z.boolean() });
-    const provider = new FakeProvider({ Demo: { ok: true } });
-    const result = await provider.generateStructured({ prompt: "x", schema, schemaName: "Demo" });
-    expect(result.ok).toBe(true);
+  it("returns the scripted value and records the call", async () => {
+    const p = new FakeProvider({ Demo: { ok: true } });
+    expect(await p.generateStructured({ prompt: "x", schema, schemaName: "Demo" })).toEqual({ ok: true });
+    expect(p.calls).toHaveLength(1);
+    expect(p.calls[0].prompt).toBe("x");
+    expect(p.model).toBe("fake");
   });
 
-  it("validates the scripted value against the schema", async () => {
-    const schema = z.object({ ok: z.boolean() });
-    const provider = new FakeProvider({ Demo: { ok: "nope" } as unknown as { ok: boolean } });
-    await expect(provider.generateStructured({ prompt: "x", schema, schemaName: "Demo" })).rejects.toThrow();
+  it("throws StructuredOutputError when the scripted value fails the schema", async () => {
+    const p = new FakeProvider({ Demo: { ok: "nope" } });
+    await expect(p.generateStructured({ prompt: "x", schema, schemaName: "Demo" })).rejects.toBeInstanceOf(StructuredOutputError);
   });
 
-  it("throws when no script exists for the schemaName", async () => {
-    const provider = new FakeProvider({});
-    await expect(
-      provider.generateStructured({ prompt: "x", schema: z.object({}), schemaName: "Missing" })
-    ).rejects.toThrow(/no scripted response/i);
+  it("throws a scripted Error", async () => {
+    const p = new FakeProvider({ Demo: new Error("boom") });
+    await expect(p.generateStructured({ prompt: "x", schema, schemaName: "Demo" })).rejects.toThrow("boom");
+  });
+
+  it("plays a sequence one value per call and fails when exhausted", async () => {
+    const p = new FakeProvider({ Demo: sequence({ ok: true }, { ok: false }) });
+    expect((await p.generateStructured({ prompt: "1", schema, schemaName: "Demo" })).ok).toBe(true);
+    expect((await p.generateStructured({ prompt: "2", schema, schemaName: "Demo" })).ok).toBe(false);
+    await expect(p.generateStructured({ prompt: "3", schema, schemaName: "Demo" })).rejects.toThrow(/exhausted/);
+  });
+
+  it("throws when no script exists for the schema name", async () => {
+    const p = new FakeProvider({});
+    await expect(p.generateStructured({ prompt: "x", schema, schemaName: "Missing" })).rejects.toThrow(/no scripted response/i);
   });
 });
 ```
 
-- [ ] **Step 3: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/ai/fake-provider.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 4: Implement `src/lib/ai/fake-provider.ts`**
+`tests/ai/retry.test.ts`:
 
 ```ts
-import type { LlmProvider, GenerateStructuredArgs } from "@/lib/ai/provider";
+import { describe, it, expect } from "vitest";
+import { z } from "zod";
+import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
+import { withValidationRetry } from "@/lib/ai/retry";
 
-/** Test double. Maps `schemaName` -> a canned response object, validated against the schema. */
+const schema = z.object({ ok: z.boolean() });
+
+describe("withValidationRetry", () => {
+  it("retries once with the validation error appended to the prompt", async () => {
+    const fake = new FakeProvider({ Demo: sequence({ ok: "nope" }, { ok: true }) });
+    const p = withValidationRetry(fake);
+    expect(await p.generateStructured({ prompt: "base", schema, schemaName: "Demo" })).toEqual({ ok: true });
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[1].prompt).toContain("base");
+    expect(fake.calls[1].prompt).toContain("previous response was rejected");
+    expect(p.model).toBe("fake");
+  });
+
+  it("gives up after the second invalid response", async () => {
+    const p = withValidationRetry(new FakeProvider({ Demo: sequence({ ok: 1 }, { ok: 2 }) }));
+    await expect(p.generateStructured({ prompt: "x", schema, schemaName: "Demo" })).rejects.toThrow(/schema validation/);
+  });
+
+  it("does not retry other errors", async () => {
+    const fake = new FakeProvider({ Demo: sequence(new Error("network"), { ok: true }) });
+    await expect(withValidationRetry(fake).generateStructured({ prompt: "x", schema, schemaName: "Demo" })).rejects.toThrow("network");
+    expect(fake.calls).toHaveLength(1);
+  });
+});
+```
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/ai` → FAIL (modules not found).
+
+- [ ] **Step 3: Implement `src/lib/ai/provider.ts`**
+
+```ts
+import { z } from "zod";
+
+export interface GenerateStructuredArgs<T> {
+  systemPrompt?: string;
+  prompt: string;
+  schema: z.ZodType<T>;
+  schemaName: string; // names the response for providers that need it; keys FakeProvider scripts
+}
+
+export interface LlmProvider {
+  readonly model: string;
+  /** Send the prompt and return a value validated against `schema`. */
+  generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T>;
+}
+
+/** The model answered, but not with schema-valid JSON. `details` is fed back on retry. */
+export class StructuredOutputError extends Error {
+  constructor(message: string, readonly details: string) {
+    super(message);
+    this.name = "StructuredOutputError";
+  }
+}
+
+export function parseStructured<T>(schema: z.ZodType<T>, value: unknown, source: string): T {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new StructuredOutputError(`${source}: response failed schema validation`, z.prettifyError(result.error));
+  }
+  return result.data;
+}
+```
+
+- [ ] **Step 4: Implement `src/lib/ai/retry.ts`**
+
+```ts
+import { StructuredOutputError, type GenerateStructuredArgs, type LlmProvider } from "./provider";
+
+/** One retry when the output fails schema validation, with the validation error in the prompt. */
+export function withValidationRetry(provider: LlmProvider): LlmProvider {
+  return {
+    model: provider.model,
+    async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
+      try {
+        return await provider.generateStructured(args);
+      } catch (e) {
+        if (!(e instanceof StructuredOutputError)) throw e;
+        return provider.generateStructured({
+          ...args,
+          prompt: `${args.prompt}\n\nYour previous response was rejected:\n${e.details}\nReturn JSON that satisfies the schema exactly.`,
+        });
+      }
+    },
+  };
+}
+```
+
+- [ ] **Step 5: Implement `src/lib/ai/fake-provider.ts`**
+
+```ts
+import { parseStructured, type GenerateStructuredArgs, type LlmProvider } from "./provider";
+
+const SEQUENCE = Symbol("sequence");
+type Sequence = { [SEQUENCE]: unknown[] };
+
+/** Script one value per call, in order, for a schema name. */
+export function sequence(...values: unknown[]): unknown {
+  return { [SEQUENCE]: values } satisfies Sequence;
+}
+
+function isSequence(value: unknown): value is Sequence {
+  return typeof value === "object" && value !== null && SEQUENCE in value;
+}
+
+/** Test double: maps schemaName → scripted value (validated against the schema) or Error (thrown). */
 export class FakeProvider implements LlmProvider {
+  readonly model = "fake";
+  readonly calls: GenerateStructuredArgs<unknown>[] = [];
+  private readonly queues = new Map<string, unknown[]>();
+
   constructor(private readonly scripts: Record<string, unknown>) {}
 
   async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
+    this.calls.push(args as GenerateStructuredArgs<unknown>);
     if (!(args.schemaName in this.scripts)) {
       throw new Error(`FakeProvider: no scripted response for "${args.schemaName}"`);
     }
-    return args.schema.parse(this.scripts[args.schemaName]);
+    let value = this.scripts[args.schemaName];
+    if (isSequence(value)) {
+      const queue = this.queues.get(args.schemaName) ?? [...value[SEQUENCE]];
+      this.queues.set(args.schemaName, queue);
+      if (queue.length === 0) throw new Error(`FakeProvider: sequence for "${args.schemaName}" exhausted`);
+      value = queue.shift();
+    }
+    if (value instanceof Error) throw value;
+    return parseStructured(args.schema, value, "FakeProvider");
   }
 }
 ```
 
-- [ ] **Step 5: Run it, verify it passes**
+- [ ] **Step 6: Run them, verify they pass**
 
-Run: `pnpm exec vitest run tests/ai/fake-provider.test.ts`
-Expected: PASS (3 tests).
+Run: `pnpm exec vitest run tests/ai` → PASS (8 tests).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: LlmProvider interface and FakeProvider test double"
+git commit -m "feat: LlmProvider contract, validation retry decorator and FakeProvider"
 ```
 
-### Task 3.3: Gemini adapter + provider factory
+---
+
+### Task E3: Gemini adapter and provider factory
 
 **Files:**
-- Create: `src/lib/ai/gemini-provider.ts`, `src/lib/ai/index.ts`
-- Test: `tests/ai/gemini-provider.test.ts` (integration, skipped without key)
+- Create: `src/lib/ai/gemini-provider.ts`, `src/lib/ai/index.ts`, `tests/ai/gemini-provider.test.ts`
+- Modify: `.env.example`, `package.json` (dependency)
 
-- [ ] **Step 1: Install the Gemini SDK**
+**Interfaces:**
+- Consumes: `LlmProvider`, `parseStructured`, `StructuredOutputError` (E2), `withValidationRetry` (E2), `StimulusProfileSchema` (E1, integration test only).
+- Produces: `class GeminiProvider(apiKey: string, model: string)`, `DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"`, `getProvider(): LlmProvider` (already wrapped in `withValidationRetry`).
+
+- [ ] **Step 1: Install the SDK**
 
 ```bash
 pnpm add @google/genai
 ```
 
-No schema-converter dependency: Zod 4 converts natively via `z.toJSONSchema()`. (Do **not** add `zod-to-json-schema` — it targets Zod 3.)
+No schema-converter dependency: Zod 4 converts natively with `z.toJSONSchema()`.
 
 - [ ] **Step 2: Implement `src/lib/ai/gemini-provider.ts`**
 
 ```ts
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import type { LlmProvider, GenerateStructuredArgs } from "@/lib/ai/provider";
+import { parseStructured, StructuredOutputError, type GenerateStructuredArgs, type LlmProvider } from "./provider";
 
+// The only file that imports the Gemini SDK.
 export class GeminiProvider implements LlmProvider {
-  private client: GoogleGenAI;
-  private model: string;
+  private readonly client: GoogleGenAI;
 
-  constructor(apiKey: string, model: string) {
+  constructor(apiKey: string, readonly model: string) {
     this.client = new GoogleGenAI({ apiKey });
-    this.model = model;
   }
 
   async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
-    const jsonSchema = z.toJSONSchema(args.schema);
     const response = await this.client.models.generateContent({
       model: this.model,
       contents: [{ role: "user", parts: [{ text: args.prompt }] }],
       config: {
         systemInstruction: args.systemPrompt,
         responseMimeType: "application/json",
-        responseJsonSchema: jsonSchema,
+        responseJsonSchema: z.toJSONSchema(args.schema),
       },
     });
     const text = response.text;
-    if (!text) throw new Error("GeminiProvider: empty response");
+    if (!text) throw new StructuredOutputError("GeminiProvider: empty response", "The response was empty.");
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new Error(`GeminiProvider: response was not valid JSON: ${text.slice(0, 200)}`);
+      throw new StructuredOutputError("GeminiProvider: invalid JSON", `The response was not valid JSON: ${text.slice(0, 200)}`);
     }
-    return args.schema.parse(parsed);
+    return parseStructured(args.schema, parsed, "GeminiProvider");
   }
 }
 ```
 
-> `responseJsonSchema` accepts standard JSON Schema (what `z.toJSONSchema` emits), unlike the older `responseSchema` field which wants the OpenAPI subset. If the Gemini validator still rejects a given shape (e.g., an exotic union), the fallback is to drop `responseJsonSchema` and instead append the JSON shape description to the prompt while keeping `responseMimeType: "application/json"`; the `args.schema.parse(parsed)` call still guarantees correctness either way.
+> `responseJsonSchema` takes standard JSON Schema (what `z.toJSONSchema` emits, incl. `anyOf` for nullable fields). If Gemini rejects a shape, drop `responseJsonSchema`, keep `responseMimeType`, and append `JSON.stringify(z.toJSONSchema(args.schema))` to the prompt; `parseStructured` still guarantees correctness.
 
-- [ ] **Step 3: Implement `src/lib/ai/index.ts` (factory)**
+- [ ] **Step 3: Implement `src/lib/ai/index.ts`**
 
 ```ts
-import type { LlmProvider } from "@/lib/ai/provider";
-import { GeminiProvider } from "@/lib/ai/gemini-provider";
+import type { LlmProvider } from "./provider";
+import { GeminiProvider } from "./gemini-provider";
+import { withValidationRetry } from "./retry";
+
+export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 
 export function getProvider(): LlmProvider {
   const which = process.env.AI_PROVIDER ?? "gemini";
-  switch (which) {
-    case "gemini": {
-      const key = process.env.GEMINI_API_KEY;
-      if (!key) throw new Error("GEMINI_API_KEY is not set");
-      return new GeminiProvider(key, process.env.GEMINI_MODEL ?? "gemini-flash-latest");
-    }
-    default:
-      throw new Error(`Unknown AI_PROVIDER: ${which}`);
-  }
+  if (which !== "gemini") throw new Error(`Unknown AI_PROVIDER: ${which}`);
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY is not set");
+  return withValidationRetry(new GeminiProvider(key, process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL));
 }
 ```
 
-- [ ] **Step 4: Write an integration test that skips without a key**
+- [ ] **Step 4: Write the integration test `tests/ai/gemini-provider.test.ts`** (skips without a key)
 
-`tests/ai/gemini-provider.test.ts`:
+It exercises the schema features the engine relies on: enums and nullable fields.
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { z } from "zod";
 import { GeminiProvider } from "@/lib/ai/gemini-provider";
+import { DEFAULT_GEMINI_MODEL } from "@/lib/ai";
+import { StimulusProfileSchema } from "@/lib/engine/types";
 
 const key = process.env.GEMINI_API_KEY;
 const maybe = key ? describe : describe.skip;
 
 maybe("GeminiProvider (integration)", () => {
-  it("returns schema-valid structured output", async () => {
-    const provider = new GeminiProvider(key!, process.env.GEMINI_MODEL ?? "gemini-flash-latest");
-    const schema = z.object({ capital: z.string() });
+  it("returns schema-valid structured output with enums and nulls", async () => {
+    const provider = new GeminiProvider(key!, process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL);
     const result = await provider.generateStructured({
-      prompt: "What is the capital of France? Respond as JSON {\"capital\": string}.",
-      schema, schemaName: "CapitalAnswer",
+      prompt: "Classify the stimulus of: 5 rounds for time of 400 m run and 15 air squats. Use quality conditioning or strength.",
+      schema: StimulusProfileSchema,
+      schemaName: "StimulusProfile",
     });
-    expect(result.capital.toLowerCase()).toContain("paris");
-  }, 30000);
+    expect(result.quality).toBe("conditioning");
+  }, 60000);
 });
 ```
 
-- [ ] **Step 5: Run it**
-
-Run: `pnpm exec vitest run tests/ai/gemini-provider.test.ts`
-Expected: SKIPPED if `GEMINI_API_KEY` unset; PASS if set.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Update `.env.example`** — replace the AI block with:
 
 ```bash
-git add -A
-git commit -m "feat: Gemini provider adapter and provider factory"
+# AI provider: "gemini" (v1). The model is pinned: change it only deliberately, then run `pnpm eval`.
+AI_PROVIDER="gemini"
+GEMINI_API_KEY=""
+GEMINI_MODEL="gemini-3.8-flash"
 ```
 
----
+- [ ] **Step 6: Run the tests**
 
-## Phase 4 — Engine pipeline
-
-### Task 4.1: `parseWorkout`
-
-**Files:**
-- Create: `src/lib/engine/parse-workout.ts`
-- Test: `tests/engine/parse-workout.test.ts`
-
-- [ ] **Step 1: Write the failing test (uses FakeProvider)**
-
-`tests/engine/parse-workout.test.ts`:
-
-```ts
-import { describe, it, expect } from "vitest";
-import { parseWorkout } from "@/lib/engine/parse-workout";
-import { FakeProvider } from "@/lib/ai/fake-provider";
-import type { LlmProvider } from "@/lib/ai/provider";
-
-describe("parseWorkout", () => {
-  it("parses raw text into a StructuredWorkout via the provider", async () => {
-    const provider = new FakeProvider({
-      StructuredWorkout: {
-        name: "Fran", rawText: "21-15-9 Thrusters 95lb / Pull-ups", source: "adhoc",
-        blocks: [{
-          title: "Fran", rawText: "21-15-9 Thrusters 95lb / Pull-ups",
-          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
-          components: [
-            { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-            { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-          ],
-        }],
-      },
-    });
-    const workout = await parseWorkout(provider, "21-15-9 Thrusters 95lb / Pull-ups");
-    expect(workout.name).toBe("Fran");
-    expect(workout.blocks[0].components[0].movement).toBe("Thruster");
-  });
-
-  it("degrades gracefully to a single raw block when the provider fails", async () => {
-    const failing: LlmProvider = {
-      async generateStructured() { throw new Error("model returned garbage"); },
-    };
-    const workout = await parseWorkout(failing, "some cryptic programming");
-    expect(workout.rawText).toBe("some cryptic programming");
-    expect(workout.blocks).toHaveLength(1);
-    expect(workout.blocks[0].format).toBe("other");
-    expect(workout.blocks[0].rawText).toBe("some cryptic programming");
-    expect(workout.blocks[0].components).toEqual([]);
-  });
-
-  it("enforces verbatim rawText: session rawText is the input, paraphrased block slices fall back to it", async () => {
-    const provider = new FakeProvider({
-      StructuredWorkout: {
-        name: null, rawText: "The model paraphrased this", source: "adhoc",
-        blocks: [{
-          title: null, rawText: "a paraphrase, not a slice",
-          format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null, components: [],
-        }],
-      },
-    });
-    const workout = await parseWorkout(provider, "AMRAP 10 min\n10 Burpees");
-    expect(workout.rawText).toBe("AMRAP 10 min\n10 Burpees");           // session rawText forced to input
-    expect(workout.blocks[0].rawText).toBe("AMRAP 10 min\n10 Burpees"); // non-slice block falls back to session text
-  });
-});
-```
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement `src/lib/engine/parse-workout.ts`**
-
-```ts
-import type { LlmProvider } from "@/lib/ai/provider";
-import { StructuredWorkoutSchema, type StructuredWorkout } from "@/lib/engine/types";
-
-const SYSTEM = `You convert a raw functional-fitness training session into structured JSON.
-A session often contains SEVERAL blocks with different formats (e.g., a strength piece, a conditioning
-AMRAP, a partner WOD). Rules:
-- Preserve the athlete's text VERBATIM: set the session "rawText" to the full input, and each block
-  "rawText" to that block's exact slice. Never paraphrase rawText.
-- Split the session into ordered "blocks". For each block set a "format"
-  (amrap | for_time | emom | intervals | strength | skill | partner | rest | other), a "scheme" string
-  if present, and an estimated "timeDomainMinutes".
-- Extract "components" (movements with reps/load/distance/calories/duration) using canonical movement
-  names (e.g., "Thruster", "Pull-up", "Row (Erg)"). Leave "components" empty for a block with no discrete
-  movements (e.g., a rest block).
-- Put intensity cues, tempo/pause prescriptions, and scaling tiers (Rx+/Rx/Int, M/F loads) into
-  "coachingNotes" as prose — do NOT discard them. Use null for any field that does not apply.
-Set "source" to "adhoc".`;
-
-/** Spec: a parse failure degrades gracefully — the raw text is still a usable workout. */
-function fallbackWorkout(rawText: string): StructuredWorkout {
-  return {
-    name: null,
-    rawText,
-    source: "adhoc",
-    blocks: [{
-      title: null, rawText, format: "other", scheme: null,
-      timeDomainMinutes: null, components: [], coachingNotes: null,
-    }],
-  };
-}
-
-export async function parseWorkout(provider: LlmProvider, rawText: string): Promise<StructuredWorkout> {
-  let parsed: StructuredWorkout;
-  try {
-    parsed = await provider.generateStructured({
-      systemPrompt: SYSTEM,
-      prompt: `Raw workout:\n"""\n${rawText}\n"""\nReturn the structured workout as JSON.`,
-      schema: StructuredWorkoutSchema,
-      schemaName: "StructuredWorkout",
-    });
-  } catch {
-    return fallbackWorkout(rawText);
-  }
-  // Enforce the verbatim invariant: the model is *asked* to copy text exactly, but
-  // models paraphrase. The session rawText is always the athlete's input; any block
-  // "slice" that is not actually a substring falls back to the full session text.
-  return {
-    ...parsed,
-    rawText,
-    blocks: parsed.blocks.map((b) =>
-      rawText.includes(b.rawText) ? b : { ...b, rawText }
-    ),
-  };
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts`
-Expected: PASS (3 tests).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: engine parseWorkout with graceful fallback and verbatim rawText guard"
-```
-
-### Task 4.2: `classifyStimulus`
-
-**Files:**
-- Create: `src/lib/engine/classify-stimulus.ts`
-- Test: `tests/engine/classify-stimulus.test.ts`
-
-- [ ] **Step 1: Write the failing test**
-
-`tests/engine/classify-stimulus.test.ts`:
-
-```ts
-import { describe, it, expect } from "vitest";
-import { classifyStimulus } from "@/lib/engine/classify-stimulus";
-import { FakeProvider } from "@/lib/ai/fake-provider";
-import type { StructuredWorkout } from "@/lib/engine/types";
-
-const fran: StructuredWorkout = {
-  name: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups", source: "adhoc",
-  blocks: [{
-    title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
-    format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
-    components: [
-      { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-      { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-    ],
-  }],
-};
-
-describe("classifyStimulus", () => {
-  it("returns a classification with primary and secondary tags", async () => {
-    const provider = new FakeProvider({
-      StimulusClassification: { primary: "anaerobic_capacity", secondary: ["muscular_endurance"], rationale: "Short, intense couplet." },
-    });
-    const c = await classifyStimulus(provider, fran, [
-      { key: "anaerobic_capacity", label: "Anaerobic capacity", description: "..." },
-    ]);
-    expect(c.primary).toBe("anaerobic_capacity");
-    expect(c.secondary).toContain("muscular_endurance");
-  });
-});
-```
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/engine/classify-stimulus.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement `src/lib/engine/classify-stimulus.ts`**
-
-```ts
-import type { LlmProvider } from "@/lib/ai/provider";
-import { StimulusClassificationSchema, type StimulusClassification, type StructuredWorkout } from "@/lib/engine/types";
-import type { StimulusDef } from "@/lib/domain/types";
-
-const SYSTEM = `You classify a functional fitness workout by its primary training stimulus, choosing from the provided taxonomy keys only.
-Pick exactly one "primary" key and zero or more "secondary" keys. Explain briefly in "rationale".`;
-
-export async function classifyStimulus(
-  provider: LlmProvider,
-  workout: StructuredWorkout,
-  taxonomy: StimulusDef[],
-): Promise<StimulusClassification> {
-  const taxonomyText = taxonomy.map((t) => `- ${t.key}: ${t.label} — ${t.description}`).join("\n");
-  return provider.generateStructured({
-    systemPrompt: SYSTEM,
-    prompt: `Taxonomy:\n${taxonomyText}\n\nWorkout JSON:\n${JSON.stringify(workout)}\n\nReturn the classification as JSON. Use only keys from the taxonomy.`,
-    schema: StimulusClassificationSchema,
-    schemaName: "StimulusClassification",
-  });
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/engine/classify-stimulus.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: engine classifyStimulus (workout -> stimulus classification)"
-```
-
-### Task 4.3: `tailor`
-
-**Files:**
-- Create: `src/lib/engine/tailor.ts`
-- Test: `tests/engine/tailor.test.ts`
-
-- [ ] **Step 1: Write the failing test**
-
-`tests/engine/tailor.test.ts`:
-
-```ts
-import { describe, it, expect } from "vitest";
-import { tailor } from "@/lib/engine/tailor";
-import { FakeProvider } from "@/lib/ai/fake-provider";
-import type { StructuredWorkout, StimulusClassification, AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
-import type { Movement, InjuryContraindication } from "@/lib/domain/types";
-
-const fran: StructuredWorkout = {
-  name: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups", source: "adhoc",
-  blocks: [{
-    title: "Fran", rawText: "21-15-9 for time\nThrusters 95 lb\nPull-ups",
-    format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
-    components: [
-      { movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-      { movement: "Pull-up", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-    ],
-  }],
-};
-const classification: StimulusClassification = { primary: "anaerobic_capacity", secondary: ["muscular_endurance"], rationale: "Short couplet." };
-const profile: AthleteProfileInput = {
-  injuries: ["shoulder_impingement"], benchmarks: {}, equipment: ["dumbbell"], goals: [], availability: {},
-};
-const request: TailorRequest = { constraintType: "injury", details: "Sore right shoulder, no overhead.", timeCapMinutes: null, targetMovement: null };
-
-describe("tailor", () => {
-  it("returns a tailored workout with changes and rationale", async () => {
-    const provider = new FakeProvider({
-      TailoringResult: {
-        workout: { name: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows", source: "adhoc",
-          blocks: [{
-            title: "Fran (mod)", rawText: "21-15-9 for time\nGoblet Squat 35 lb\nRing Rows",
-            format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
-            components: [
-              { movement: "Goblet Squat", reps: "21-15-9", load: "35 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-              { movement: "Ring Row", reps: "21-15-9", load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-            ],
-          }] },
-        changes: [
-          { original: "Thruster 95 lb", modified: "Goblet Squat 35 lb", reason: "Removes overhead pressing for shoulder impingement." },
-          { original: "Pull-up", modified: "Ring Row", reason: "Lower shoulder demand while keeping pulling volume." },
-        ],
-        rationale: "Keeps the short, intense couplet stimulus while removing overhead load.",
-        safetyNote: "Stop if shoulder pain increases.",
-      },
-    });
-    const movements: Movement[] = [];
-    const contraindications: InjuryContraindication[] = [
-      { injuryKey: "shoulder_impingement", label: "Shoulder impingement", avoidStresses: [{ site: "shoulder", mechanisms: ["overhead"] }], avoidPositions: [], avoidMovements: ["Thruster"], notes: null },
-    ];
-    const result = await tailor(provider, { workout: fran, classification, profile, request, movements, contraindications });
-    expect(result.changes.length).toBeGreaterThan(0);
-    expect(result.workout.blocks[0].components[0].movement).toBe("Goblet Squat");
-  });
-});
-```
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/engine/tailor.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement `src/lib/engine/tailor.ts`**
-
-```ts
-import type { LlmProvider } from "@/lib/ai/provider";
-import {
-  TailoringResultSchema, type TailoringResult, type StructuredWorkout,
-  type StimulusClassification, type AthleteProfileInput, type TailorRequest,
-} from "@/lib/engine/types";
-import type { Movement, InjuryContraindication } from "@/lib/domain/types";
-import { matchesContraindication } from "@/lib/domain/matching";
-
-export interface TailorInput {
-  workout: StructuredWorkout;
-  classification: StimulusClassification;
-  profile: AthleteProfileInput;
-  request: TailorRequest;
-  movements: Movement[];
-  contraindications: InjuryContraindication[];
-}
-
-const SYSTEM = `You are an expert functional fitness coach. Modify the given training session for one athlete so it fits their
-constraint WHILE PRESERVING THE PRIMARY TRAINING STIMULUS identified in the classification. Rules:
-- Keep the session's BLOCK structure: return the same ordered blocks, preserving each block's intended format unless a
-  block must be dropped (explain any dropped block in "changes"). Modify within blocks.
-- Respect every contraindication: never prescribe a movement from the AVOID list, one that requires an avoided body position, or one whose stresses match an avoided site+mechanism rule.
-- Prefer substitutions from the provided movement library; keep the same stimulus (time domain, intensity, modality balance).
-- Scale loads to the athlete's benchmarks and equipment; fit the athlete's time budget if provided.
-- Carry over each block's coachingNotes (tempo, intensity, scaling tiers); update them only where the change requires it.
-- If a movement-improvement goal is requested, bias the modification toward that movement without breaking the stimulus.
-- Be conservative with injuries: when unsure, choose the lower-risk option and add a safetyNote.
-- For the modified "workout", set the session and per-block "rawText" to a clean text rendering of the MODIFIED workout.
-Return JSON with: the modified "workout", a "changes" list (original/modified/reason per change), a "rationale" explaining how the
-stimulus is preserved, and a "safetyNote" (or null).`;
-
-export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoringResult> {
-  // Deterministic pre-filter: derive the blocked list with matchesContraindication,
-  // then also hand the LLM the raw site+mechanism rules so it generalizes to
-  // movements outside the library.
-  const avoid = [...new Set([
-    ...input.movements
-      .filter((m) => input.contraindications.some((c) => matchesContraindication(m, c)))
-      .map((m) => m.name),
-    ...input.contraindications.flatMap((c) => c.avoidMovements),
-  ])];
-  const avoidStresses = input.contraindications.flatMap((c) =>
-    c.avoidStresses.map((r) => `${r.site}: ${r.mechanisms.join("/")}`)
-  );
-  const avoidPositions = [...new Set(input.contraindications.flatMap((c) => c.avoidPositions))];
-  const library = input.movements.map((m) => `${m.name} [${m.patterns.join("+")}, ${m.skill}, equip: ${m.equipment.join("+") || "none"}, stress: ${m.stresses.map((s) => `${s.site}(${s.mechanisms.join(",")})`).join(" ") || "none"}, subs: ${m.substitutes.join(", ") || "none"}]`).join("\n");
-
-  const prompt = [
-    `Original workout JSON:\n${JSON.stringify(input.workout)}`,
-    `Stimulus classification:\n${JSON.stringify(input.classification)}`,
-    `Athlete profile:\n${JSON.stringify(input.profile)}`,
-    `Today's request:\n${JSON.stringify(input.request)}`,
-    `Movements to AVOID: ${avoid.join(", ") || "none"}`,
-    `Site stresses to AVOID: ${avoidStresses.join("; ") || "none"}`,
-    `Body positions to AVOID: ${avoidPositions.join(", ") || "none"}`,
-    `Movement library:\n${library || "(none provided)"}`,
-    `Return the tailored result as JSON.`,
-  ].join("\n\n");
-
-  return provider.generateStructured({
-    systemPrompt: SYSTEM,
-    prompt,
-    schema: TailoringResultSchema,
-    schemaName: "TailoringResult",
-  });
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/engine/tailor.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: engine tailor (stimulus-preserving, contraindication-aware modification)"
-```
-
-### Task 4.4: `pipeline` orchestration
-
-**Files:**
-- Create: `src/lib/engine/pipeline.ts`
-- Test: `tests/engine/pipeline.test.ts`
-
-- [ ] **Step 1: Write the failing test**
-
-`tests/engine/pipeline.test.ts`:
-
-```ts
-import { describe, it, expect } from "vitest";
-import { runTailorPipeline } from "@/lib/engine/pipeline";
-import { FakeProvider } from "@/lib/ai/fake-provider";
-import type { AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
-import type { Movement, InjuryContraindication, StimulusDef } from "@/lib/domain/types";
-
-const profile: AthleteProfileInput = { injuries: [], benchmarks: {}, equipment: [], goals: [], availability: {} };
-const request: TailorRequest = { constraintType: "time", details: "Only 20 minutes.", timeCapMinutes: 20, targetMovement: null };
-
-const taxonomy: StimulusDef[] = [{ key: "anaerobic_capacity", label: "Anaerobic capacity", description: "..." }];
-const movements: Movement[] = [];
-const contraindications: InjuryContraindication[] = [];
-
-describe("runTailorPipeline (from raw text)", () => {
-  it("parses, classifies, and tailors using the provider", async () => {
-    const provider = new FakeProvider({
-      StructuredWorkout: { name: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", source: "adhoc",
-        blocks: [{ title: "Fran", rawText: "21-15-9 Thrusters / Pull-ups", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 5, coachingNotes: null,
-          components: [{ movement: "Thruster", reps: "21-15-9", load: "95 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
-      StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoringResult: { workout: { name: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", source: "adhoc",
-          blocks: [{ title: "Fran (mod)", rawText: "15-12-9 Thrusters 75 lb", format: "for_time", scheme: "15-12-9 for time", timeDomainMinutes: 4, coachingNotes: null,
-            components: [{ movement: "Thruster", reps: "15-12-9", load: "75 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
-        changes: [{ original: "21-15-9", modified: "15-12-9", reason: "Fit 20-minute cap." }],
-        rationale: "Condensed but same anaerobic stimulus.", safetyNote: null },
-    });
-
-    const result = await runTailorPipeline(provider, {
-      input: { kind: "raw", rawText: "21-15-9 Thrusters / Pull-ups" },
-      profile, request, taxonomy, movements, contraindications,
-    });
-
-    expect(result.original.name).toBe("Fran");
-    expect(result.classification.primary).toBe("anaerobic_capacity");
-    expect(result.tailored.changes[0].reason).toContain("cap");
-  });
-
-  it("accepts an already-structured workout and skips parsing", async () => {
-    const provider = new FakeProvider({
-      StimulusClassification: { primary: "anaerobic_capacity", secondary: [], rationale: "Short." },
-      TailoringResult: { workout: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
-          blocks: [{ title: "Manual", rawText: "AMRAP 10\n10 Burpees", format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null,
-            components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
-        changes: [], rationale: "No change needed.", safetyNote: null },
-    });
-    const result = await runTailorPipeline(provider, {
-      input: { kind: "structured", workout: { name: "Manual", rawText: "AMRAP 10\n10 Burpees", source: "adhoc",
-        blocks: [{ title: "Manual", rawText: "AMRAP 10\n10 Burpees", format: "amrap", scheme: "AMRAP 10", timeDomainMinutes: 10, coachingNotes: null,
-          components: [{ movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] } },
-      profile, request: { constraintType: "none", details: "", timeCapMinutes: null, targetMovement: null },
-      taxonomy, movements, contraindications,
-    });
-    expect(result.original.name).toBe("Manual");
-  });
-});
-```
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/engine/pipeline.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement `src/lib/engine/pipeline.ts`**
-
-```ts
-import type { LlmProvider } from "@/lib/ai/provider";
-import { parseWorkout } from "@/lib/engine/parse-workout";
-import { classifyStimulus } from "@/lib/engine/classify-stimulus";
-import { tailor } from "@/lib/engine/tailor";
-import type {
-  StructuredWorkout, StimulusClassification, TailoringResult, AthleteProfileInput, TailorRequest,
-} from "@/lib/engine/types";
-import type { Movement, InjuryContraindication, StimulusDef } from "@/lib/domain/types";
-
-export type WorkoutInput =
-  | { kind: "raw"; rawText: string }
-  | { kind: "structured"; workout: StructuredWorkout };
-
-export interface PipelineArgs {
-  input: WorkoutInput;
-  profile: AthleteProfileInput;
-  request: TailorRequest;
-  taxonomy: StimulusDef[];
-  movements: Movement[];
-  contraindications: InjuryContraindication[];
-}
-
-export interface PipelineResult {
-  original: StructuredWorkout;
-  classification: StimulusClassification;
-  tailored: TailoringResult;
-}
-
-export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
-  const original = args.input.kind === "raw"
-    ? await parseWorkout(provider, args.input.rawText)
-    : args.input.workout;
-
-  const classification = await classifyStimulus(provider, original, args.taxonomy);
-
-  const tailored = await tailor(provider, {
-    workout: original,
-    classification,
-    profile: args.profile,
-    request: args.request,
-    movements: args.movements,
-    contraindications: args.contraindications,
-  });
-
-  return { original, classification, tailored };
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/engine/pipeline.test.ts`
-Expected: PASS (2 tests).
-
-- [ ] **Step 5: Run the whole suite**
-
-Run: `pnpm test`
-Expected: all suites pass — no DB or API key needed (the Gemini integration test skips without a key).
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add -A
-git commit -m "feat: tailor pipeline orchestration (parse -> classify -> tailor)"
-```
-
-### Task 4.5: Refine support in `tailor` (previous attempt + athlete feedback)
-
-The spec's refine loop ("still hurts", "too easy", "no rower today") is a re-run of the **tailor step only** — no re-parse, no re-classify. `tailor()` gains an optional `previousAttempt` describing the rejected modification and the athlete's feedback, which is appended to the prompt. The HTTP endpoint and UI come in Task 6.6.
-
-**Files:**
-- Modify: `src/lib/engine/tailor.ts`
-- Test: `tests/engine/tailor.test.ts` (extend)
-
-**Interfaces:**
-- Consumes: `TailorInput`, `tailor()` from Task 4.3.
-- Produces: `TailorInput.previousAttempt?: { workout: StructuredWorkout; feedback: string } | null` — used by `runRefineForAthlete` (Task 6.6).
-
-- [ ] **Step 1: Write the failing test** (append to `tests/engine/tailor.test.ts`)
-
-The `FakeProvider` can't inspect prompts, so this test uses a small capturing provider inline:
-
-```ts
-import type { LlmProvider, GenerateStructuredArgs } from "@/lib/ai/provider";
-
-class CapturingProvider implements LlmProvider {
-  lastArgs: GenerateStructuredArgs<unknown> | null = null;
-  constructor(private readonly value: unknown) {}
-  async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
-    this.lastArgs = args as GenerateStructuredArgs<unknown>;
-    return args.schema.parse(this.value);
-  }
-}
-
-describe("tailor with previousAttempt (refine)", () => {
-  it("includes the rejected workout and the athlete feedback in the prompt", async () => {
-    const scripted = {
-      workout: { name: "Fran (mod 2)", rawText: "21-15-9 for time\nGoblet Squat 25 lb\nRing Rows", source: "adhoc",
-        blocks: [{ title: "Fran (mod 2)", rawText: "21-15-9 for time\nGoblet Squat 25 lb\nRing Rows",
-          format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
-          components: [{ movement: "Goblet Squat", reps: "21-15-9", load: "25 lb", distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
-      changes: [{ original: "Goblet Squat 35 lb", modified: "Goblet Squat 25 lb", reason: "Lower load after feedback." }],
-      rationale: "Same stimulus at a load that does not aggravate the shoulder.",
-      safetyNote: "Stop if pain persists.",
-    };
-    const provider = new CapturingProvider(scripted);
-    const previousWorkout = { ...fran, name: "Fran (mod)" };
-
-    const result = await tailor(provider, {
-      workout: fran, classification, profile, request, movements: [], contraindications: [],
-      previousAttempt: { workout: previousWorkout, feedback: "Still hurts my shoulder at 35 lb." },
-    });
-
-    expect(result.changes[0].reason).toContain("feedback");
-    expect(provider.lastArgs?.prompt).toContain("PREVIOUS attempt");
-    expect(provider.lastArgs?.prompt).toContain("Still hurts my shoulder at 35 lb.");
-    expect(provider.lastArgs?.prompt).toContain("Fran (mod)");
-  });
-
-  it("omits the refine section when previousAttempt is absent", async () => {
-    const provider = new CapturingProvider({
-      workout: fran, changes: [], rationale: "No change needed.", safetyNote: null,
-    });
-    await tailor(provider, { workout: fran, classification, profile, request, movements: [], contraindications: [] });
-    expect(provider.lastArgs?.prompt).not.toContain("PREVIOUS attempt");
-  });
-});
-```
-
-(`fran`, `classification`, `profile`, `request` are the fixtures already defined at the top of this test file in Task 4.3.)
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/engine/tailor.test.ts`
-Expected: FAIL — `previousAttempt` is not a known property / prompt does not contain the refine section.
-
-- [ ] **Step 3: Extend `src/lib/engine/tailor.ts`**
-
-Add to `TailorInput`:
-
-```ts
-export interface TailorInput {
-  workout: StructuredWorkout;
-  classification: StimulusClassification;
-  profile: AthleteProfileInput;
-  request: TailorRequest;
-  movements: Movement[];
-  contraindications: InjuryContraindication[];
-  /** Refine loop: the modification the athlete rejected, plus their feedback on it. */
-  previousAttempt?: { workout: StructuredWorkout; feedback: string } | null;
-}
-```
-
-In `tailor()`, build the prompt parts array as before, and append the refine section before the final line:
-
-```ts
-  const parts = [
-    `Original workout JSON:\n${JSON.stringify(input.workout)}`,
-    `Stimulus classification:\n${JSON.stringify(input.classification)}`,
-    `Athlete profile:\n${JSON.stringify(input.profile)}`,
-    `Today's request:\n${JSON.stringify(input.request)}`,
-    `Movements to AVOID: ${avoid.join(", ") || "none"}`,
-    `Site stresses to AVOID: ${avoidStresses.join("; ") || "none"}`,
-    `Body positions to AVOID: ${avoidPositions.join(", ") || "none"}`,
-    `Movement library:\n${library || "(none provided)"}`,
-  ];
-  if (input.previousAttempt) {
-    parts.push(
-      `PREVIOUS attempt (the athlete rejected this modification):\n${JSON.stringify(input.previousAttempt.workout)}\n\n` +
-      `Athlete feedback on it: ${input.previousAttempt.feedback}\n` +
-      `Produce a NEW modification of the ORIGINAL workout that addresses this feedback while still following every rule above.`
-    );
-  }
-  parts.push(`Return the tailored result as JSON.`);
-  const prompt = parts.join("\n\n");
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/engine/tailor.test.ts`
-Expected: PASS (3 tests).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: refine support in tailor (previous attempt + athlete feedback in prompt)"
-```
-
----
-
-## Phase 5 — Auth (Auth.js v5, magic link)
-
-### Task 5.1: Configure Auth.js with Prisma adapter and dev email
-
-> **No middleware.** Database sessions + the Prisma adapter (and nodemailer) are not Edge-runtime-compatible, so `export { auth as middleware }` would fail at runtime. Route protection lives where it already works: every protected page calls `auth()` and redirects, and every API route returns 401 (Tasks 6.1–6.5). Do not create `src/middleware.ts`.
-
-**Files:**
-- Create: `src/auth.ts`, `src/app/api/auth/[...nextauth]/route.ts`, `src/types/next-auth.d.ts`
-- Modify: `.env` (`AUTH_SECRET`)
-
-**Interfaces:**
-- Produces: `auth()`, `signIn()`, `signOut()`, `handlers` from `@/auth`; `session.user.id: string` (typed via the augmentation) — used by every page and API route in Phase 6.
-
-- [ ] **Step 1: Install Auth.js**
-
-```bash
-pnpm add next-auth@beta @auth/prisma-adapter nodemailer
-```
-
-- [ ] **Step 2: Generate an auth secret**
-
-```bash
-pnpm exec auth secret
-```
-
-This writes `AUTH_SECRET` to `.env`. (If the command is unavailable, set `AUTH_SECRET` to any 32+ char random string.)
-
-- [ ] **Step 3: Implement `src/auth.ts`**
-
-```ts
-import NextAuth from "next-auth";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import Nodemailer from "next-auth/providers/nodemailer";
-import { prisma } from "@/lib/db";
-
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
-  callbacks: {
-    // With database sessions the callback receives the DB user; expose its id so
-    // routes can key profile/history queries on session.user.id.
-    session({ session, user }) {
-      session.user.id = user.id;
-      return session;
-    },
-  },
-  providers: [
-    Nodemailer({
-      server: process.env.EMAIL_SERVER || { jsonTransport: true },
-      from: process.env.EMAIL_FROM,
-      // In dev (no SMTP), log the magic link instead of sending email.
-      async sendVerificationRequest({ identifier, url }) {
-        if (!process.env.EMAIL_SERVER) {
-          console.log(`\n[dev magic link] ${identifier}: ${url}\n`);
-          return;
-        }
-        const { createTransport } = await import("nodemailer");
-        const transport = createTransport(process.env.EMAIL_SERVER);
-        await transport.sendMail({ to: identifier, from: process.env.EMAIL_FROM, subject: "Sign in to Training Tailor", text: `Sign in: ${url}` });
-      },
-    }),
-  ],
-  pages: { signIn: "/signin" },
-});
-```
-
-- [ ] **Step 4: Create the route handler `src/app/api/auth/[...nextauth]/route.ts`**
-
-```ts
-import { handlers } from "@/auth";
-export const { GET, POST } = handlers;
-```
-
-- [ ] **Step 5: Type `session.user.id` — create `src/types/next-auth.d.ts`**
-
-```ts
-import type { DefaultSession } from "next-auth";
-
-declare module "next-auth" {
-  interface Session {
-    user: { id: string } & DefaultSession["user"];
-  }
-}
-```
-
-(Ensure `tsconfig.json` `include` covers `src/types` — the create-next-app default `"src/**/*.ts"` pattern does.)
-
-- [ ] **Step 6: Manual verification**
-
-Run: `pnpm dev`, visit `http://localhost:3000/signin`, enter an email, submit. Confirm a `[dev magic link]` line appears in the terminal; open that URL and confirm you land authenticated. (Sign-in page UI is built in Task 6.1.)
+Run: `pnpm exec vitest run tests/ai`
+Expected: PASS; the Gemini suite is SKIPPED without `GEMINI_API_KEY` (PASS with one).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: Auth.js v5 magic-link auth with Prisma adapter and dev email logging"
+git commit -m "feat: Gemini provider adapter with a pinned model and the provider factory"
 ```
 
 ---
 
-## Phase 6 — Athlete UI & API
-
-### Task 6.1: App shell, sign-in page, and profile data helpers
+### Task E4: Analyze — split, stimulus and situation in one call
 
 **Files:**
-- Create: `src/app/signin/page.tsx`, `src/lib/profile.ts`
-- Modify: `src/app/layout.tsx`, `src/app/page.tsx`
-- Test: `tests/profile/profile-helpers.test.ts`
+- Create: `src/lib/engine/render-text.ts`, `src/lib/engine/resolve-blocks.ts`, `src/lib/engine/analyze.ts`
+- Test: `tests/engine/render-text.test.ts`, `tests/engine/analyze.test.ts`
 
-- [ ] **Step 1: Write the failing test for profile normalization**
+**Interfaces:**
+- Consumes: E1 schemas, `createMovementResolver` / `MovementResolver` (D5), `getDomainData` / `DomainData` (D5), `LlmProvider` (E2).
+- Produces:
+  - `@/lib/engine/render-text`: `renderComponent(c: ComponentDraft): string`, `renderBlock(b: Pick<ManualBlock, "title" | "scheme" | "components" | "coachingNotes">): string`, `renderManualWorkout(w: ManualWorkout): string`.
+  - `@/lib/engine/resolve-blocks`: `resolveBlocks<B extends { components: ComponentDraft[] }>(blocks: B[], resolve: MovementResolver): Array<Omit<B, "components"> & { components: WorkoutComponent[] }>`.
+  - `@/lib/engine/analyze`: `interface AnalyzeContext { movements; contraindications; taxonomy }`, `interface WorkoutAnalysis { workout: StructuredWorkout; conditions: DetectedCondition[]; unavailableEquipment: Equipment[]; analyzed: boolean }`, `analyzePaste(provider, rawText, situation, ctx)`, `analyzeManual(provider, manual, situation, ctx)`, `analyzeSituation(provider, situation, ctx): Promise<SituationAnalysis>`. Schema names: `"PasteAnalysis"`, `"ManualAnalysis"`, `"SituationAnalysis"`.
 
-`tests/profile/profile-helpers.test.ts`:
+- [ ] **Step 1: Write the failing tests**
+
+`tests/engine/render-text.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { normalizeProfile } from "@/lib/profile";
+import { renderComponent, renderManualWorkout } from "@/lib/engine/render-text";
+import { component } from "../fixtures/workouts";
 
-describe("normalizeProfile", () => {
-  it("fills defaults for a brand-new profile", () => {
-    const p = normalizeProfile(null);
-    expect(p).toEqual({ injuries: [], benchmarks: {}, equipment: [], goals: [], availability: {} });
+describe("render-text", () => {
+  it("renders a component with only its present fields", () => {
+    expect(renderComponent(component("Thruster", { reps: 21, load: "43/30 kg" }))).toBe("21 Thruster @ 43/30 kg");
+    expect(renderComponent(component("Row (Erg)", { calories: 15, notes: "easy pace" }))).toBe("Row (Erg) 15 cal (easy pace)");
   });
 
-  it("passes through and validates stored JSON", () => {
-    const p = normalizeProfile({
-      injuries: ["knee_pain"], benchmarks: { backSquat1RM: 140 }, equipment: ["barbell"],
-      goals: ["improve pull-ups"], availability: { hoursPerDay: 1, daysPerWeek: 4, days: ["Mon", "Wed", "Fri", "Sat"] },
+  it("renders a manual workout block by block", () => {
+    const text = renderManualWorkout({
+      name: "Monday",
+      blocks: [
+        { title: "Strength", format: "strength", scheme: "5x5", timeDomainMinutes: 15, coachingNotes: "Rest 2 min",
+          components: [component("Back Squat", { load: "100 kg" })] },
+        { title: null, format: "amrap", scheme: "AMRAP 8", timeDomainMinutes: 8, coachingNotes: null,
+          components: [component("Burpee", { reps: 10 })] },
+      ],
     });
-    expect(p.injuries).toContain("knee_pain");
-    expect(p.availability.daysPerWeek).toBe(4);
+    expect(text).toBe("Monday\n\nStrength\n5x5\nBack Squat @ 100 kg\nRest 2 min\n\nAMRAP 8\n10 Burpee");
+  });
+
+  it("never renders an empty block", () => {
+    expect(renderManualWorkout({ name: null, blocks: [{ title: null, format: "rest", scheme: null, timeDomainMinutes: null, coachingNotes: null, components: [] }] }))
+      .toBe("(rest)");
+  });
+});
+```
+
+`tests/engine/analyze.test.ts`:
+
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { FakeProvider } from "@/lib/ai/fake-provider";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { analyzeManual, analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
+import { FRAN_TEXT, component, franDraft, sprint } from "../fixtures/workouts";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+const shoulder = { key: "shoulder_impingement", side: "right", severity: "moderate", evidence: "me duele el hombro derecho" };
+
+describe("analyzePaste", () => {
+  it("returns a resolved session, known conditions and unavailable equipment", async () => {
+    const draft = franDraft();
+    draft.blocks[0].components[1] = component("Pull-ups", { reps: "21-15-9" });
+    const provider = new FakeProvider({
+      PasteAnalysis: {
+        workout: draft,
+        conditions: [shoulder, { key: "made_up_key", side: null, severity: "mild", evidence: "?" }],
+        unavailableEquipment: ["rower", "rower"],
+      },
+    });
+    const a = await analyzePaste(provider, FRAN_TEXT, "Me duele el hombro derecho. Hoy no hay remo.", domain);
+    expect(a.analyzed).toBe(true);
+    expect(a.workout.source).toBe("paste");
+    expect(a.workout.rawText).toBe(FRAN_TEXT);
+    expect(a.workout.blocks[0].components.map((c) => c.canonical)).toEqual(["Thruster", "Pull-up"]);
+    expect(a.conditions.map((c) => c.key)).toEqual(["shoulder_impingement"]);
+    expect(a.unavailableEquipment).toEqual(["rower"]);
+  });
+
+  it("sends the library, the catalog, the taxonomy and the situation to the model", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: { workout: franDraft(), conditions: [], unavailableEquipment: [] } });
+    await analyzePaste(provider, FRAN_TEXT, "Sore right shoulder", domain);
+    const prompt = provider.calls[0].prompt;
+    expect(prompt).toContain("- Toes-to-Bar (aka T2B, TTB)");
+    expect(prompt).toContain("- shoulder_impingement: Shoulder impingement [injury]");
+    expect(prompt).toContain("- glycolytic:");
+    expect(prompt).toContain("Sore right shoulder");
+    expect(prompt).toContain(FRAN_TEXT);
+  });
+
+  it("forces verbatim block text: a paraphrased slice falls back to the session text", async () => {
+    const draft = franDraft();
+    draft.blocks[0].rawText = "a paraphrase, not a slice";
+    const a = await analyzePaste(new FakeProvider({ PasteAnalysis: { workout: draft, conditions: [], unavailableEquipment: [] } }), FRAN_TEXT, "", domain);
+    expect(a.workout.blocks[0].rawText).toBe(FRAN_TEXT);
+  });
+
+  it("degrades to one raw block and still analyzes the situation", async () => {
+    const provider = new FakeProvider({
+      PasteAnalysis: new Error("model returned garbage"),
+      SituationAnalysis: { conditions: [shoulder], unavailableEquipment: [] },
+    });
+    const a = await analyzePaste(provider, "cryptic programming", "me duele el hombro derecho", domain);
+    expect(a.analyzed).toBe(false);
+    expect(a.workout.blocks).toEqual([{
+      title: null, rawText: "cryptic programming", day: null, format: "other", scheme: null,
+      timeDomainMinutes: null, coachingNotes: null, stimulus: null, components: [],
+    }]);
+    expect(a.conditions.map((c) => c.key)).toEqual(["shoulder_impingement"]);
+  });
+
+  it("skips the situation call when there is no situation", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: new Error("garbage") });
+    const a = await analyzePaste(provider, "cryptic", "   ", domain);
+    expect(a.conditions).toEqual([]);
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  it("fails rather than ignore stated pain when both calls fail", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: new Error("garbage"), SituationAnalysis: new Error("down") });
+    await expect(analyzePaste(provider, "cryptic", "me duele la rodilla", domain)).rejects.toThrow("down");
+  });
+});
+
+describe("analyzeManual", () => {
+  const manual = {
+    name: "Manual",
+    blocks: [
+      { title: "A", format: "strength" as const, scheme: "5x5", timeDomainMinutes: 15, coachingNotes: null, components: [component("Back Squat")] },
+      { title: "B", format: "amrap" as const, scheme: "AMRAP 8", timeDomainMinutes: 8, coachingNotes: null, components: [component("T2B", { reps: 10 })] },
+    ],
+  };
+
+  it("renders text, aligns stimuli by block and resolves names", async () => {
+    const provider = new FakeProvider({ ManualAnalysis: { stimuli: [null, sprint], conditions: [], unavailableEquipment: [] } });
+    const a = await analyzeManual(provider, manual, "", domain);
+    expect(a.workout.source).toBe("manual");
+    expect(a.workout.blocks[0].rawText).toBe("A\n5x5\nBack Squat");
+    expect(a.workout.blocks[1].stimulus).toEqual(sprint);
+    expect(a.workout.blocks[1].components[0].canonical).toBe("Toes-to-Bar");
+  });
+
+  it("fills missing stimuli with null when the model returns too few", async () => {
+    const provider = new FakeProvider({ ManualAnalysis: { stimuli: [sprint], conditions: [], unavailableEquipment: [] } });
+    const a = await analyzeManual(provider, manual, "", domain);
+    expect(a.workout.blocks[1].stimulus).toBeNull();
+  });
+});
+
+describe("analyzeSituation", () => {
+  it("returns nothing for an empty situation without calling the model", async () => {
+    const provider = new FakeProvider({});
+    expect(await analyzeSituation(provider, "", domain)).toEqual({ conditions: [], unavailableEquipment: [] });
+    expect(provider.calls).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/engine/render-text.test.ts tests/engine/analyze.test.ts` → FAIL (modules not found).
+
+- [ ] **Step 3: Implement `src/lib/engine/render-text.ts`**
+
+```ts
+import type { ComponentDraft, ManualBlock, ManualWorkout } from "./types";
+
+export function renderComponent(c: ComponentDraft): string {
+  const parts = [
+    c.reps != null ? String(c.reps) : null,
+    c.movement,
+    c.load ? `@ ${c.load}` : null,
+    c.distanceMeters != null ? `${c.distanceMeters} m` : null,
+    c.calories != null ? `${c.calories} cal` : null,
+    c.durationSeconds != null ? `${c.durationSeconds} s` : null,
+  ].filter((p): p is string => p !== null);
+  return parts.join(" ") + (c.notes ? ` (${c.notes})` : "");
+}
+
+export function renderBlock(b: Pick<ManualBlock, "title" | "scheme" | "components" | "coachingNotes"> & { format?: string }): string {
+  const lines = [b.title, b.scheme, ...b.components.map(renderComponent), b.coachingNotes]
+    .filter((l): l is string => !!l && l.trim().length > 0);
+  return lines.length > 0 ? lines.join("\n") : `(${b.format ?? "block"})`;
+}
+
+export function renderManualWorkout(w: ManualWorkout): string {
+  return [w.name, ...w.blocks.map(renderBlock)].filter((p): p is string => !!p).join("\n\n");
+}
+```
+
+- [ ] **Step 4: Implement `src/lib/engine/resolve-blocks.ts`**
+
+```ts
+import type { MovementResolver } from "@/lib/domain/resolve";
+import type { ComponentDraft, WorkoutComponent } from "./types";
+
+/** Attach the canonical library name (or null) to every component; the model never sets it. */
+export function resolveBlocks<B extends { components: ComponentDraft[] }>(
+  blocks: B[], resolve: MovementResolver,
+): Array<Omit<B, "components"> & { components: WorkoutComponent[] }> {
+  return blocks.map((b) => ({
+    ...b,
+    components: b.components.map((c) => ({ ...c, canonical: resolve(c.movement)?.name ?? null })),
+  }));
+}
+```
+
+- [ ] **Step 5: Implement `src/lib/engine/analyze.ts`**
+
+```ts
+import type { LlmProvider } from "@/lib/ai/provider";
+import { Equipment, type Contraindication, type Movement, type StimulusDef, type StimulusTaxonomy } from "@/lib/domain/types";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import {
+  ManualAnalysisSchema, PasteAnalysisSchema, SituationAnalysisSchema,
+  type DetectedCondition, type ManualWorkout, type SituationAnalysis, type StimulusProfile, type StructuredWorkout,
+} from "./types";
+import { renderBlock, renderManualWorkout } from "./render-text";
+import { resolveBlocks } from "./resolve-blocks";
+
+export interface AnalyzeContext {
+  movements: Movement[];
+  contraindications: Contraindication[];
+  taxonomy: StimulusTaxonomy;
+}
+
+export interface WorkoutAnalysis extends SituationAnalysis {
+  workout: StructuredWorkout;
+  analyzed: boolean; // false = degraded to a raw block
+}
+
+const SITUATION_RULES = `From the SITUATION text (any language) report:
+- "conditions": each injury, limitation or condition it describes, as a key from the CONDITION CATALOG only; never invent keys and omit what does not fit. "side": left/right/both when stated, else null. "severity": "mild" (a niggle), "moderate" (pain that limits training; the default when unclear) or "acute" (recent injury, sharp pain, told to rest). "evidence": the athlete's own words.
+- "unavailableEquipment": equipment the athlete says they lack today, only from: ${Equipment.options.join(", ")}.`;
+
+const STIMULUS_RULES = `"stimulus" per block is the intended training effect, using only TAXONOMY keys: "quality", "energySystem" (null when not metabolic, e.g. skill work) and "loadIntensity" (null when unloaded), plus a one-sentence "rationale". Use null for the whole stimulus only for a pure rest block.`;
+
+const PASTE_SYSTEM = `You analyze a functional-fitness training session for a coaching engine. Return JSON only.
+
+WORKOUT
+- A session often has several blocks with different formats (strength, conditioning, accessory). Split it into ordered "blocks".
+- "rawText" of each block is its exact slice of the input. Never paraphrase.
+- If the text spans several days ("Day 1", "Monday", ...), set "day" (1-based) on every block; otherwise null.
+- "format": amrap | for_time | emom | intervals | strength | skill | partner | rest | other. "scheme": the prescription as written. "timeDomainMinutes": estimated working time.
+- "components": one per movement. "movement": the MOVEMENT LIBRARY name when one matches (exact spelling), otherwise the name as written. "load" as written (e.g. "61/43 kg"); "loadKg" male/female kilograms when explicit (convert lb); "percent1RM" when prescribed as a percentage.
+- Keep intensity cues, tempo, rest and scaling tiers (Rx+/Rx/Int, M/F) in "coachingNotes".
+- ${STIMULUS_RULES}
+
+SITUATION
+${SITUATION_RULES}`;
+
+const MANUAL_SYSTEM = `You classify an athlete-entered training session for a coaching engine. Return JSON only.
+- "stimuli": one entry per block, in the given order. ${STIMULUS_RULES}
+
+SITUATION
+${SITUATION_RULES}`;
+
+const SITUATION_SYSTEM = `You read an athlete's description of their situation for a coaching engine. Return JSON only.
+${SITUATION_RULES}`;
+
+const defs = (title: string, list: StimulusDef[]) => `${title}:\n${list.map((d) => `- ${d.key}: ${d.description}`).join("\n")}`;
+
+function catalogText(ctx: AnalyzeContext): string {
+  return `CONDITION CATALOG:\n${ctx.contraindications.map((c) => `- ${c.key}: ${c.label} [${c.kind}]`).join("\n")}`;
+}
+
+function vocabularyText(ctx: AnalyzeContext): string {
+  const library = ctx.movements
+    .map((m) => (m.aliases.length > 0 ? `- ${m.name} (aka ${m.aliases.join(", ")})` : `- ${m.name}`))
+    .join("\n");
+  const taxonomy = [
+    defs("quality", ctx.taxonomy.qualities),
+    defs("energySystem", ctx.taxonomy.energySystems),
+    defs("loadIntensity", ctx.taxonomy.loadIntensities),
+  ].join("\n\n");
+  return `MOVEMENT LIBRARY:\n${library}\n\n${catalogText(ctx)}\n\nTAXONOMY:\n${taxonomy}`;
+}
+
+const situationText = (situation: string) => `SITUATION:\n"""\n${situation.trim() || "(none)"}\n"""`;
+
+function knownConditions(detected: DetectedCondition[], ctx: AnalyzeContext): DetectedCondition[] {
+  const keys = new Set(ctx.contraindications.map((c) => c.key));
+  const seen = new Set<string>();
+  return detected.filter((d) => {
+    if (!keys.has(d.key)) {
+      console.warn(`analyze: dropped unknown condition key "${d.key}"`);
+      return false;
+    }
+    if (seen.has(d.key)) return false;
+    seen.add(d.key);
+    return true;
+  });
+}
+
+function clean(s: SituationAnalysis, ctx: AnalyzeContext): SituationAnalysis {
+  return { conditions: knownConditions(s.conditions, ctx), unavailableEquipment: [...new Set(s.unavailableEquipment)] };
+}
+
+export async function analyzeSituation(provider: LlmProvider, situation: string, ctx: AnalyzeContext): Promise<SituationAnalysis> {
+  if (situation.trim() === "") return { conditions: [], unavailableEquipment: [] };
+  const out = await provider.generateStructured({
+    systemPrompt: SITUATION_SYSTEM,
+    prompt: `${catalogText(ctx)}\n\n${situationText(situation)}`,
+    schema: SituationAnalysisSchema,
+    schemaName: "SituationAnalysis",
+  });
+  return clean(out, ctx);
+}
+
+export async function analyzePaste(
+  provider: LlmProvider, rawText: string, situation: string, ctx: AnalyzeContext,
+): Promise<WorkoutAnalysis> {
+  const resolve = createMovementResolver(ctx.movements);
+  try {
+    const out = await provider.generateStructured({
+      systemPrompt: PASTE_SYSTEM,
+      prompt: `${vocabularyText(ctx)}\n\n${situationText(situation)}\n\nSESSION:\n"""\n${rawText}\n"""`,
+      schema: PasteAnalysisSchema,
+      schemaName: "PasteAnalysis",
+    });
+    // Models paraphrase: a block slice that is not in the input falls back to the session text.
+    const blocks = out.workout.blocks.map((b) => (rawText.includes(b.rawText) ? b : { ...b, rawText }));
+    return {
+      workout: { name: out.workout.name, rawText, source: "paste", blocks: resolveBlocks(blocks, resolve) },
+      ...clean(out, ctx),
+      analyzed: true,
+    };
+  } catch (e) {
+    console.error("analyzePaste failed; degrading to a raw block", e);
+    const s = await analyzeSituation(provider, situation, ctx); // stated pain is never ignored
+    return {
+      workout: {
+        name: null, rawText, source: "paste",
+        blocks: [{
+          title: null, rawText, day: null, format: "other", scheme: null,
+          timeDomainMinutes: null, coachingNotes: null, stimulus: null, components: [],
+        }],
+      },
+      ...s,
+      analyzed: false,
+    };
+  }
+}
+
+export async function analyzeManual(
+  provider: LlmProvider, manual: ManualWorkout, situation: string, ctx: AnalyzeContext,
+): Promise<WorkoutAnalysis> {
+  const resolve = createMovementResolver(ctx.movements);
+  const rawText = renderManualWorkout(manual);
+  const build = (stimuli: (StimulusProfile | null)[]): StructuredWorkout => ({
+    name: manual.name, rawText, source: "manual",
+    blocks: resolveBlocks(
+      manual.blocks.map((b, i) => ({ ...b, rawText: renderBlock(b), day: null, stimulus: stimuli[i] ?? null })),
+      resolve,
+    ),
+  });
+  try {
+    const out = await provider.generateStructured({
+      systemPrompt: MANUAL_SYSTEM,
+      prompt: `${vocabularyText(ctx)}\n\n${situationText(situation)}\n\nSESSION (one entry per block, in order):\n${
+        manual.blocks.map((b, i) => `[block ${i}]\n${renderBlock(b)}`).join("\n\n")
+      }`,
+      schema: ManualAnalysisSchema,
+      schemaName: "ManualAnalysis",
+    });
+    return { workout: build(out.stimuli), ...clean(out, ctx), analyzed: true };
+  } catch (e) {
+    console.error("analyzeManual failed; continuing without stimulus", e);
+    const s = await analyzeSituation(provider, situation, ctx);
+    return { workout: build([]), ...s, analyzed: false };
+  }
+}
+```
+
+- [ ] **Step 6: Run them, verify they pass**
+
+Run: `pnpm exec vitest run tests/engine` → PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add -A
+git commit -m "feat: analyze step (blocks, per-block stimulus and situation in one call, verbatim guard, safe fallback)"
+```
+
+---
+
+### Task E5: Active conditions and the deterministic component plan
+
+**Files:**
+- Create: `src/lib/engine/conditions.ts`, `src/lib/engine/plan.ts`
+- Test: `tests/engine/conditions.test.ts`, `tests/engine/plan.test.ts`
+
+**Interfaces:**
+- Consumes: `assessMovement`, `ActiveCondition`, `AssessmentReason`, `Verdict` (D1); `MovementResolver` (D5); E1 types.
+- Produces:
+  - `@/lib/engine/conditions`: `profileConditionRefs(injuries: ProfileInjury[]): ConditionRef[]`, `interface ActivatedConditions { active: ActiveCondition[]; refs: ConditionRef[] }` (index-aligned), `activateConditions(base: ConditionRef[], detected: DetectedCondition[], catalog: Contraindication[]): ActivatedConditions`.
+  - `@/lib/engine/plan`: `availableEquipment(profile: Equipment[] | null, today: Equipment[] | null, unavailable: Equipment[]): Equipment[] | null`, `missingEquipment(m, equipment): Equipment[]`, `interface Candidate { name: string; verdict: "ok" | "caution"; source: "substitute" | "pattern" | "goal"; score: number }`, `interface PlanContext { movements: Movement[]; resolve: MovementResolver; active: ActiveCondition[]; equipment: Equipment[] | null }`, `interface ComponentPlan { blockIndex: number; componentIndex: number; movement: string; canonical: string | null; verdict: Verdict | "unknown"; reasons: AssessmentReason[]; missingEquipment: Equipment[]; needsChange: boolean; candidates: Candidate[] }`, `rankCandidates(original, ctx, limit = 5): Candidate[]`, `planComponents(workout, ctx): ComponentPlan[]`, `goalFamily(target: string | null, ctx): Candidate[]`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/engine/conditions.test.ts`:
+
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { activateConditions, profileConditionRefs } from "@/lib/engine/conditions";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+describe("activateConditions", () => {
+  it("keeps profile injuries and lets today's detection override the same key", () => {
+    const base = profileConditionRefs([
+      { key: "knee_pain", side: "left", severity: "mild", notes: "old", since: null },
+      { key: "hand_tear", side: null, severity: "moderate", notes: null, since: null },
+    ]);
+    const { active, refs } = activateConditions(base, [
+      { key: "knee_pain", side: "left", severity: "acute", evidence: "me la torcí ayer" },
+    ], domain.contraindications);
+    expect(refs.map((r) => [r.key, r.severity, r.source])).toEqual([
+      ["knee_pain", "acute", "today"],
+      ["hand_tear", "moderate", "profile"],
+    ]);
+    expect(active.map((a) => a.contraindication.key)).toEqual(["knee_pain", "hand_tear"]);
+    expect(active[0].side).toBe("left");
+  });
+
+  it("drops keys missing from the catalog", () => {
+    const { refs } = activateConditions(
+      [{ key: "gone", side: null, severity: "mild", source: "profile", evidence: null }], [], domain.contraindications,
+    );
+    expect(refs).toEqual([]);
+  });
+});
+```
+
+`tests/engine/plan.test.ts`:
+
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import type { ActiveCondition } from "@/lib/domain/assess";
+import type { Equipment } from "@/lib/domain/types";
+import { availableEquipment, goalFamily, planComponents, rankCandidates, type PlanContext } from "@/lib/engine/plan";
+import { component, fran } from "../fixtures/workouts";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+function ctx(conditions: [string, "mild" | "moderate" | "acute"][] = [], equipment: Equipment[] | null = null): PlanContext {
+  const active: ActiveCondition[] = conditions.map(([key, severity]) => ({
+    contraindication: domain.contraindications.find((c) => c.key === key)!, side: null, severity,
+  }));
+  return { movements: domain.movements, resolve: createMovementResolver(domain.movements), active, equipment };
+}
+const movement = (name: string) => domain.movements.find((m) => m.name === name)!;
+
+describe("availableEquipment", () => {
+  it("is null (a full box) when nothing is specified or missing", () => {
+    expect(availableEquipment(null, null, [])).toBeNull();
+  });
+  it("removes today's missing items from a full box", () => {
+    const e = availableEquipment(null, null, ["rower"])!;
+    expect(e).not.toContain("rower");
+    expect(e).toContain("barbell");
+  });
+  it("prefers today's equipment over the profile", () => {
+    expect(availableEquipment(["barbell"], ["dumbbell", "rower"], ["rower"])).toEqual(["dumbbell"]);
+  });
+});
+
+describe("rankCandidates", () => {
+  it("keeps listed substitutes that survive, in order", () => {
+    const c = rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"]]));
+    expect(c).toEqual([{ name: "Kettlebell Goblet Squat", verdict: "ok", source: "substitute", score: 1000 }]);
+  });
+
+  it("filters substitutes by equipment", () => {
+    const c = rankCandidates(movement("Row (Erg)"), ctx([], ["barbell", "pullup_bar"]));
+    expect(c.map((x) => x.name)).toEqual(["Run"]);
+  });
+
+  it("falls back to the primary pattern only when every substitute is blocked", () => {
+    const c = rankCandidates(movement("Handstand Walk"), ctx([["no_inversion", "moderate"]]));
+    expect(c.length).toBeGreaterThan(0);
+    for (const x of c) {
+      expect(x.source).toBe("pattern");
+      expect(movement(x.name).patterns).toContain("carry");
+      expect(movement(x.name).positions).not.toContain("inverted");
+    }
+  });
+});
+
+describe("planComponents", () => {
+  it("marks contraindicated components for change and lists candidates", () => {
+    const plan = planComponents(fran(), ctx([["shoulder_impingement", "moderate"]]));
+    expect(plan.map((p) => [p.canonical, p.verdict, p.needsChange])).toEqual([
+      ["Thruster", "avoid", true],
+      ["Pull-up", "avoid", true],
+    ]);
+    expect(plan[1].candidates[0]).toMatchObject({ name: "Ring Row", verdict: "ok" });
+  });
+
+  it("flags missing equipment as a required change", () => {
+    const plan = planComponents(fran(), ctx([], ["dumbbell"]));
+    expect(plan[0].missingEquipment).toEqual(["barbell"]);
+    expect(plan[0].needsChange).toBe(true);
+  });
+
+  it("offers alternatives for a caution without forcing a change", () => {
+    const w = fran();
+    w.blocks[0].components = [{ ...component("Dead Hang"), canonical: "Dead Hang" }];
+    const [p] = planComponents(w, ctx([["hand_tear", "moderate"]]));
+    expect(p.verdict).toBe("caution");
+    expect(p.needsChange).toBe(false);
+    expect(p.candidates.length).toBeGreaterThan(0);
+  });
+
+  it("reports an unrecognized movement as unknown", () => {
+    const w = fran();
+    w.blocks[0].components = [{ ...component("Zercher Carry"), canonical: null }];
+    expect(planComponents(w, ctx())[0]).toMatchObject({ verdict: "unknown", needsChange: false, candidates: [] });
+  });
+});
+
+describe("goalFamily", () => {
+  it("returns the target and its usable substitutes", () => {
+    expect(goalFamily("T2B", ctx()).map((c) => c.name)).toEqual([
+      "Toes-to-Bar", "Knees-to-Elbows", "Hanging Knee Raise", "Sit-up", "Strict Toes-to-Bar",
+    ]);
+  });
+  it("drops family members the athlete cannot do", () => {
+    expect(goalFamily("Toes-to-Bar", ctx([["no_hanging", "moderate"]])).map((c) => c.name)).toEqual(["Sit-up"]);
+  });
+  it("is empty without a target", () => {
+    expect(goalFamily(null, ctx())).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/engine/conditions.test.ts tests/engine/plan.test.ts` → FAIL.
+
+- [ ] **Step 3: Implement `src/lib/engine/conditions.ts`**
+
+```ts
+import type { ActiveCondition } from "@/lib/domain/assess";
+import type { Contraindication } from "@/lib/domain/types";
+import type { ConditionRef, DetectedCondition, ProfileInjury } from "./types";
+
+export interface ActivatedConditions {
+  active: ActiveCondition[]; // index-aligned with refs
+  refs: ConditionRef[];
+}
+
+export function profileConditionRefs(injuries: ProfileInjury[]): ConditionRef[] {
+  return injuries.map((i) => ({ key: i.key, side: i.side, severity: i.severity, source: "profile", evidence: i.notes }));
+}
+
+/** base (profile or a previous result) ⊕ today's detections; for the same key today's side/severity win. */
+export function activateConditions(
+  base: ConditionRef[], detected: DetectedCondition[], catalog: Contraindication[],
+): ActivatedConditions {
+  const merged = new Map<string, ConditionRef>();
+  for (const r of base) merged.set(r.key, r);
+  for (const d of detected) {
+    merged.set(d.key, { key: d.key, side: d.side, severity: d.severity, source: "today", evidence: d.evidence });
+  }
+  const byKey = new Map(catalog.map((c) => [c.key, c]));
+  const out: ActivatedConditions = { active: [], refs: [] };
+  for (const ref of merged.values()) {
+    const contraindication = byKey.get(ref.key);
+    if (!contraindication) {
+      console.warn(`conditions: unknown key "${ref.key}" ignored`);
+      continue;
+    }
+    out.active.push({ contraindication, side: ref.side, severity: ref.severity });
+    out.refs.push(ref);
+  }
+  return out;
+}
+```
+
+- [ ] **Step 4: Implement `src/lib/engine/plan.ts`**
+
+```ts
+import { assessMovement, type ActiveCondition, type AssessmentReason, type Verdict } from "@/lib/domain/assess";
+import type { MovementResolver } from "@/lib/domain/resolve";
+import { Equipment, type Movement } from "@/lib/domain/types";
+import type { StructuredWorkout } from "./types";
+
+export interface PlanContext {
+  movements: Movement[];
+  resolve: MovementResolver;
+  active: ActiveCondition[];
+  equipment: Equipment[] | null; // null = a full box
+}
+
+export interface Candidate {
+  name: string;
+  verdict: "ok" | "caution";
+  source: "substitute" | "pattern" | "goal";
+  score: number;
+}
+
+export interface ComponentPlan {
+  blockIndex: number;
+  componentIndex: number;
+  movement: string;
+  canonical: string | null;
+  verdict: Verdict | "unknown";
+  reasons: AssessmentReason[];
+  missingEquipment: Equipment[];
+  needsChange: boolean;
+  candidates: Candidate[];
+}
+
+/** Today's equipment overrides the profile; null with nothing missing means a full box. */
+export function availableEquipment(
+  profile: Equipment[] | null, today: Equipment[] | null, unavailable: Equipment[],
+): Equipment[] | null {
+  const base = today ?? profile;
+  if (base === null && unavailable.length === 0) return null;
+  return (base ?? Equipment.options).filter((e) => !unavailable.includes(e));
+}
+
+export function missingEquipment(m: Movement, equipment: Equipment[] | null): Equipment[] {
+  return equipment === null ? [] : m.equipment.filter((e) => !equipment.includes(e));
+}
+
+function usable(m: Movement, ctx: PlanContext): "ok" | "caution" | null {
+  if (missingEquipment(m, ctx.equipment).length > 0) return null;
+  const v = assessMovement(m, ctx.active).verdict;
+  return v === "avoid" ? null : v;
+}
+
+function sharedStressPairs(a: Movement, b: Movement): number {
+  let n = 0;
+  for (const sa of a.stresses) {
+    for (const sb of b.stresses) {
+      if (sa.site === sb.site) n += sa.mechanisms.filter((m) => sb.mechanisms.includes(m)).length;
+    }
+  }
+  return n;
+}
+
+const VERDICT_RANK = { ok: 0, caution: 1 } as const;
+const byRank = (a: Candidate, b: Candidate) =>
+  VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] || b.score - a.score || a.name.localeCompare(b.name);
+
+/** substitutes[] first (in order); the primary-pattern fallback only when none survives. */
+export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5): Candidate[] {
+  const listed: Candidate[] = [];
+  original.substitutes.forEach((name, i) => {
+    const m = ctx.resolve(name);
+    const verdict = m ? usable(m, ctx) : null;
+    if (m && verdict) listed.push({ name: m.name, verdict, source: "substitute", score: 1000 - i });
+  });
+  if (listed.length > 0) return listed.sort(byRank).slice(0, limit);
+
+  const primary = original.patterns[0];
+  const fallback: Candidate[] = [];
+  for (const m of ctx.movements) {
+    if (m.name === original.name || !m.patterns.includes(primary)) continue;
+    const verdict = usable(m, ctx);
+    if (!verdict) continue;
+    const score =
+      10 * m.patterns.filter((p) => original.patterns.includes(p)).length +
+      2 * sharedStressPairs(original, m) +
+      (m.skill === original.skill ? 1 : 0);
+    fallback.push({ name: m.name, verdict, source: "pattern", score });
+  }
+  return fallback.sort(byRank).slice(0, limit);
+}
+
+export function planComponents(workout: StructuredWorkout, ctx: PlanContext): ComponentPlan[] {
+  return workout.blocks.flatMap((block, blockIndex) =>
+    block.components.map((c, componentIndex): ComponentPlan => {
+      const m = c.canonical ? ctx.resolve(c.canonical) : null;
+      if (!m) {
+        return {
+          blockIndex, componentIndex, movement: c.movement, canonical: null, verdict: "unknown",
+          reasons: [], missingEquipment: [], needsChange: false, candidates: [],
+        };
+      }
+      const assessment = assessMovement(m, ctx.active);
+      const missing = missingEquipment(m, ctx.equipment);
+      const needsChange = assessment.verdict === "avoid" || missing.length > 0;
+      return {
+        blockIndex, componentIndex, movement: c.movement, canonical: m.name, verdict: assessment.verdict,
+        reasons: assessment.reasons, missingEquipment: missing, needsChange,
+        candidates: needsChange || assessment.verdict === "caution" ? rankCandidates(m, ctx) : [],
+      };
+    }),
+  );
+}
+
+/** Movement-goal bias: the target and its substitutes the athlete can do today. */
+export function goalFamily(target: string | null, ctx: PlanContext): Candidate[] {
+  const m = target ? ctx.resolve(target) : null;
+  if (!m) return [];
+  const out: Candidate[] = [];
+  for (const name of [m.name, ...m.substitutes]) {
+    const x = ctx.resolve(name);
+    const verdict = x ? usable(x, ctx) : null;
+    if (x && verdict) out.push({ name: x.name, verdict, source: "goal", score: 0 });
+  }
+  return out;
+}
+```
+
+- [ ] **Step 5: Run them, verify they pass**
+
+Run: `pnpm exec vitest run tests/engine` → PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: active conditions and the deterministic component plan with ranked candidates"
+```
+
+---
+
+### Task E6: Tailor — grounded prompt and the tailoring call
+
+**Files:**
+- Create: `src/lib/engine/tailor.ts`
+- Test: `tests/engine/tailor.test.ts`
+
+**Interfaces:**
+- Consumes: E1 types, `ComponentPlan`, `Candidate` (E5), `Contraindication`, `Conversions`, `Movement`, `Equipment` (D), `resolveBlocks` (E4), `LlmProvider` (E2).
+- Produces: `interface TailorInput { original: StructuredWorkout; profile: AthleteProfile; request: TailorRequest; conditions: ConditionRef[]; contraindications: Contraindication[]; plan: ComponentPlan[]; goal: Candidate[]; equipment: Equipment[] | null; movements: Movement[]; conversions: Conversions; previousAttempt: { result: TailoringResult; feedbackHistory: string[] } | null; violations: Finding[] }`, `buildTailorPrompt(input): string`, `tailor(provider, input): Promise<TailoringResult>` (schema name `"TailoringResult"`).
+
+- [ ] **Step 1: Write the failing test `tests/engine/tailor.test.ts`**
+
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { FakeProvider } from "@/lib/ai/fake-provider";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import { planComponents, goalFamily } from "@/lib/engine/plan";
+import { buildTailorPrompt, tailor, type TailorInput } from "@/lib/engine/tailor";
+import { emptyProfile, emptyRequest } from "@/lib/engine/types";
+import { component, fran, identityResult, toTailoringDraft } from "../fixtures/workouts";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+function input(overrides: Partial<TailorInput> = {}): TailorInput {
+  const shoulder = domain.contraindications.find((c) => c.key === "shoulder_impingement")!;
+  const ctx = {
+    movements: domain.movements, resolve: createMovementResolver(domain.movements),
+    active: [{ contraindication: shoulder, side: "right" as const, severity: "moderate" as const }], equipment: null,
+  };
+  return {
+    original: fran(),
+    profile: { ...emptyProfile(), sex: "female", scalingLevel: "rx" },
+    request: { ...emptyRequest(), situation: "Me duele el hombro derecho", targetMovement: "Toes-to-Bar" },
+    conditions: [{ key: "shoulder_impingement", side: "right", severity: "moderate", source: "today", evidence: "Me duele el hombro derecho" }],
+    contraindications: domain.contraindications,
+    plan: planComponents(fran(), ctx),
+    goal: goalFamily("Toes-to-Bar", ctx),
+    equipment: null,
+    movements: domain.movements,
+    conversions: domain.conversions,
+    previousAttempt: null,
+    violations: [],
+    ...overrides,
+  };
+}
+
+describe("buildTailorPrompt", () => {
+  it("grounds the model in the plan, the conditions and the candidates", () => {
+    const p = buildTailorPrompt(input());
+    expect(p).toContain("[b0.c0] Thruster → AVOID");
+    expect(p).toContain("MUST CHANGE");
+    expect(p).toContain("candidates: Kettlebell Goblet Squat (ok)");
+    expect(p).toContain("- shoulder_impingement (Shoulder impingement) side=right severity=moderate source=today");
+    expect(p).toContain("EQUIPMENT AVAILABLE: a full box");
+    expect(p).toContain("- Kettlebell Goblet Squat [squat; beginner; equip: kettlebell;");
+    // shoulder_impingement blocks kipping, so only the strict/supported members of the family survive
+    expect(p).toContain("GOAL FAMILY: Hanging Knee Raise (caution), Sit-up (ok), Strict Toes-to-Bar (caution)");
+    expect(p).toContain("Run 400/400 meters = Row (Erg) 500/500 meters");
+    expect(p).toContain('"sex":"female"');
+    expect(p).not.toContain("PREVIOUS ATTEMPT");
+    expect(p).not.toContain("REJECTED");
+  });
+
+  it("lists the athlete's equipment when it is restricted", () => {
+    expect(buildTailorPrompt(input({ equipment: ["dumbbell", "box"] }))).toContain("EQUIPMENT AVAILABLE: dumbbell, box");
+  });
+
+  it("adds the refine section with the rejected attempt and the feedback history", () => {
+    const p = buildTailorPrompt(input({
+      previousAttempt: { result: identityResult(fran()), feedbackHistory: ["too easy", "still hurts"] },
+    }));
+    expect(p).toContain("PREVIOUS ATTEMPT");
+    expect(p).toContain("- too easy\n- still hurts");
+  });
+
+  it("adds the rejected findings on a retry", () => {
+    const p = buildTailorPrompt(input({
+      violations: [{ kind: "contraindicated_movement", severity: "violation", blockIndex: 0, movement: "Thruster", message: "Thruster is contraindicated." }],
+    }));
+    expect(p).toContain("REJECTED BY THE SAFETY CHECK");
+    expect(p).toContain("- [contraindicated_movement] Thruster is contraindicated.");
+  });
+});
+
+describe("tailor", () => {
+  it("returns the modification with canonical names resolved by code", async () => {
+    const draft = toTailoringDraft(fran());
+    draft.blocks[0].components = [component("KB Goblet Squat", { reps: "21-15-9" }), component("Ring Rows", { reps: "21-15-9" })];
+    const result = await tailor(new FakeProvider({ TailoringResult: draft }), input());
+    expect(result.blocks[0].components.map((c) => c.canonical)).toEqual(["Kettlebell Goblet Squat", "Ring Row"]);
   });
 });
 ```
 
 - [ ] **Step 2: Run it, verify it fails**
 
-Run: `pnpm exec vitest run tests/profile/profile-helpers.test.ts`
-Expected: FAIL — module not found.
+Run: `pnpm exec vitest run tests/engine/tailor.test.ts` → FAIL.
 
-- [ ] **Step 3: Implement `src/lib/profile.ts`**
+- [ ] **Step 3: Implement `src/lib/engine/tailor.ts`**
 
 ```ts
-import { AthleteProfileSchema, type AthleteProfileInput } from "@/lib/engine/types";
+import type { LlmProvider } from "@/lib/ai/provider";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import type { Contraindication, Conversions, Equipment, Movement } from "@/lib/domain/types";
+import type { Candidate, ComponentPlan } from "./plan";
+import { resolveBlocks } from "./resolve-blocks";
+import {
+  TailoringDraftSchema,
+  type AthleteProfile, type ConditionRef, type Finding, type StructuredWorkout, type TailorRequest, type TailoringResult,
+} from "./types";
 
-const EMPTY: AthleteProfileInput = { injuries: [], benchmarks: {}, equipment: [], goals: [], availability: {} };
+export interface TailorInput {
+  original: StructuredWorkout;
+  profile: AthleteProfile;
+  request: TailorRequest;
+  conditions: ConditionRef[];
+  contraindications: Contraindication[];
+  plan: ComponentPlan[];
+  goal: Candidate[];
+  equipment: Equipment[] | null;
+  movements: Movement[];
+  conversions: Conversions;
+  previousAttempt: { result: TailoringResult; feedbackHistory: string[] } | null;
+  violations: Finding[];
+}
 
-export function normalizeProfile(raw: unknown): AthleteProfileInput {
-  if (raw == null) return { ...EMPTY };
-  return AthleteProfileSchema.parse(raw);
+const SYSTEM = `You are an expert functional fitness coach. Modify ONE athlete's training session for today so it fits their situation WHILE PRESERVING EACH BLOCK'S STIMULUS (quality, energy system, load intensity, time domain). Return JSON only.
+
+Hard rules (code checks the output and rejects violations):
+1. Never prescribe a movement marked AVOID, nor one that needs MISSING equipment. Replace every component marked MUST CHANGE, preferring its candidates in order.
+2. Spell every movement exactly as in the MOVEMENT LIBRARY.
+3. Each tailored block lists in "sourceBlocks" the 0-based indices of the original blocks it comes from. Every original block appears in some "sourceBlocks" or in "droppedBlocks" with a reason.
+4. With a time cap, the sum of "timeDomainMinutes" over the tailored blocks must not exceed it.
+5. Keep each block's "stimulus" unless a change is unavoidable; then explain it in "changes".
+
+Coaching rules:
+- CAUTION movements may stay at reduced load or range: say so in the component "notes" and in "safetyNote". "healthy side only" means single-limb work on the uninjured side.
+- Scale loads to the athlete's benchmarks, sex and scaling level; when the programming lists tiers (Rx+/Rx/Int, M/F) pick the athlete's. Fill "loadKg" or "percent1RM" whenever you set a load.
+- Use the EFFORT CONVERSIONS when swapping monostructural or rope work, and the implement load range when replacing a barbell with dumbbells or kettlebells.
+- Blocks with different "day" values are missed days: merge and prioritize them into ONE session that fits today, keeping the most important stimuli.
+- A target movement means: bias the session toward its GOAL FAMILY without breaking the stimulus.
+- With no constraint, keep the session and only personalize loads.
+- Be conservative with pain: when unsure choose the lower-risk option, and recommend consulting a professional in "safetyNote".
+- "rawText" (session and each block) is clean text of the MODIFIED workout. "rationale" explains how the stimulus is preserved; "changes" lists original/modified/reason with the tailored "blockIndex". Write prose in the language of the athlete's situation (English if none).`;
+
+function annotate(m: Movement): string {
+  const stresses = m.stresses
+    .map((s) => `${s.site}(${s.mechanisms.join(",")}${s.load === "low" ? ", low" : ""})`)
+    .join(" ") || "none";
+  return `- ${m.name} [${m.patterns.join("+")}; ${m.skill}; equip: ${m.equipment.join("+") || "none"}; stresses: ${stresses}; positions: ${m.positions.join(",") || "none"}${m.unilateral ? `; unilateral: ${m.unilateral}` : ""}]`;
+}
+
+function planLine(p: ComponentPlan): string {
+  const head = `[b${p.blockIndex}.c${p.componentIndex}] ${p.canonical ?? p.movement}`;
+  if (p.verdict === "unknown") return `${head} → UNRECOGNIZED (not in the library: judge it against the active conditions yourself)`;
+  const parts = [`${head} → ${p.verdict.toUpperCase()}`];
+  if (p.reasons.length > 0) {
+    parts.push(`(${p.reasons.map((r) => `${r.conditionKey}: ${r.detail}${r.healthySideOnly ? ", healthy side only" : ""}`).join("; ")})`);
+  }
+  if (p.missingEquipment.length > 0) parts.push(`missing: ${p.missingEquipment.join(", ")}`);
+  if (p.needsChange) parts.push("MUST CHANGE");
+  if (p.candidates.length > 0) parts.push(`candidates: ${p.candidates.map((c) => `${c.name} (${c.verdict})`).join(", ")}`);
+  return parts.join("; ");
+}
+
+export function buildTailorPrompt(input: TailorInput): string {
+  const byName = new Map(input.movements.map((m) => [m.name, m]));
+  const catalog = new Map(input.contraindications.map((c) => [c.key, c]));
+  const detailed = [...new Set([...input.plan.flatMap((p) => p.candidates), ...input.goal].map((c) => c.name))]
+    .map((n) => byName.get(n))
+    .filter((m): m is Movement => m !== undefined);
+
+  const parts = [
+    `ORIGINAL SESSION (block index in brackets):\n${input.original.blocks.map((b, i) => `[${i}] ${JSON.stringify({
+      title: b.title, day: b.day, format: b.format, scheme: b.scheme, timeDomainMinutes: b.timeDomainMinutes,
+      stimulus: b.stimulus, coachingNotes: b.coachingNotes, rawText: b.rawText, components: b.components,
+    })}`).join("\n")}`,
+    `ATHLETE:\n${JSON.stringify({
+      sex: input.profile.sex, scalingLevel: input.profile.scalingLevel, benchmarks: input.profile.benchmarks,
+      goals: input.profile.goals, minutesPerDay: input.profile.availability.minutesPerDay,
+    })}`,
+    `TODAY:\n${JSON.stringify({
+      situation: input.request.situation, timeCapMinutes: input.request.timeCapMinutes, targetMovement: input.request.targetMovement,
+    })}`,
+    `ACTIVE CONDITIONS:\n${input.conditions.map((r) => {
+      const c = catalog.get(r.key);
+      return `- ${r.key} (${c?.label ?? r.key}) side=${r.side ?? "n/a"} severity=${r.severity} source=${r.source}${r.evidence ? `: "${r.evidence}"` : ""}${c?.notes ? ` — ${c.notes}` : ""}`;
+    }).join("\n") || "none"}`,
+    `EQUIPMENT AVAILABLE: ${input.equipment === null ? "a full box (assume everything)" : input.equipment.join(", ") || "none (bodyweight only)"}`,
+    `COMPONENT PLAN:\n${input.plan.map(planLine).join("\n") || "(no components extracted: work from the block rawText)"}`,
+    `GOAL FAMILY: ${input.goal.map((c) => `${c.name} (${c.verdict})`).join(", ") || "none"}`,
+    `CANDIDATE DETAILS:\n${detailed.map(annotate).join("\n") || "none"}`,
+    `EFFORT CONVERSIONS (approximate, male/female):\n${[
+      ...input.conversions.effort.map((g) => `- ${g.equivalents.map((e) => `${e.movement} ${e.male}/${e.female} ${e.unit}`).join(" = ")} (${g.note})`),
+      ...input.conversions.implementLoad.map((r) => `- ${r.from} → ${r.to}: ${r.perHandFraction.low}-${r.perHandFraction.high} of the barbell load per hand (${r.note})`),
+    ].join("\n")}`,
+    `MOVEMENT LIBRARY (names): ${input.movements.map((m) => m.name).join(", ")}`,
+  ];
+  if (input.previousAttempt) {
+    parts.push(
+      `PREVIOUS ATTEMPT (rejected by the athlete):\n${JSON.stringify(input.previousAttempt.result)}\n` +
+      `ATHLETE FEEDBACK (oldest first):\n${input.previousAttempt.feedbackHistory.map((f) => `- ${f}`).join("\n")}\n` +
+      `Produce a NEW modification of the ORIGINAL session that addresses the latest feedback while following every rule.`,
+    );
+  }
+  if (input.violations.length > 0) {
+    parts.push(
+      `YOUR PREVIOUS OUTPUT WAS REJECTED BY THE SAFETY CHECK:\n${input.violations.map((v) => `- [${v.kind}] ${v.message}`).join("\n")}\nFix every item.`,
+    );
+  }
+  parts.push("Return the tailored session as JSON.");
+  return parts.join("\n\n");
+}
+
+export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoringResult> {
+  const draft = await provider.generateStructured({
+    systemPrompt: SYSTEM,
+    prompt: buildTailorPrompt(input),
+    schema: TailoringDraftSchema,
+    schemaName: "TailoringResult",
+  });
+  return { ...draft, blocks: resolveBlocks(draft.blocks, createMovementResolver(input.movements)) };
 }
 ```
 
 - [ ] **Step 4: Run it, verify it passes**
 
-Run: `pnpm exec vitest run tests/profile/profile-helpers.test.ts`
-Expected: PASS.
+Run: `pnpm exec vitest run tests/engine/tailor.test.ts` → PASS.
 
-- [ ] **Step 5: Implement the sign-in page `src/app/signin/page.tsx`**
+- [ ] **Step 5: Commit**
 
+```bash
+git add -A
+git commit -m "feat: tailor step grounded by the component plan, candidates, conversions and benchmarks"
+```
+
+---
+
+### Task E7: Deterministic validator
+
+**Files:**
+- Create: `src/lib/engine/validate.ts`
+- Test: `tests/engine/validate.test.ts`
+
+**Interfaces:**
+- Consumes: `assessMovement`, `ActiveCondition`, `AssessmentReason` (D1); `createMovementResolver`, `normalizeMovementName` (D5); `missingEquipment` (E5); E1 types.
+- Produces: `interface ValidateArgs { original: StructuredWorkout; result: TailoringResult; movements: Movement[]; active: ActiveCondition[]; equipment: Equipment[] | null; timeCapMinutes: number | null }`, `validateTailoring(args): Finding[]`, `isViolation(f: Finding): boolean`.
+
+- [ ] **Step 1: Write the failing test `tests/engine/validate.test.ts`**
+
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import type { ActiveCondition } from "@/lib/domain/assess";
+import { validateTailoring, type ValidateArgs } from "@/lib/engine/validate";
+import type { TailoringResult } from "@/lib/engine/types";
+import { fran, identityResult, split, sprint } from "../fixtures/workouts";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+const condition = (key: string): ActiveCondition => ({
+  contraindication: domain.contraindications.find((c) => c.key === key)!, side: null, severity: "moderate",
+});
+
+const identity = (original = fran()): TailoringResult => identityResult(original);
+
+function run(overrides: Partial<ValidateArgs> = {}) {
+  return validateTailoring({
+    original: fran(), result: identity(), movements: domain.movements, active: [], equipment: null, timeCapMinutes: null,
+    ...overrides,
+  });
+}
+
+const swap = (r: TailoringResult, movement: string, canonical: string | null) => {
+  r.blocks[0].components[0] = { ...r.blocks[0].components[0], movement, canonical };
+  return r;
+};
+
+describe("validateTailoring", () => {
+  it("accepts an identity result with no conditions", () => {
+    expect(run()).toEqual([]);
+  });
+
+  it("flags a contraindicated movement as a violation", () => {
+    const f = run({ active: [condition("shoulder_impingement")] });
+    expect(f.filter((x) => x.kind === "contraindicated_movement").map((x) => x.movement)).toEqual(["Thruster", "Pull-up"]);
+    expect(f.every((x) => x.severity === "violation")).toBe(true);
+  });
+
+  it("warns about a caution movement", () => {
+    const r = swap(identity(), "Dead Hang", "Dead Hang");
+    const f = run({ result: r, active: [condition("hand_tear")] });
+    expect(f.find((x) => x.movement === "Dead Hang")).toMatchObject({ kind: "caution_movement", severity: "warning" });
+  });
+
+  it("flags missing equipment", () => {
+    const f = run({ equipment: ["pullup_bar"] });
+    expect(f).toContainEqual(expect.objectContaining({ kind: "equipment_unavailable", movement: "Thruster", severity: "violation" }));
+  });
+
+  it("rejects a newly introduced unknown movement but only warns about one kept from the original", () => {
+    expect(run({ result: swap(identity(), "Zercher Carry", null) }))
+      .toContainEqual(expect.objectContaining({ kind: "unrecognized_movement", severity: "violation" }));
+    const original = fran();
+    original.blocks[0].components[0] = { ...original.blocks[0].components[0], movement: "Zercher Carry", canonical: null };
+    expect(run({ original, result: identity(original) }))
+      .toContainEqual(expect.objectContaining({ kind: "unrecognized_movement", severity: "warning" }));
+  });
+
+  it("enforces the time cap with 10% tolerance", () => {
+    expect(run({ timeCapMinutes: 6 })).toEqual([]);
+    const r = identity();
+    r.blocks[0].timeDomainMinutes = 7;
+    expect(run({ result: r, timeCapMinutes: 6 })).toEqual([
+      expect.objectContaining({ kind: "time_cap_exceeded", severity: "violation" }),
+    ]);
+  });
+
+  it("rejects a changed block quality and warns about a changed energy system", () => {
+    const r = identity();
+    r.blocks[0].stimulus = { ...sprint, quality: "strength" };
+    expect(run({ result: r })).toContainEqual(expect.objectContaining({ kind: "stimulus_drift", severity: "violation" }));
+    const r2 = identity();
+    r2.blocks[0].stimulus = { ...sprint, energySystem: "oxidative" };
+    expect(run({ result: r2 })).toContainEqual(expect.objectContaining({ kind: "stimulus_drift", severity: "warning" }));
+  });
+
+  it("requires every original block to be mapped or dropped", () => {
+    const original = split();
+    const r = identity(original);
+    r.blocks = [r.blocks[0]];
+    expect(run({ original, result: r })).toContainEqual(expect.objectContaining({ kind: "unaccounted_block", blockIndex: 1 }));
+    r.droppedBlocks = [{ index: 1, reason: "No time today." }];
+    expect(run({ original, result: r }).filter((x) => x.kind === "unaccounted_block")).toEqual([]);
+  });
+
+  it("skips the stimulus check for merged blocks", () => {
+    const original = split();
+    const r = identity(original);
+    r.blocks = [{ ...r.blocks[1], sourceBlocks: [0, 1] }];
+    expect(run({ original, result: r }).filter((x) => x.kind === "stimulus_drift")).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/engine/validate.test.ts` → FAIL.
+
+- [ ] **Step 3: Implement `src/lib/engine/validate.ts`**
+
+```ts
+import { assessMovement, type ActiveCondition, type AssessmentReason } from "@/lib/domain/assess";
+import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
+import type { Equipment, Movement } from "@/lib/domain/types";
+import { missingEquipment } from "./plan";
+import type { Finding, LoadIntensity, StructuredWorkout, TailoringResult } from "./types";
+
+export interface ValidateArgs {
+  original: StructuredWorkout;
+  result: TailoringResult;
+  movements: Movement[];
+  active: ActiveCondition[];
+  equipment: Equipment[] | null;
+  timeCapMinutes: number | null;
+}
+
+export const isViolation = (f: Finding) => f.severity === "violation";
+
+const describeReasons = (reasons: AssessmentReason[]) => reasons.map((r) => `${r.conditionKey}: ${r.detail}`).join("; ");
+const LOAD_RANK: Record<LoadIntensity, number> = { light: 0, moderate: 1, heavy: 2 };
+
+export function validateTailoring(a: ValidateArgs): Finding[] {
+  const resolve = createMovementResolver(a.movements);
+  const findings: Finding[] = [];
+  const originalNames = new Set(
+    a.original.blocks.flatMap((b) => b.components.map((c) => normalizeMovementName(c.movement))),
+  );
+
+  a.result.blocks.forEach((block, blockIndex) => {
+    for (const c of block.components) {
+      const m = c.canonical ? resolve(c.canonical) : null;
+      if (!m) {
+        const kept = originalNames.has(normalizeMovementName(c.movement));
+        findings.push({
+          kind: "unrecognized_movement", severity: kept ? "warning" : "violation", blockIndex, movement: c.movement,
+          message: kept
+            ? `"${c.movement}" is not in the movement library, so it could not be checked against your conditions.`
+            : `"${c.movement}" is not in the movement library.`,
+        });
+        continue;
+      }
+      const assessment = assessMovement(m, a.active);
+      if (assessment.verdict === "avoid") {
+        findings.push({
+          kind: "contraindicated_movement", severity: "violation", blockIndex, movement: m.name,
+          message: `${m.name} is contraindicated (${describeReasons(assessment.reasons.filter((r) => r.verdict === "avoid"))}).`,
+        });
+      } else if (assessment.verdict === "caution") {
+        const healthySide = assessment.reasons.some((r) => r.healthySideOnly);
+        findings.push({
+          kind: "caution_movement", severity: "warning", blockIndex, movement: m.name,
+          message: `${m.name}: use caution (${describeReasons(assessment.reasons)})${healthySide ? "; healthy side only" : ""}.`,
+        });
+      }
+      const missing = missingEquipment(m, a.equipment);
+      if (missing.length > 0) {
+        findings.push({
+          kind: "equipment_unavailable", severity: "violation", blockIndex, movement: m.name,
+          message: `${m.name} needs ${missing.join(", ")}, which is not available.`,
+        });
+      }
+    }
+  });
+
+  if (a.timeCapMinutes !== null) {
+    const total = a.result.blocks.reduce((sum, b) => sum + (b.timeDomainMinutes ?? 0), 0);
+    if (total > a.timeCapMinutes * 1.1) {
+      findings.push({
+        kind: "time_cap_exceeded", severity: "violation", blockIndex: null, movement: null,
+        message: `The session takes about ${total} min, over the ${a.timeCapMinutes} min cap.`,
+      });
+    }
+  }
+
+  a.result.blocks.forEach((block, blockIndex) => {
+    if (block.sourceBlocks.length !== 1) return; // merged blocks are judged by the athlete, not by a 1:1 rule
+    const source = a.original.blocks[block.sourceBlocks[0]];
+    if (!source?.stimulus || !block.stimulus) return;
+    const from = source.stimulus;
+    const to = block.stimulus;
+    if (from.quality !== to.quality) {
+      findings.push({
+        kind: "stimulus_drift", severity: "violation", blockIndex, movement: null,
+        message: `Block ${blockIndex + 1} changed its training quality from ${from.quality} to ${to.quality}.`,
+      });
+      return;
+    }
+    if (from.energySystem && to.energySystem && from.energySystem !== to.energySystem) {
+      findings.push({
+        kind: "stimulus_drift", severity: "warning", blockIndex, movement: null,
+        message: `Block ${blockIndex + 1} shifted its energy system from ${from.energySystem} to ${to.energySystem}.`,
+      });
+    }
+    if (from.loadIntensity && to.loadIntensity && LOAD_RANK[to.loadIntensity] > LOAD_RANK[from.loadIntensity]) {
+      findings.push({
+        kind: "stimulus_drift", severity: "warning", blockIndex, movement: null,
+        message: `Block ${blockIndex + 1} is heavier than programmed (${from.loadIntensity} → ${to.loadIntensity}).`,
+      });
+    }
+  });
+
+  const accounted = new Set([
+    ...a.result.blocks.flatMap((b) => b.sourceBlocks),
+    ...a.result.droppedBlocks.map((d) => d.index),
+  ]);
+  a.original.blocks.forEach((_, i) => {
+    if (!accounted.has(i)) {
+      findings.push({
+        kind: "unaccounted_block", severity: "violation", blockIndex: i, movement: null,
+        message: `Original block ${i + 1} was neither kept nor explicitly dropped.`,
+      });
+    }
+  });
+
+  return findings;
+}
+```
+
+- [ ] **Step 4: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/engine/validate.test.ts` → PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: deterministic validator for contraindications, equipment, time cap, stimulus drift and block accounting"
+```
+
+---
+
+### Task E8: Pipeline orchestration (retry, fail-closed, progress, refine)
+
+**Files:**
+- Create: `src/lib/engine/pipeline.ts`
+- Test: `tests/engine/pipeline.test.ts`
+
+**Interfaces:**
+- Consumes: `analyzePaste`, `analyzeManual`, `analyzeSituation` (E4); `activateConditions`, `profileConditionRefs` (E5); `availableEquipment`, `planComponents`, `goalFamily` (E5); `tailor`, `TailorInput` (E6); `validateTailoring`, `isViolation` (E7); `DomainData` (D5).
+- Produces: `type WorkoutInput = { kind: "paste"; rawText: string } | { kind: "manual"; workout: ManualWorkout }`, `type ProgressStage = "analyzing" | "tailoring" | "validating" | "retrying"`, `class EngineUnsafeError extends Error { findings: Finding[] }`, `interface PipelineArgs { input; profile; request; domain; onProgress? }`, `runTailorPipeline(provider, args): Promise<PipelineResult>`, `interface RefineArgs { previous: PipelineResult; feedback: string; profile; request; domain; onProgress? }`, `runRefinePipeline(provider, args): Promise<PipelineResult>`.
+
+- [ ] **Step 1: Write the failing test `tests/engine/pipeline.test.ts`**
+
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { EngineUnsafeError, runRefinePipeline, runTailorPipeline, type ProgressStage } from "@/lib/engine/pipeline";
+import { emptyProfile, emptyRequest, type TailoringDraft } from "@/lib/engine/types";
+import { FRAN_TEXT, component, fran, franDraft, sprint, toTailoringDraft } from "../fixtures/workouts";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+const shoulderToday = { key: "shoulder_impingement", side: "right", severity: "moderate", evidence: "me duele el hombro derecho" };
+const pasteAnalysis = (conditions: unknown[] = [shoulderToday]) => ({ workout: franDraft(), conditions, unavailableEquipment: [] });
+
+function safeDraft(): TailoringDraft {
+  const d = toTailoringDraft(fran());
+  d.blocks[0].components = [
+    component("Kettlebell Goblet Squat", { reps: "21-15-9", loadKg: { male: 24, female: 16 } }),
+    component("Ring Row", { reps: "21-15-9" }),
+  ];
+  d.changes = [{ blockIndex: 0, original: "Thruster", modified: "Kettlebell Goblet Squat", reason: "No overhead." }];
+  return d;
+}
+const unsafeDraft = () => toTailoringDraft(fran()); // keeps Thruster and Pull-up
+
+const run = (provider: FakeProvider, stages: ProgressStage[] = [], situation = "me duele el hombro derecho") =>
+  runTailorPipeline(provider, {
+    input: { kind: "paste", rawText: FRAN_TEXT },
+    profile: emptyProfile(),
+    request: { ...emptyRequest(), situation },
+    domain,
+    onProgress: (s) => stages.push(s),
+  });
+
+describe("runTailorPipeline", () => {
+  it("analyzes, tailors and validates in two model calls", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: pasteAnalysis(), TailoringResult: safeDraft() });
+    const stages: ProgressStage[] = [];
+    const r = await run(provider, stages);
+    expect(stages).toEqual(["analyzing", "tailoring", "validating"]);
+    expect(provider.calls).toHaveLength(2);
+    expect(r.conditions).toEqual([{ ...shoulderToday, source: "today" }]);
+    expect(r.tailored.blocks[0].components.map((c) => c.canonical)).toEqual(["Kettlebell Goblet Squat", "Ring Row"]);
+    expect(r.findings.filter((f) => f.severity === "violation")).toEqual([]);
+    expect(r.feedbackHistory).toEqual([]);
+    expect(r.model).toBe("fake");
+  });
+
+  it("retries once with the violations and returns the corrected result", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: pasteAnalysis(), TailoringResult: sequence(unsafeDraft(), safeDraft()) });
+    const stages: ProgressStage[] = [];
+    const r = await run(provider, stages);
+    expect(stages).toEqual(["analyzing", "tailoring", "validating", "retrying", "validating"]);
+    expect(provider.calls[2].prompt).toContain("REJECTED BY THE SAFETY CHECK");
+    expect(r.tailored.blocks[0].components[0].canonical).toBe("Kettlebell Goblet Squat");
+  });
+
+  it("fails closed when a contraindicated movement survives the retry", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: pasteAnalysis(), TailoringResult: sequence(unsafeDraft(), unsafeDraft()) });
+    await expect(run(provider)).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+
+  it("returns non-safety violations that survive the retry as findings", async () => {
+    const slow = () => {
+      const d = safeDraft();
+      d.blocks[0].timeDomainMinutes = 30;
+      return d;
+    };
+    const provider = new FakeProvider({ PasteAnalysis: pasteAnalysis(), TailoringResult: sequence(slow(), slow()) });
+    const r = await runTailorPipeline(provider, {
+      input: { kind: "paste", rawText: FRAN_TEXT }, profile: emptyProfile(),
+      request: { ...emptyRequest(), situation: "me duele el hombro derecho", timeCapMinutes: 10 }, domain,
+    });
+    expect(r.findings).toContainEqual(expect.objectContaining({ kind: "time_cap_exceeded", severity: "violation" }));
+  });
+
+  it("applies profile injuries even when today's situation is empty", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: pasteAnalysis([]), TailoringResult: sequence(unsafeDraft(), unsafeDraft()) });
+    const profile = { ...emptyProfile(), injuries: [{ key: "no_hanging", side: null, severity: "moderate" as const, notes: "cast", since: null }] };
+    await expect(runTailorPipeline(provider, {
+      input: { kind: "paste", rawText: FRAN_TEXT }, profile, request: emptyRequest(), domain,
+    })).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+
+  it("accepts a manual workout", async () => {
+    const provider = new FakeProvider({
+      ManualAnalysis: { stimuli: [sprint], conditions: [], unavailableEquipment: [] },
+      TailoringResult: (() => {
+        const d = toTailoringDraft(fran());
+        d.blocks[0].rawText = "21-15-9 for time";
+        return d;
+      })(),
+    });
+    const r = await runTailorPipeline(provider, {
+      input: { kind: "manual", workout: { name: "Fran", blocks: [{
+        title: "Fran", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
+        components: franDraft().blocks[0].components,
+      }] } },
+      profile: emptyProfile(), request: emptyRequest(), domain,
+    });
+    expect(r.original.source).toBe("manual");
+    expect(r.original.blocks[0].stimulus).toEqual(sprint);
+  });
+});
+
+describe("runRefinePipeline", () => {
+  it("re-tailors the original with the feedback, keeping and extending the conditions", async () => {
+    const first = await run(new FakeProvider({ PasteAnalysis: pasteAnalysis(), TailoringResult: safeDraft() }));
+    const provider = new FakeProvider({
+      SituationAnalysis: { conditions: [{ key: "knee_pain", side: "left", severity: "mild", evidence: "la rodilla también" }], unavailableEquipment: ["kettlebell"] },
+      TailoringResult: (() => {
+        const d = safeDraft();
+        d.blocks[0].components[0] = component("Dumbbell Goblet Squat", { reps: "15-12-9" });
+        return d;
+      })(),
+    });
+    const stages: ProgressStage[] = [];
+    const r = await runRefinePipeline(provider, {
+      previous: first, feedback: "too heavy, and my knee hurts too", profile: emptyProfile(), request: emptyRequest(), domain,
+      onProgress: (s) => stages.push(s),
+    });
+    expect(stages).toEqual(["analyzing", "tailoring", "validating"]);
+    expect(r.original).toEqual(first.original);
+    expect(r.conditions.map((c) => c.key)).toEqual(["shoulder_impingement", "knee_pain"]);
+    expect(r.unavailableEquipment).toEqual(["kettlebell"]);
+    expect(r.feedbackHistory).toEqual(["too heavy, and my knee hurts too"]);
+    expect(provider.calls[1].prompt).toContain("PREVIOUS ATTEMPT");
+    expect(provider.calls[1].prompt).toContain("- too heavy, and my knee hurts too");
+  });
+
+  it("re-applies profile injuries even if the client dropped them from the previous result", async () => {
+    const first = await run(new FakeProvider({ PasteAnalysis: pasteAnalysis(), TailoringResult: safeDraft() }));
+    const tampered = { ...first, conditions: [] };
+    const provider = new FakeProvider({
+      SituationAnalysis: { conditions: [], unavailableEquipment: [] },
+      TailoringResult: safeDraft(),
+    });
+    const profile = { ...emptyProfile(), injuries: [{ key: "hand_tear", side: null, severity: "moderate" as const, notes: null, since: null }] };
+    const r = await runRefinePipeline(provider, { previous: tampered, feedback: "more volume", profile, request: emptyRequest(), domain });
+    expect(r.conditions.map((c) => c.key)).toEqual(["hand_tear"]);
+  });
+});
+```
+
+- [ ] **Step 2: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/engine/pipeline.test.ts` → FAIL.
+
+- [ ] **Step 3: Implement `src/lib/engine/pipeline.ts`**
+
+```ts
+import type { LlmProvider } from "@/lib/ai/provider";
+import type { ActiveCondition } from "@/lib/domain/assess";
+import type { DomainData } from "@/lib/domain/repository";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import type { Equipment } from "@/lib/domain/types";
+import { analyzeManual, analyzePaste, analyzeSituation, type AnalyzeContext } from "./analyze";
+import { activateConditions, profileConditionRefs } from "./conditions";
+import { availableEquipment, goalFamily, planComponents } from "./plan";
+import { tailor, type TailorInput } from "./tailor";
+import type {
+  AthleteProfile, ConditionRef, Finding, ManualWorkout, PipelineResult, StructuredWorkout, TailorRequest, TailoringResult,
+} from "./types";
+import { isViolation, validateTailoring } from "./validate";
+
+export type WorkoutInput = { kind: "paste"; rawText: string } | { kind: "manual"; workout: ManualWorkout };
+export type ProgressStage = "analyzing" | "tailoring" | "validating" | "retrying";
+
+/** A contraindicated movement survived the retry: nothing is returned to the athlete. */
+export class EngineUnsafeError extends Error {
+  constructor(readonly findings: Finding[]) {
+    super("engine_unsafe");
+    this.name = "EngineUnsafeError";
+  }
+}
+
+export interface PipelineArgs {
+  input: WorkoutInput;
+  profile: AthleteProfile;
+  request: TailorRequest;
+  domain: DomainData;
+  onProgress?: (stage: ProgressStage) => void;
+}
+
+export interface RefineArgs {
+  previous: PipelineResult;
+  feedback: string;
+  profile: AthleteProfile;
+  request: TailorRequest;
+  domain: DomainData;
+  onProgress?: (stage: ProgressStage) => void;
+}
+
+interface TailorStage {
+  original: StructuredWorkout;
+  active: ActiveCondition[];
+  refs: ConditionRef[];
+  unavailable: Equipment[];
+  profile: AthleteProfile;
+  request: TailorRequest;
+  domain: DomainData;
+  previousAttempt: TailorInput["previousAttempt"];
+  progress: (stage: ProgressStage) => void;
+}
+
+const analyzeContext = (d: DomainData): AnalyzeContext => ({
+  movements: d.movements, contraindications: d.contraindications, taxonomy: d.taxonomy,
+});
+
+async function tailorAndValidate(
+  provider: LlmProvider, s: TailorStage,
+): Promise<{ result: TailoringResult; findings: Finding[] }> {
+  const { domain } = s;
+  const equipment = availableEquipment(s.profile.equipment, s.request.equipmentToday, s.unavailable);
+  const planContext = { movements: domain.movements, resolve: createMovementResolver(domain.movements), active: s.active, equipment };
+  const input: TailorInput = {
+    original: s.original, profile: s.profile, request: s.request, conditions: s.refs,
+    contraindications: domain.contraindications, plan: planComponents(s.original, planContext),
+    goal: goalFamily(s.request.targetMovement, planContext), equipment, movements: domain.movements,
+    conversions: domain.conversions, previousAttempt: s.previousAttempt, violations: [],
+  };
+  const validate = (result: TailoringResult) => validateTailoring({
+    original: s.original, result, movements: domain.movements, active: s.active, equipment,
+    timeCapMinutes: s.request.timeCapMinutes,
+  });
+
+  s.progress("tailoring");
+  let result = await tailor(provider, input);
+  s.progress("validating");
+  let findings = validate(result);
+  if (findings.some(isViolation)) {
+    s.progress("retrying");
+    result = await tailor(provider, { ...input, violations: findings.filter(isViolation) });
+    s.progress("validating");
+    findings = validate(result);
+  }
+  if (findings.some((f) => f.kind === "contraindicated_movement" && isViolation(f))) {
+    throw new EngineUnsafeError(findings);
+  }
+  return { result, findings };
+}
+
+export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
+  const progress = args.onProgress ?? (() => {});
+  progress("analyzing");
+  const ctx = analyzeContext(args.domain);
+  const analysis = args.input.kind === "paste"
+    ? await analyzePaste(provider, args.input.rawText, args.request.situation, ctx)
+    : await analyzeManual(provider, args.input.workout, args.request.situation, ctx);
+  const { active, refs } = activateConditions(
+    profileConditionRefs(args.profile.injuries), analysis.conditions, args.domain.contraindications,
+  );
+  const { result, findings } = await tailorAndValidate(provider, {
+    original: analysis.workout, active, refs, unavailable: analysis.unavailableEquipment,
+    profile: args.profile, request: args.request, domain: args.domain, previousAttempt: null, progress,
+  });
+  return {
+    original: analysis.workout, conditions: refs, unavailableEquipment: analysis.unavailableEquipment,
+    tailored: result, findings, feedbackHistory: [], model: provider.model,
+  };
+}
+
+export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs): Promise<PipelineResult> {
+  const progress = args.onProgress ?? (() => {});
+  progress("analyzing");
+  const situation = await analyzeSituation(provider, args.feedback, analyzeContext(args.domain));
+  // `previous` comes back from the client: the stored profile injuries are always re-applied.
+  const { active, refs } = activateConditions(
+    [...profileConditionRefs(args.profile.injuries), ...args.previous.conditions],
+    situation.conditions,
+    args.domain.contraindications,
+  );
+  const unavailable = [...new Set([...args.previous.unavailableEquipment, ...situation.unavailableEquipment])];
+  const feedbackHistory = [...args.previous.feedbackHistory, args.feedback];
+  const { result, findings } = await tailorAndValidate(provider, {
+    original: args.previous.original, active, refs, unavailable, profile: args.profile, request: args.request,
+    domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
+  });
+  return {
+    original: args.previous.original, conditions: refs, unavailableEquipment: unavailable,
+    tailored: result, findings, feedbackHistory, model: provider.model,
+  };
+}
+```
+
+- [ ] **Step 4: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/engine/pipeline.test.ts` → PASS.
+
+- [ ] **Step 5: Run the whole suite**
+
+Run: `pnpm test` → all PASS, no DB, no API key.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: tailor and refine pipelines with validation retry, fail-closed safety and progress stages"
+```
+
+---
+
+### Task E9: Evaluation harness and corpus coverage report
+
+**Files:**
+- Create: `src/lib/eval/grade.ts`, `tests/eval/grade.test.ts`, `scripts/eval.ts`, `scripts/coverage.ts`, `evals/cases/*.json` (10 cases)
+- Modify: `package.json` (scripts, `tsx`), `.gitignore`
+
+**Interfaces:**
+- Consumes: `runTailorPipeline`, `EngineUnsafeError`, `WorkoutInput` (E8); `analyzePaste` (E4); `getProvider` (E3); `getDomainData` (D5); `normalizeMovementName` (D5); E1 schemas.
+- Produces: `EvalCaseSchema` / `EvalCase`, `type EvalOutcome = { kind: "result"; result: PipelineResult } | { kind: "error"; error: "engine_unsafe" | "engine_failed" }`, `resolveCase(c): { input: WorkoutInput; profile: AthleteProfile; request: TailorRequest }`, `gradeCase(c, outcome): { passed: boolean; failures: string[] }`; commands `pnpm eval [caseId]`, `pnpm coverage`.
+
+- [ ] **Step 1: Write the failing test `tests/eval/grade.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { EvalCaseSchema, gradeCase, resolveCase } from "@/lib/eval/grade";
+import type { PipelineResult } from "@/lib/engine/types";
+import { fran } from "../fixtures/workouts";
+
+const baseCase = EvalCaseSchema.parse({
+  id: "fran-shoulder", description: "Fran with a sore shoulder",
+  input: { kind: "paste", rawText: "Fran" },
+  request: { situation: "sore shoulder" },
+  expect: { mustAvoid: ["Thruster"], mustDetect: ["shoulder_impingement"], maxTotalMinutes: 10 },
+});
+
+function result(overrides: Partial<PipelineResult> = {}): PipelineResult {
+  const original = fran();
+  return {
+    original,
+    conditions: [{ key: "shoulder_impingement", side: "right", severity: "moderate", source: "today", evidence: "sore" }],
+    unavailableEquipment: [],
+    tailored: {
+      name: null, rawText: "x", droppedBlocks: [], changes: [], rationale: "r", safetyNote: null,
+      blocks: original.blocks.map((b, i) => ({
+        ...b, sourceBlocks: [i],
+        components: [{ ...b.components[1], movement: "Ring Row", canonical: "Ring Row" }],
+      })),
+    },
+    findings: [], feedbackHistory: [], model: "fake", ...overrides,
+  };
+}
+
+describe("eval grading", () => {
+  it("fills defaults for profile, request and expectations", () => {
+    const c = EvalCaseSchema.parse({ id: "x", description: "x", input: { kind: "paste", rawText: "x" } });
+    expect(c.expect).toEqual({ mustAvoid: [], mustDetect: [], maxTotalMinutes: null, expectFailClosed: false });
+    const { profile, request } = resolveCase(c);
+    expect(profile.equipment).toBeNull();
+    expect(request.situation).toBe("");
+  });
+
+  it("passes a clean result that meets every expectation", () => {
+    expect(gradeCase(baseCase, { kind: "result", result: result() })).toEqual({ passed: true, failures: [] });
+  });
+
+  it("fails on violations, forbidden movements, missed detections and overtime", () => {
+    const bad = result({
+      conditions: [],
+      findings: [{ kind: "time_cap_exceeded", severity: "violation", blockIndex: null, movement: null, message: "over" }],
+    });
+    bad.tailored.blocks[0].components = [{ ...bad.tailored.blocks[0].components[0], movement: "Thruster", canonical: "Thruster" }];
+    bad.tailored.blocks[0].timeDomainMinutes = 20;
+    const g = gradeCase(baseCase, { kind: "result", result: bad });
+    expect(g.passed).toBe(false);
+    expect(g.failures).toEqual([
+      "violation [time_cap_exceeded] over",
+      "prescribed forbidden movement Thruster",
+      "did not detect shoulder_impingement",
+      "total 20 min > 10 min",
+    ]);
+  });
+
+  it("treats an engine error as a failure unless fail-closed was expected", () => {
+    expect(gradeCase(baseCase, { kind: "error", error: "engine_unsafe" }).failures).toEqual(["engine error: engine_unsafe"]);
+    const closed = EvalCaseSchema.parse({ ...baseCase, expect: { expectFailClosed: true } });
+    expect(gradeCase(closed, { kind: "error", error: "engine_unsafe" }).passed).toBe(true);
+    expect(gradeCase(closed, { kind: "result", result: result() }).failures).toEqual(["expected the engine to fail closed"]);
+  });
+});
+```
+
+- [ ] **Step 2: Run it, verify it fails**
+
+Run: `pnpm exec vitest run tests/eval/grade.test.ts` → FAIL.
+
+- [ ] **Step 3: Implement `src/lib/eval/grade.ts`**
+
+```ts
+import { z } from "zod";
+import type { WorkoutInput } from "@/lib/engine/pipeline";
+import {
+  AthleteProfileSchema, ManualWorkoutSchema, TailorRequestSchema, emptyProfile, emptyRequest,
+  type AthleteProfile, type PipelineResult, type TailorRequest,
+} from "@/lib/engine/types";
+
+export const EvalCaseSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().min(1),
+  input: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("paste"), rawText: z.string().min(1) }),
+    z.object({ kind: z.literal("manual"), workout: ManualWorkoutSchema }),
+  ]),
+  profile: AthleteProfileSchema.partial().default({}),
+  request: TailorRequestSchema.partial().default({}),
+  // prefault (not default): the fallback object is parsed, so the inner defaults apply.
+  expect: z.object({
+    mustAvoid: z.array(z.string()).default([]),
+    mustDetect: z.array(z.string()).default([]),
+    maxTotalMinutes: z.number().positive().nullable().default(null),
+    expectFailClosed: z.boolean().default(false),
+  }).prefault({}),
+});
+export type EvalCase = z.infer<typeof EvalCaseSchema>;
+
+export type EvalOutcome =
+  | { kind: "result"; result: PipelineResult }
+  | { kind: "error"; error: "engine_unsafe" | "engine_failed" };
+
+export function resolveCase(c: EvalCase): { input: WorkoutInput; profile: AthleteProfile; request: TailorRequest } {
+  return {
+    input: c.input,
+    profile: { ...emptyProfile(), ...c.profile },
+    request: { ...emptyRequest(), ...c.request },
+  };
+}
+
+export function gradeCase(c: EvalCase, outcome: EvalOutcome): { passed: boolean; failures: string[] } {
+  const failures: string[] = [];
+  if (outcome.kind === "error") {
+    if (!(c.expect.expectFailClosed && outcome.error === "engine_unsafe")) failures.push(`engine error: ${outcome.error}`);
+    return { passed: failures.length === 0, failures };
+  }
+  if (c.expect.expectFailClosed) failures.push("expected the engine to fail closed");
+  const r = outcome.result;
+  for (const f of r.findings.filter((x) => x.severity === "violation")) failures.push(`violation [${f.kind}] ${f.message}`);
+  const prescribed = new Set(r.tailored.blocks.flatMap((b) => b.components.map((x) => x.canonical ?? x.movement)));
+  for (const name of c.expect.mustAvoid) if (prescribed.has(name)) failures.push(`prescribed forbidden movement ${name}`);
+  const detected = new Set(r.conditions.map((x) => x.key));
+  for (const key of c.expect.mustDetect) if (!detected.has(key)) failures.push(`did not detect ${key}`);
+  if (c.expect.maxTotalMinutes !== null) {
+    const total = r.tailored.blocks.reduce((sum, b) => sum + (b.timeDomainMinutes ?? 0), 0);
+    if (total > c.expect.maxTotalMinutes) failures.push(`total ${total} min > ${c.expect.maxTotalMinutes} min`);
+  }
+  return { passed: failures.length === 0, failures };
+}
+```
+
+- [ ] **Step 4: Run it, verify it passes**
+
+Run: `pnpm exec vitest run tests/eval/grade.test.ts` → PASS.
+
+- [ ] **Step 5: Add `tsx`, the scripts and the ignores**
+
+```bash
+pnpm add -D tsx
+```
+
+In `package.json` `scripts`, add:
+```json
+    "eval": "tsx scripts/eval.ts",
+    "coverage": "tsx scripts/coverage.ts"
+```
+
+Append to `.gitignore`:
+```
+# private corpus (real, often paid programming) and generated reports — the repo is public
+/data/corpus/
+/reports/
+```
+
+- [ ] **Step 6: Create `scripts/eval.ts`**
+
+```ts
+// Runs every evals/cases/*.json through the real pipeline (needs GEMINI_API_KEY).
+// Usage: pnpm eval            — all cases
+//        pnpm eval <caseId>   — one case
+import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { getProvider } from "@/lib/ai";
+import { getDomainData } from "@/lib/domain/repository";
+import { EngineUnsafeError, runTailorPipeline } from "@/lib/engine/pipeline";
+import { EvalCaseSchema, gradeCase, resolveCase, type EvalOutcome } from "@/lib/eval/grade";
+
+async function main() {
+  const dir = path.join(process.cwd(), "evals", "cases");
+  const only = process.argv[2];
+  const provider = getProvider();
+  const domain = await getDomainData();
+  const rows: unknown[] = [];
+  let failed = 0;
+
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
+    const c = EvalCaseSchema.parse(JSON.parse(fs.readFileSync(path.join(dir, file), "utf8")));
+    if (only && c.id !== only) continue;
+    const started = Date.now();
+    let outcome: EvalOutcome;
+    try {
+      outcome = { kind: "result", result: await runTailorPipeline(provider, { ...resolveCase(c), domain }) };
+    } catch (e) {
+      if (!(e instanceof EngineUnsafeError)) console.error(e);
+      outcome = { kind: "error", error: e instanceof EngineUnsafeError ? "engine_unsafe" : "engine_failed" };
+    }
+    const ms = Date.now() - started;
+    const grade = gradeCase(c, outcome);
+    if (!grade.passed) failed++;
+    rows.push({ id: c.id, ms, ...grade, outcome });
+    console.log(`${grade.passed ? "PASS" : "FAIL"}  ${c.id}  (${ms} ms)`);
+    for (const f of grade.failures) console.log(`      - ${f}`);
+  }
+
+  fs.mkdirSync("reports", { recursive: true });
+  const out = path.join("reports", `eval-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  fs.writeFileSync(out, JSON.stringify({ model: provider.model, rows }, null, 2));
+  console.log(`\n${rows.length - failed}/${rows.length} passed (model ${provider.model}) — ${out}`);
+  process.exitCode = failed > 0 ? 1 : 0;
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});
+```
+
+- [ ] **Step 7: Create `scripts/coverage.ts`**
+
+```ts
+// Measures how much of a real corpus resolves to the movement library (needs GEMINI_API_KEY).
+// Put .txt/.md files under data/corpus/ (gitignored). Usage: pnpm coverage
+import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { getProvider } from "@/lib/ai";
+import { getDomainData } from "@/lib/domain/repository";
+import { normalizeMovementName } from "@/lib/domain/resolve";
+import { analyzePaste } from "@/lib/engine/analyze";
+
+function files(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    return e.isDirectory() ? files(p) : /\.(txt|md)$/i.test(e.name) ? [p] : [];
+  });
+}
+
+async function main() {
+  const corpus = files(path.join(process.cwd(), "data", "corpus"));
+  if (corpus.length === 0) throw new Error("No .txt/.md files under data/corpus/");
+  const provider = getProvider();
+  const domain = await getDomainData();
+  const unresolved = new Map<string, { example: string; count: number }>();
+  let total = 0;
+  let resolved = 0;
+  let degraded = 0;
+
+  for (const file of corpus) {
+    const analysis = await analyzePaste(provider, fs.readFileSync(file, "utf8"), "", domain);
+    if (!analysis.analyzed) degraded++;
+    for (const c of analysis.workout.blocks.flatMap((b) => b.components)) {
+      total++;
+      if (c.canonical) {
+        resolved++;
+        continue;
+      }
+      const key = normalizeMovementName(c.movement);
+      const entry = unresolved.get(key) ?? { example: c.movement, count: 0 };
+      entry.count++;
+      unresolved.set(key, entry);
+    }
+    console.log(`analyzed ${path.relative(process.cwd(), file)}`);
+  }
+
+  const ranked = [...unresolved.values()].sort((a, b) => b.count - a.count);
+  const pct = total === 0 ? 0 : (100 * resolved) / total;
+  console.log(`\nfiles: ${corpus.length} (${degraded} degraded)  components: ${total}  resolved: ${resolved} (${pct.toFixed(1)}%)`);
+  console.log("most frequent unrecognized:");
+  for (const u of ranked.slice(0, 40)) console.log(`  ${String(u.count).padStart(4)}  ${u.example}`);
+  fs.mkdirSync("reports", { recursive: true });
+  fs.writeFileSync(path.join("reports", "coverage.json"), JSON.stringify({ total, resolved, pct, degraded, unresolved: ranked }, null, 2));
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});
+```
+
+- [ ] **Step 8: Create the eval cases** (synthetic or public benchmarks only — the repo is public)
+
+`evals/cases/01-fran-shoulder-today.json`:
+```json
+{
+  "id": "fran-shoulder-today",
+  "description": "Fran with right-shoulder pain stated today in Spanish",
+  "input": { "kind": "paste", "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
+  "request": { "situation": "Me duele el hombro derecho al levantar el brazo por encima de la cabeza" },
+  "expect": { "mustDetect": ["shoulder_impingement"], "mustAvoid": ["Thruster", "Pull-up", "Shoulder Press", "Push Press"] }
+}
+```
+
+`evals/cases/02-cindy-no-hanging.json`:
+```json
+{
+  "id": "cindy-no-hanging",
+  "description": "Cindy for an athlete with a cast who cannot hang (profile limitation)",
+  "input": { "kind": "paste", "rawText": "Cindy\nAMRAP 20 min\n5 Pull-ups\n10 Push-ups\n15 Air Squats" },
+  "profile": { "injuries": [{ "key": "no_hanging", "side": null, "severity": "moderate", "notes": "Cast on the left wrist", "since": null }] },
+  "expect": { "mustAvoid": ["Pull-up", "Strict Pull-up", "Banded Pull-up", "Chest-to-Bar", "Dead Hang"] }
+}
+```
+
+`evals/cases/03-run-knee-acute.json`:
+```json
+{
+  "id": "run-knee-acute",
+  "description": "Running and jumping with an acute knee sprain",
+  "input": { "kind": "paste", "rawText": "5 rounds for time\n400 m Run\n15 Kettlebell Swings 24/16 kg\n10 Box Jumps 60/50 cm" },
+  "request": { "situation": "Ayer me torcí la rodilla izquierda y hoy me duele bastante al apoyar" },
+  "expect": { "mustDetect": ["knee_pain"], "mustAvoid": ["Run", "Box Jump", "Box Jump Over"] }
+}
+```
+
+`evals/cases/04-split-time-cap.json`:
+```json
+{
+  "id": "split-time-cap",
+  "description": "Three-block session squeezed into 30 minutes",
+  "input": { "kind": "paste", "rawText": "A) Back Squat 5x5 @ 75%, rest 2 min\n\nB) For time, 21-15-9:\nPower Cleans 61/43 kg\nBurpee Box Jump Overs\n\nC) Accessory\n3x12 Dumbbell Rows\n3x20 GHD Sit-ups" },
+  "request": { "timeCapMinutes": 30 },
+  "expect": { "maxTotalMinutes": 33 }
+}
+```
+
+`evals/cases/05-missed-days.json`:
+```json
+{
+  "id": "missed-days",
+  "description": "Two missed days merged into one hour",
+  "input": { "kind": "paste", "rawText": "Day 1\nEMOM 10: 3 Power Snatches @ 60%\nThen 5 rounds: 12 Wall Balls 9/6 kg, 9 Toes-to-Bar\n\nDay 2\nFront Squat 4x8 @ 70%\nAMRAP 20 min: 10 Double-unders, 10 Dumbbell Snatches 22.5/15 kg, 200 m Run" },
+  "request": { "situation": "I missed the last two days and have one hour today", "timeCapMinutes": 60 },
+  "expect": { "maxTotalMinutes": 66 }
+}
+```
+
+`evals/cases/06-no-rower.json`:
+```json
+{
+  "id": "no-rower",
+  "description": "Rowing workout when the rower is not available",
+  "input": { "kind": "paste", "rawText": "4 rounds for time\n500 m Row\n15 Thrusters 43/30 kg\n400 m Run" },
+  "request": { "situation": "No rower available today" },
+  "expect": { "mustAvoid": ["Row (Erg)"] }
+}
+```
+
+`evals/cases/07-pregnancy.json`:
+```json
+{
+  "id": "pregnancy",
+  "description": "Chipper for a pregnant athlete (profile condition)",
+  "profile": { "sex": "female", "injuries": [{ "key": "pregnancy", "side": null, "severity": "moderate", "notes": "Second trimester", "since": null }] },
+  "input": { "kind": "paste", "rawText": "For time\n50 Sit-ups\n40 Wall Balls 9/6 kg\n30 Box Jumps\n20 Handstand Push-ups" },
+  "expect": { "mustAvoid": ["Sit-up", "GHD Sit-up", "V-up", "Handstand Push-up", "Strict Handstand Push-up"] }
+}
+```
+
+`evals/cases/08-goal-toes-to-bar.json`:
+```json
+{
+  "id": "goal-toes-to-bar",
+  "description": "No constraint, biased toward toes-to-bar",
+  "input": { "kind": "paste", "rawText": "AMRAP 12 min\n12 Kettlebell Swings 24/16 kg\n12 Box Jumps 60/50 cm\n200 m Run" },
+  "request": { "targetMovement": "Toes-to-Bar" },
+  "expect": {}
+}
+```
+
+`evals/cases/09-hand-tear.json`:
+```json
+{
+  "id": "hand-tear",
+  "description": "Gymnastics EMOM with a torn palm stated today",
+  "input": { "kind": "paste", "rawText": "EMOM 12\nMin 1: 15 Toes-to-Bar\nMin 2: 12 Chest-to-Bar Pull-ups\nMin 3: 15/12 Cal Row" },
+  "request": { "situation": "Se me ha abierto un callo en la palma de la mano derecha" },
+  "expect": { "mustDetect": ["hand_tear"], "mustAvoid": ["Toes-to-Bar", "Chest-to-Bar", "Pull-up", "Bar Muscle-up"] }
+}
+```
+
+`evals/cases/10-dumbbells-at-home.json`:
+```json
+{
+  "id": "dumbbells-at-home",
+  "description": "Fran at home with dumbbells and a jump rope only",
+  "profile": { "equipment": ["dumbbell", "jump_rope"] },
+  "input": { "kind": "paste", "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
+  "expect": { "mustAvoid": ["Thruster", "Pull-up"] }
+}
+```
+
+- [ ] **Step 9: Verify the scripts type-check and the cases parse**
+
+(If `src/generated/prisma` is missing, run `pnpm exec prisma generate` first: `tsc` also checks `src/lib/db.ts`.)
+
+Run:
+```bash
+pnpm exec tsc --noEmit
+node -e "for (const f of require('fs').readdirSync('evals/cases')) JSON.parse(require('fs').readFileSync('evals/cases/'+f,'utf8')); console.log('cases ok')"
+pnpm test
+```
+Expected: no type errors; `cases ok`; all tests PASS.
+
+- [ ] **Step 10: Run the evaluation against Gemini (requires `GEMINI_API_KEY` in `.env`)**
+
+Run: `pnpm eval`
+Expected: a PASS/FAIL line per case and a report in `reports/`. Target before moving on: **≥ 9/10 passing and no `contraindicated_movement` violation in any report.** When a case fails, read its report: fix prompts (E4/E6) or data, never the expectation, unless the expectation contradicts the spec. Record the pass rate and model in the commit message.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add -A
+git commit -m "feat: evaluation harness with 10 synthetic cases and the corpus coverage report"
+```
+
+---
+
+### Task E10: Corpus coverage pass (data — needs the user's corpus)
+
+The catalog grows from real usage, not intuition. This task is data-driven: its exact rows depend on the report.
+
+**Files:**
+- Modify: `data/movements.json` (via `scripts/migrations/e10-corpus.mjs`, deleted after running), `tests/domain/data.test.ts`, `docs/specs/training-tailor-engine-v1-design.md` (seed counts)
+
+- [ ] **Step 1: The user places their programming under `data/corpus/`** (one week or day per `.txt`/`.md` file). Verify it is ignored:
+
+```bash
+git check-ignore -v data/corpus/
+```
+Expected: the `.gitignore` rule is printed. If not, stop.
+
+- [ ] **Step 2: Measure**
+
+Run: `pnpm coverage`
+Record: files, components, resolved %, and the unrecognized list.
+
+- [ ] **Step 3: Classify each unrecognized name, most frequent first, until the projected coverage is ≥ 95 %**
+
+For each name decide exactly one:
+1. **Alias** — a spelling, language or shorthand of an existing row (e.g. "Dominadas" → `Pull-up`): add it to that row's `aliases`.
+2. **New movement** — author a row following the catalog rules (spec, *Movement*):
+   - `patterns` primary first; `olympic` only with a barbell;
+   - `stresses` list only clinically significant mechanisms (`load: "low"` for bodyweight end-range or impact); a hanging row carries `grip`; trunk flexion carries `abdominals`; never `flexion` with `deep_flexion` on one site;
+   - one row per implement (KB/DB twins mirror stresses and substitute each other); strict and kipping as separate rows;
+   - `positions` (`hanging`, `inverted`, `partial_inversion`, `supine`, `prone`) when required;
+   - `unilateral` when a standard single-limb variant exists;
+   - `substitutes` are existing names, stimulus-preserving, primary first;
+   - `equipment` only availability-relevant items.
+3. **Not a movement** (rest, cues, warm-up prose): ignore and note it in the commit message.
+
+- [ ] **Step 4: Pin each new row's non-obvious annotation with a test** in `tests/domain/data.test.ts` (one `it` per row or family, in the style of the existing ones, e.g. "the X is a Y with Z"). Run `pnpm exec vitest run tests/domain` and see the new tests fail.
+
+- [ ] **Step 5: Apply with a one-off migration** `scripts/migrations/e10-corpus.mjs` using `readRows`/`writeRows` (same helpers as D2/D3: `get`, `insertAfter`, `addAlias`), run it, delete it.
+
+- [ ] **Step 6: Verify**
+
+Run: `pnpm test` → PASS (including the alias-collision and every-site-blocked guards).
+Run: `pnpm coverage` → resolved **≥ 95 %**.
+Run: `pnpm eval` → no regression against the E9 pass rate.
+
+- [ ] **Step 7: Update the seed counts** in the spec's *Domain-grounding assets* section to the new movement total.
+
+- [ ] **Step 8: Commit** (statistics only — never corpus content)
+
+```bash
+git add -A
+git commit -m "feat: grow the movement catalog from corpus coverage (<before>% → <after>% resolved)"
+```
+
+---
+## Phase S — Database and auth
+
+### Task S1: Database schema v2 and migrations
+
+Replaces the revision-1 schema (Auth.js models, five JSON profile columns) with the Better Auth core models, a single validated profile document, the saved-result shape and the quota ledger. The dev database holds no real data; it is reset.
+
+**Files:**
+- Modify: `prisma/schema.prisma` (rewrite), `package.json` (scripts)
+- Create: `src/lib/json.ts`, `tests/lib/json.test.ts`, `prisma/migrations/<timestamp>_init/` (generated)
+
+**Interfaces:**
+- Produces: Prisma models `User`, `Session`, `Account`, `Verification` (mapped to `user`, `session`, `account`, `verification`), `AthleteProfile { userId @unique, data Json }`, `TailoredWorkout { original, request, conditions, tailored, findings, feedbackHistory: Json; model: String }`, `LlmUsage { userId, kind, createdAt }`; `toJson(value: unknown): Prisma.InputJsonValue` from `@/lib/json`; scripts `db:migrate`, `db:deploy`, `postinstall`.
+
+- [ ] **Step 1: Write the failing test `tests/lib/json.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { toJson } from "@/lib/json";
+
+describe("toJson", () => {
+  it("returns a plain JSON copy, dropping undefined", () => {
+    const value = { a: 1, b: null, c: undefined, d: [{ e: "x" }] };
+    expect(toJson(value)).toEqual({ a: 1, b: null, d: [{ e: "x" }] });
+    expect(toJson(value)).not.toBe(value);
+  });
+});
+```
+
+Run: `pnpm exec vitest run tests/lib/json.test.ts` → FAIL (module not found).
+
+- [ ] **Step 2: Implement `src/lib/json.ts`**
+
+```ts
+import type { Prisma } from "@/generated/prisma/client";
+
+/** Zod-parsed values are plain JSON; this narrows them to Prisma's JSON input type. */
+export function toJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+```
+
+Run: `pnpm exec vitest run tests/lib/json.test.ts` → PASS.
+
+- [ ] **Step 3: Rewrite `prisma/schema.prisma`**
+
+```prisma
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---- Better Auth core. Field names are fixed by Better Auth, which also generates the ids. ----
+model User {
+  id            String            @id
+  name          String
+  email         String            @unique
+  emailVerified Boolean           @default(false)
+  image         String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  profile       AthleteProfile?
+  tailored      TailoredWorkout[]
+  usage         LlmUsage[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---- Training Tailor ----
+model AthleteProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data      Json // AthleteProfileSchema (src/lib/engine/types.ts)
+  updatedAt DateTime @updatedAt
+}
+
+model TailoredWorkout {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  original        Json // StructuredWorkout
+  request         Json // TailorRequest
+  conditions      Json // ConditionRef[]
+  tailored        Json // TailoringResult
+  findings        Json // Finding[]
+  feedbackHistory Json     @default("[]") // string[]
+  model           String
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Quota ledger: one row per engine run.
+model LlmUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // "tailor" | "refine"
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+```
+
+- [ ] **Step 4: Switch the scripts to migrations** — in `package.json` `scripts`, replace `"db:push": "prisma db push"` with:
+
+```json
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "postinstall": "prisma generate",
+```
+
+- [ ] **Step 5: Reset the dev database and create the initial migration**
+
+The dev database only holds throwaway data from `db push`; resetting it is expected.
+
+```bash
+pnpm exec prisma migrate reset --force
+pnpm exec prisma migrate dev --name init
+pnpm exec prisma generate
+```
+Expected: `prisma/migrations/<timestamp>_init/migration.sql` exists and creates `user`, `session`, `account`, `verification`, `AthleteProfile`, `TailoredWorkout`, `LlmUsage`.
+
+- [ ] **Step 6: Verify**
+
+Run: `pnpm exec tsc --noEmit` → no errors. `pnpm test` → PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add -A
+git commit -m "feat: database schema v2 (Better Auth core, profile document, saved results, quota ledger) under migrations"
+```
+
+---
+
+### Task S2: Google sign-in with Better Auth
+
+**Files:**
+- Create: `src/lib/auth.ts`, `src/lib/auth-client.ts`, `src/lib/session.ts`, `src/app/api/auth/[...all]/route.ts`, `src/proxy.ts`, `src/app/signin/page.tsx`, `src/components/SignOutButton.tsx`
+- Modify: `src/app/layout.tsx`, `src/app/page.tsx`, `.env.example`, `package.json` (dependency)
+
+**Interfaces:**
+- Consumes: `prisma` from `@/lib/db`; models from S1.
+- Produces: `auth` (`@/lib/auth`), `authClient` (`@/lib/auth-client`), `getUserId(): Promise<string | null>` and `getSessionUser(): Promise<{ id: string; name: string; email: string } | null>` (`@/lib/session`) — every page and API route uses `getUserId`.
+
+- [ ] **Step 1: Create the Google OAuth client (manual, Google Cloud Console)**
+
+1. APIs & Services → OAuth consent screen: External, app name "Training Tailor", scopes `openid`, `email`, `profile`; add yourself as a test user.
+2. Credentials → Create credentials → OAuth client ID → Web application.
+3. Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google` (add the production one, `https://<domain>/api/auth/callback/google`, in Task F1).
+4. Copy the client ID and secret into `.env` (never commit them).
+
+- [ ] **Step 2: Install and configure the environment**
+
+```bash
+pnpm add better-auth
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+In `.env.example`, replace the whole `# Auth.js` block with:
+
+```bash
+# Better Auth (Google OAuth)
+BETTER_AUTH_SECRET=""     # 32+ random bytes, base64
+BETTER_AUTH_URL="http://localhost:3000"
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+```
+
+Put real values in `.env` (the generated secret, `BETTER_AUTH_URL`, the Google credentials).
+
+- [ ] **Step 3: Implement the server instance `src/lib/auth.ts`**
+
+```ts
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+import { nextCookies } from "better-auth/next-js";
+import { prisma } from "@/lib/db";
+
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, { provider: "postgresql" }),
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+    },
+  },
+  plugins: [nextCookies()], // keep last: sets cookies from server actions
+});
+```
+
+- [ ] **Step 4: Verify our auth models against Better Auth's generator**
+
+```bash
+pnpm dlx auth@latest generate --help
+```
+Use the printed flags to generate the Prisma schema to a scratch file **outside** `prisma/schema.prisma` (e.g. `--output ./auth-schema.check.prisma`; answer "no" if asked to overwrite anything). Compare its `User`/`Session`/`Account`/`Verification` models with ours: field names, types and optionality must match. If they differ, align `prisma/schema.prisma`, then run `pnpm exec prisma migrate dev --name better_auth_alignment`. Delete the scratch file.
+
+- [ ] **Step 5: Implement the client, the session helpers and the route handler**
+
+`src/lib/auth-client.ts`:
+```ts
+import { createAuthClient } from "better-auth/react";
+
+export const authClient = createAuthClient();
+```
+
+`src/lib/session.ts`:
+```ts
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+
+export async function getSessionUser(): Promise<{ id: string; name: string; email: string } | null> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  return session ? { id: session.user.id, name: session.user.name, email: session.user.email } : null;
+}
+
+export async function getUserId(): Promise<string | null> {
+  return (await getSessionUser())?.id ?? null;
+}
+```
+
+`src/app/api/auth/[...all]/route.ts`:
+```ts
+import { toNextJsHandler } from "better-auth/next-js";
+import { auth } from "@/lib/auth";
+
+export const { GET, POST } = toNextJsHandler(auth);
+```
+
+- [ ] **Step 6: Protect the pages in `src/proxy.ts`** (Next 16 runs `proxy` on the Node runtime, so a full session check works; API routes still check the session themselves and return 401)
+
+```ts
+import { NextResponse, type NextRequest } from "next/server";
+import { auth } from "@/lib/auth";
+
+export async function proxy(request: NextRequest) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) return NextResponse.redirect(new URL("/signin", request.url));
+  return NextResponse.next();
+}
+
+export const config = { matcher: ["/tailor/:path*", "/profile/:path*", "/history/:path*"] };
+```
+
+- [ ] **Step 7: Sign-in page, sign-out button, layout and home**
+
+`src/app/signin/page.tsx`:
 ```tsx
-import { signIn } from "@/auth";
+"use client";
 
-export default function SignIn() {
+import { useState } from "react";
+import { authClient } from "@/lib/auth-client";
+
+export default function SignInPage() {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function signIn() {
+    setPending(true);
+    setError(null);
+    const { error } = await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+    if (error) {
+      setError("Google sign-in failed. Try again.");
+      setPending(false);
+    }
+  }
+
   return (
-    <main className="mx-auto max-w-sm p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Sign in to Training Tailor</h1>
-      <form
-        action={async (formData) => {
-          "use server";
-          await signIn("nodemailer", { email: formData.get("email"), redirectTo: "/" });
-        }}
-        className="flex flex-col gap-3"
-      >
-        <input name="email" type="email" required placeholder="you@example.com" className="rounded border p-2" />
-        <button type="submit" className="rounded bg-black p-2 text-white">Send magic link</button>
-      </form>
-      <p className="mt-3 text-sm text-gray-500">In dev, the link is printed to the server console.</p>
-    </main>
+    <div className="mx-auto flex max-w-sm flex-col gap-6 py-12">
+      <h1 className="text-2xl font-semibold">Sign in</h1>
+      <p className="text-sm text-neutral-600">
+        Training Tailor adapts your programmed workout to today&apos;s body, time and equipment.
+      </p>
+      <button onClick={signIn} disabled={pending}
+        className="rounded bg-black px-4 py-3 text-white disabled:opacity-50">
+        {pending ? "Redirecting…" : "Continue with Google"}
+      </button>
+      {error && <p className="text-sm text-red-700">{error}</p>}
+    </div>
   );
 }
 ```
 
-- [ ] **Step 6: Update `src/app/layout.tsx`** (add a minimal nav + the safety disclaimer footer)
-
+`src/components/SignOutButton.tsx`:
 ```tsx
-import "./globals.css";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+
+export function SignOutButton() {
+  const router = useRouter();
+  return (
+    <button className="text-neutral-600 underline" onClick={async () => {
+      await authClient.signOut();
+      router.push("/");
+      router.refresh();
+    }}>
+      Sign out
+    </button>
+  );
+}
+```
+
+`src/app/layout.tsx` (replace):
+```tsx
+import type { Metadata } from "next";
 import Link from "next/link";
+import "./globals.css";
+import { SignOutButton } from "@/components/SignOutButton";
+import { getSessionUser } from "@/lib/session";
 
-export const metadata = { title: "Training Tailor", description: "Individualized functional fitness workout modifications" };
+export const metadata: Metadata = {
+  title: "Training Tailor",
+  description: "Tailor your programmed workout to today's body, time and equipment.",
+};
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const user = await getSessionUser();
   return (
     <html lang="en">
-      <body className="min-h-dvh bg-white text-gray-900">
-        <header className="flex items-center gap-4 border-b p-4 text-sm">
-          <Link href="/" className="font-semibold">Training Tailor</Link>
-          <Link href="/tailor">Tailor</Link>
-          <Link href="/profile">Profile</Link>
-          <Link href="/history">History</Link>
+      <body className="min-h-screen bg-white text-neutral-900 antialiased">
+        <header className="border-b">
+          <nav className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-3 text-sm">
+            <Link href="/" className="font-semibold">Training Tailor</Link>
+            {user && (
+              <>
+                <Link href="/tailor">Tailor</Link>
+                <Link href="/history">History</Link>
+                <Link href="/profile">Profile</Link>
+                <span className="ml-auto"><SignOutButton /></span>
+              </>
+            )}
+          </nav>
         </header>
-        {children}
-        <footer className="mt-12 border-t p-4 text-xs text-gray-500">
-          Not medical advice. Modifications are AI-generated suggestions — consult a qualified professional for injuries.
+        <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
+        <footer className="mx-auto max-w-3xl px-4 py-6 text-xs text-neutral-500">
+          Not medical advice. Training Tailor suggests workout modifications; it does not diagnose or treat
+          injuries. When in doubt, consult a qualified professional.
         </footer>
       </body>
     </html>
@@ -1729,1422 +4719,1586 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-- [ ] **Step 7: Update `src/app/page.tsx`** (dashboard)
-
+`src/app/page.tsx` (replace):
 ```tsx
 import Link from "next/link";
-import { auth } from "@/auth";
+import { getSessionUser } from "@/lib/session";
+
+const SECTIONS = [
+  { href: "/tailor", title: "Tailor a workout", text: "Paste today's session and say how you are." },
+  { href: "/profile", title: "Profile", text: "Injuries, equipment, benchmarks, goals." },
+  { href: "/history", title: "History", text: "Your saved tailored workouts." },
+];
 
 export default async function Home() {
-  const session = await auth();
+  const user = await getSessionUser();
+  if (!user) {
+    return (
+      <section className="flex flex-col gap-4 py-10">
+        <h1 className="text-2xl font-semibold">Your programming, tailored to today</h1>
+        <p className="text-neutral-700">
+          Pain, little time, missing equipment or missed days: keep the stimulus of the workout and stay safe.
+        </p>
+        <Link href="/signin" className="w-fit rounded bg-black px-4 py-2 text-white">Sign in</Link>
+      </section>
+    );
+  }
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <h1 className="text-3xl font-bold">Training Tailor</h1>
-      <p className="mt-2 text-gray-600">Individualize any functional fitness workout to your body, your gear, and your day.</p>
-      {session?.user ? (
-        <div className="mt-6 flex gap-3">
-          <Link href="/tailor" className="rounded bg-black px-4 py-2 text-white">Tailor a workout</Link>
-          <Link href="/profile" className="rounded border px-4 py-2">Edit profile</Link>
-        </div>
-      ) : (
-        <Link href="/signin" className="mt-6 inline-block rounded bg-black px-4 py-2 text-white">Sign in</Link>
-      )}
-    </main>
+    <section className="flex flex-col gap-4">
+      <h1 className="text-xl font-semibold">Hi {user.name.split(" ")[0]}</h1>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {SECTIONS.map((s) => (
+          <Link key={s.href} href={s.href} className="rounded border p-4">
+            <div className="font-medium">{s.title}</div>
+            <div className="text-sm text-neutral-600">{s.text}</div>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 ```
 
-- [ ] **Step 8: Manual check + commit**
+- [ ] **Step 8: Manual verification**
 
-Run: `pnpm dev`, confirm `/`, `/signin` render and nav links work.
+Run `pnpm dev`, open `http://localhost:3000`:
+1. Signed out: the home shows "Sign in"; `/tailor` redirects to `/signin`.
+2. "Continue with Google" → Google consent → back on `/` with the nav visible.
+3. A row exists in `user`, `account` (`providerId = 'google'`) and `session` (`pnpm db:studio`).
+4. "Sign out" returns to the signed-out home.
+
+- [ ] **Step 9: Verify and commit**
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
 
 ```bash
 git add -A
-git commit -m "feat: app shell, sign-in page, profile normalization helper, safety disclaimer"
+git commit -m "feat: Google sign-in with Better Auth, proxy route protection and the app shell"
 ```
 
-### Task 6.2: Profile API + profile form
+---
+
+## Phase U — API and UI
+
+### Task U1: Profile helpers, API and form
 
 **Files:**
-- Create: `src/app/api/profile/route.ts`, `src/app/profile/page.tsx`, `src/app/profile/ProfileForm.tsx`
-- Test: `tests/profile/profile-route.test.ts`
+- Create: `src/lib/profile.ts`, `src/lib/http.ts`, `src/app/api/profile/route.ts`, `src/app/profile/page.tsx`, `src/app/profile/ProfileForm.tsx`
+- Test: `tests/profile/profile.test.ts`
 
-- [ ] **Step 1: Write the failing test for the request-body parser**
+**Interfaces:**
+- Consumes: `AthleteProfileSchema`, `emptyProfile` (E1), `getDomainData` (D5), `createMovementResolver` (D5), `getUserId` (S2), `prisma`, `toJson` (S1).
+- Produces: `normalizeProfile(raw: unknown): AthleteProfile`, `sanitizeProfile(profile, domain: Pick<DomainData, "movements" | "contraindications">): AthleteProfile` (`@/lib/profile`); `jsonError(code: string, status: number): NextResponse` (`@/lib/http`); `GET/PUT /api/profile` → `{ profile }`.
 
-We unit-test the body validation used by the route (keeping the route thin). `tests/profile/profile-route.test.ts`:
+- [ ] **Step 1: Write the failing test `tests/profile/profile.test.ts`**
 
 ```ts
-import { describe, it, expect } from "vitest";
-import { parseProfileBody } from "@/lib/profile";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { emptyProfile, type AthleteProfile } from "@/lib/engine/types";
+import { normalizeProfile, sanitizeProfile } from "@/lib/profile";
 
-describe("parseProfileBody", () => {
-  it("accepts a valid profile payload", () => {
-    const p = parseProfileBody({ injuries: ["knee_pain"], benchmarks: {}, equipment: ["barbell"], goals: [], availability: { daysPerWeek: 3 } });
-    expect(p.equipment).toContain("barbell");
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+describe("normalizeProfile", () => {
+  it("returns an empty profile for a new athlete", () => {
+    expect(normalizeProfile(null)).toEqual(emptyProfile());
   });
-  it("rejects an invalid payload", () => {
-    expect(() => parseProfileBody({ injuries: "not-an-array" })).toThrow();
+
+  it("passes a valid stored profile through", () => {
+    const p: AthleteProfile = { ...emptyProfile(), sex: "male", equipment: ["barbell"] };
+    expect(normalizeProfile(p)).toEqual(p);
+  });
+
+  it("falls back to an empty profile when the stored document is invalid", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(normalizeProfile({ injuries: "nope" })).toEqual(emptyProfile());
+    spy.mockRestore();
+  });
+});
+
+describe("sanitizeProfile", () => {
+  it("keeps catalog injuries once and canonicalizes movement names", () => {
+    const p = sanitizeProfile({
+      ...emptyProfile(),
+      injuries: [
+        { key: "knee_pain", side: "left", severity: "mild", notes: null, since: null },
+        { key: "knee_pain", side: "right", severity: "acute", notes: null, since: null },
+        { key: "broken_heart", side: null, severity: "acute", notes: null, since: null },
+      ],
+      benchmarks: [
+        { movement: "T2B", kind: "max_reps", value: 15, unit: "reps", recordedAt: null },
+        { movement: "Zercher Carry", kind: "1rm", value: 100, unit: "kg", recordedAt: null },
+      ],
+      goals: [
+        { movement: "pull ups", description: "First strict pull-up" },
+        { movement: "Moonwalk", description: "Dance" },
+      ],
+    }, domain);
+    expect(p.injuries.map((i) => [i.key, i.side])).toEqual([["knee_pain", "left"]]);
+    expect(p.benchmarks.map((b) => b.movement)).toEqual(["Toes-to-Bar"]);
+    expect(p.goals.map((g) => g.movement)).toEqual(["Pull-up", null]);
   });
 });
 ```
 
 - [ ] **Step 2: Run it, verify it fails**
 
-Run: `pnpm exec vitest run tests/profile/profile-route.test.ts`
-Expected: FAIL — `parseProfileBody` not exported.
+Run: `pnpm exec vitest run tests/profile/profile.test.ts` → FAIL.
 
-- [ ] **Step 3: Add `parseProfileBody` to `src/lib/profile.ts`**
-
-Append:
+- [ ] **Step 3: Implement `src/lib/profile.ts` and `src/lib/http.ts`**
 
 ```ts
-export function parseProfileBody(body: unknown): AthleteProfileInput {
-  return AthleteProfileSchema.parse(body);
+import type { DomainData } from "@/lib/domain/repository";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import { AthleteProfileSchema, emptyProfile, type AthleteProfile, type ProfileInjury } from "@/lib/engine/types";
+
+export function normalizeProfile(raw: unknown): AthleteProfile {
+  if (raw == null) return emptyProfile();
+  const parsed = AthleteProfileSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  console.error("stored profile failed validation; using an empty profile", parsed.error.issues);
+  return emptyProfile();
+}
+
+/** Only catalog injury keys (first occurrence wins) and canonical movement names are stored. */
+export function sanitizeProfile(
+  profile: AthleteProfile, domain: Pick<DomainData, "movements" | "contraindications">,
+): AthleteProfile {
+  const resolve = createMovementResolver(domain.movements);
+  const catalog = new Set(domain.contraindications.map((c) => c.key));
+  const injuries: ProfileInjury[] = [];
+  for (const i of profile.injuries) {
+    if (catalog.has(i.key) && !injuries.some((x) => x.key === i.key)) injuries.push(i);
+  }
+  return {
+    ...profile,
+    injuries,
+    benchmarks: profile.benchmarks.flatMap((b) => {
+      const m = resolve(b.movement);
+      return m ? [{ ...b, movement: m.name }] : [];
+    }),
+    goals: profile.goals.map((g) => ({ ...g, movement: g.movement ? resolve(g.movement)?.name ?? null : null })),
+  };
+}
+```
+
+`src/lib/http.ts`:
+```ts
+import { NextResponse } from "next/server";
+
+/** Error responses carry a code, never exception text. */
+export function jsonError(code: string, status: number) {
+  return NextResponse.json({ error: code }, { status });
 }
 ```
 
 - [ ] **Step 4: Run it, verify it passes**
 
-Run: `pnpm exec vitest run tests/profile/profile-route.test.ts`
-Expected: PASS.
+Run: `pnpm exec vitest run tests/profile/profile.test.ts` → PASS.
 
 - [ ] **Step 5: Implement `src/app/api/profile/route.ts`**
 
 ```ts
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import { normalizeProfile, parseProfileBody } from "@/lib/profile";
+import { getDomainData } from "@/lib/domain/repository";
+import { AthleteProfileSchema } from "@/lib/engine/types";
+import { jsonError } from "@/lib/http";
+import { toJson } from "@/lib/json";
+import { normalizeProfile, sanitizeProfile } from "@/lib/profile";
+import { getUserId } from "@/lib/session";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const row = await prisma.athleteProfile.findUnique({ where: { userId: session.user.id } });
-  return NextResponse.json(normalizeProfile(row ? {
-    injuries: row.injuries, benchmarks: row.benchmarks, equipment: row.equipment, goals: row.goals, availability: row.availability,
-  } : null));
+  const userId = await getUserId();
+  if (!userId) return jsonError("unauthorized", 401);
+  const row = await prisma.athleteProfile.findUnique({ where: { userId } });
+  return NextResponse.json({ profile: normalizeProfile(row?.data) });
 }
 
 export async function PUT(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  let data;
-  try {
-    data = parseProfileBody(await req.json());
-  } catch {
-    return NextResponse.json({ error: "invalid profile" }, { status: 400 });
-  }
-  const saved = await prisma.athleteProfile.upsert({
-    where: { userId: session.user.id },
-    update: { ...data },
-    create: { userId: session.user.id, ...data },
+  const userId = await getUserId();
+  if (!userId) return jsonError("unauthorized", 401);
+  const parsed = AthleteProfileSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return jsonError("invalid_request", 400);
+  const profile = sanitizeProfile(parsed.data, await getDomainData());
+  await prisma.athleteProfile.upsert({
+    where: { userId },
+    create: { userId, data: toJson(profile) },
+    update: { data: toJson(profile) },
   });
-  return NextResponse.json({ ok: true, updatedAt: saved.updatedAt });
+  return NextResponse.json({ profile });
 }
 ```
 
-> `session.user.id` is populated by the `session` callback and typed by the augmentation, both set up in Task 5.1.
+- [ ] **Step 6: Implement the page `src/app/profile/page.tsx`**
 
-- [ ] **Step 6: Implement the profile form `src/app/profile/ProfileForm.tsx`** (client component)
+```tsx
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { getDomainData } from "@/lib/domain/repository";
+import { Equipment } from "@/lib/domain/types";
+import { normalizeProfile } from "@/lib/profile";
+import { getUserId } from "@/lib/session";
+import { ProfileForm } from "./ProfileForm";
+
+export default async function ProfilePage() {
+  const userId = await getUserId();
+  if (!userId) redirect("/signin");
+  const [row, domain] = await Promise.all([prisma.athleteProfile.findUnique({ where: { userId } }), getDomainData()]);
+  return (
+    <section className="flex flex-col gap-4">
+      <h1 className="text-xl font-semibold">Profile</h1>
+      <ProfileForm
+        initial={normalizeProfile(row?.data)}
+        catalog={domain.contraindications.map((c) => ({ key: c.key, label: c.label, kind: c.kind }))}
+        movementNames={domain.movements.map((m) => m.name)}
+        equipmentOptions={[...Equipment.options]}
+      />
+    </section>
+  );
+}
+```
+
+- [ ] **Step 7: Implement the form `src/app/profile/ProfileForm.tsx`**
 
 ```tsx
 "use client";
+
 import { useState } from "react";
-import type { AthleteProfileInput } from "@/lib/engine/types";
+import { Severity, Side, type Equipment } from "@/lib/domain/types";
+import {
+  BenchmarkKind, BenchmarkUnit, ScalingLevel, Sex, Weekday,
+  type AthleteProfile, type Benchmark, type Goal, type ProfileInjury,
+} from "@/lib/engine/types";
 
-const INJURIES = ["shoulder_impingement","lower_back_strain","knee_pain","wrist_pain","elbow_tendinopathy","ankle_sprain","hip_flexor_strain"];
-const EQUIPMENT = ["barbell","dumbbell","kettlebell","pull-up bar","rower","bike","wall ball","jump rope"];
-const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+interface Props {
+  initial: AthleteProfile;
+  catalog: { key: string; label: string; kind: string }[];
+  movementNames: string[];
+  equipmentOptions: Equipment[];
+}
 
-export default function ProfileForm({ initial }: { initial: AthleteProfileInput }) {
-  const [p, setP] = useState<AthleteProfileInput>(initial);
-  const [status, setStatus] = useState<string>("");
+const field = "rounded border px-2 py-1 text-sm";
+const chip = (on: boolean) => `rounded border px-3 py-1 text-sm ${on ? "bg-black text-white" : ""}`;
+const toggle = <T,>(list: T[], item: T) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
+const intOrNull = (v: string) => (v.trim() === "" ? null : Math.round(Number(v)));
+const label = (s: string) => s.replaceAll("_", " ");
 
-  function toggle(list: string[], v: string) { return list.includes(v) ? list.filter((x) => x !== v) : [...list, v]; }
+export function ProfileForm({ initial, catalog, movementNames, equipmentOptions }: Props) {
+  const [p, setP] = useState<AthleteProfile>(initial);
+  const [newInjury, setNewInjury] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+
+  const conditionLabel = (key: string) => catalog.find((c) => c.key === key)?.label ?? key;
+  const setInjury = (i: number, patch: Partial<ProfileInjury>) =>
+    setP({ ...p, injuries: p.injuries.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+  const setBenchmark = (i: number, patch: Partial<Benchmark>) =>
+    setP({ ...p, benchmarks: p.benchmarks.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+  const setGoal = (i: number, patch: Partial<Goal>) =>
+    setP({ ...p, goals: p.goals.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
 
   async function save() {
     setStatus("Saving…");
-    const res = await fetch("/api/profile", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(p) });
-    setStatus(res.ok ? "Saved" : "Error saving");
+    const body: AthleteProfile = {
+      ...p,
+      benchmarks: p.benchmarks.filter((b) => b.movement.trim() !== "" && b.value > 0),
+      goals: p.goals.filter((g) => g.description.trim() !== ""),
+    };
+    const res = await fetch("/api/profile", {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      setStatus("Could not save. Check the values and try again.");
+      return;
+    }
+    setP((await res.json()).profile);
+    setStatus("Saved");
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <section>
-        <h2 className="font-semibold">Injuries / limitations</h2>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {INJURIES.map((i) => (
-            <button key={i} type="button" onClick={() => setP({ ...p, injuries: toggle(p.injuries, i) })}
-              className={`rounded border px-3 py-1 text-sm ${p.injuries.includes(i) ? "bg-black text-white" : ""}`}>{i.replaceAll("_", " ")}</button>
-          ))}
+    <div className="flex flex-col gap-8">
+      <datalist id="movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">About you</h2>
+        <div className="flex flex-wrap gap-3">
+          <label className="flex items-center gap-2 text-sm">Loads
+            <select className={field} value={p.sex ?? ""} onChange={(e) => setP({ ...p, sex: e.target.value === "" ? null : Sex.parse(e.target.value) })}>
+              <option value="">not set</option>
+              {Sex.options.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm">Level
+            <select className={field} value={p.scalingLevel ?? ""} onChange={(e) => setP({ ...p, scalingLevel: e.target.value === "" ? null : ScalingLevel.parse(e.target.value) })}>
+              <option value="">not set</option>
+              {ScalingLevel.options.map((s) => <option key={s} value={s}>{label(s)}</option>)}
+            </select>
+          </label>
         </div>
       </section>
 
-      <section>
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Injuries and limitations</h2>
+        {p.injuries.map((inj, i) => (
+          <div key={inj.key} className="flex flex-wrap items-center gap-2 rounded border p-2">
+            <span className="font-medium">{conditionLabel(inj.key)}</span>
+            <select className={field} value={inj.side ?? ""} onChange={(e) => setInjury(i, { side: e.target.value === "" ? null : Side.parse(e.target.value) })}>
+              <option value="">no side</option>
+              {Side.options.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select className={field} value={inj.severity} onChange={(e) => setInjury(i, { severity: Severity.parse(e.target.value) })}>
+              {Severity.options.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <input className={`${field} grow`} placeholder="notes" value={inj.notes ?? ""} onChange={(e) => setInjury(i, { notes: e.target.value || null })} />
+            <button type="button" className="text-sm underline" onClick={() => setP({ ...p, injuries: p.injuries.filter((_, j) => j !== i) })}>remove</button>
+          </div>
+        ))}
+        <div className="flex gap-2">
+          <select className={field} value={newInjury} onChange={(e) => setNewInjury(e.target.value)}>
+            <option value="">add an injury or limitation…</option>
+            {catalog.filter((c) => !p.injuries.some((i) => i.key === c.key)).map((c) => (
+              <option key={c.key} value={c.key}>{c.label}</option>
+            ))}
+          </select>
+          <button type="button" className={chip(false)} disabled={!newInjury} onClick={() => {
+            setP({ ...p, injuries: [...p.injuries, { key: newInjury, side: null, severity: "moderate", notes: null, since: null }] });
+            setNewInjury("");
+          }}>Add</button>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
         <h2 className="font-semibold">Equipment</h2>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {EQUIPMENT.map((e) => (
-            <button key={e} type="button" onClick={() => setP({ ...p, equipment: toggle(p.equipment, e) })}
-              className={`rounded border px-3 py-1 text-sm ${p.equipment.includes(e) ? "bg-black text-white" : ""}`}>{e}</button>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="font-semibold">Availability</h2>
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-          <label>Hours/day <input type="number" min={0} step={0.25} value={p.availability.hoursPerDay ?? ""} onChange={(e) => setP({ ...p, availability: { ...p.availability, hoursPerDay: e.target.value ? Number(e.target.value) : null } })} className="w-20 rounded border p-1" /></label>
-          <label>Days/week <input type="number" min={0} max={7} value={p.availability.daysPerWeek ?? ""} onChange={(e) => setP({ ...p, availability: { ...p.availability, daysPerWeek: e.target.value ? Number(e.target.value) : null } })} className="w-20 rounded border p-1" /></label>
-          <div className="flex gap-1">
-            {DAYS.map((d) => (
-              <button key={d} type="button" onClick={() => setP({ ...p, availability: { ...p.availability, days: toggle(p.availability.days ?? [], d) } })}
-                className={`rounded border px-2 py-1 ${(p.availability.days ?? []).includes(d) ? "bg-black text-white" : ""}`}>{d}</button>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={p.equipment === null} onChange={(e) => setP({ ...p, equipment: e.target.checked ? null : [] })} />
+          I train in a fully equipped box
+        </label>
+        {p.equipment !== null && (
+          <div className="flex flex-wrap gap-2">
+            {equipmentOptions.map((e) => (
+              <button key={e} type="button" className={chip(p.equipment!.includes(e))}
+                onClick={() => setP({ ...p, equipment: toggle(p.equipment!, e) })}>{label(e)}</button>
             ))}
           </div>
-        </div>
+        )}
       </section>
 
-      <section>
-        <h2 className="font-semibold">Goals (one per line)</h2>
-        <textarea className="mt-2 w-full rounded border p-2" rows={3} value={p.goals.join("\n")}
-          onChange={(e) => setP({ ...p, goals: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })} />
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Benchmarks</h2>
+        {p.benchmarks.map((b, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <input className={field} list="movement-names" placeholder="movement" value={b.movement} onChange={(e) => setBenchmark(i, { movement: e.target.value })} />
+            <select className={field} value={b.kind} onChange={(e) => setBenchmark(i, { kind: BenchmarkKind.parse(e.target.value) })}>
+              {BenchmarkKind.options.map((k) => <option key={k} value={k}>{label(k)}</option>)}
+            </select>
+            <input className={`${field} w-24`} type="number" min={0} step="any" value={b.value || ""} onChange={(e) => setBenchmark(i, { value: Number(e.target.value) })} />
+            <select className={field} value={b.unit} onChange={(e) => setBenchmark(i, { unit: BenchmarkUnit.parse(e.target.value) })}>
+              {BenchmarkUnit.options.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+            <button type="button" className="text-sm underline" onClick={() => setP({ ...p, benchmarks: p.benchmarks.filter((_, j) => j !== i) })}>remove</button>
+          </div>
+        ))}
+        <button type="button" className={`${chip(false)} w-fit`} onClick={() => setP({
+          ...p, benchmarks: [...p.benchmarks, { movement: "", kind: "1rm", value: 0, unit: "kg", recordedAt: null }],
+        })}>Add benchmark</button>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Goals</h2>
+        {p.goals.map((g, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <input className={`${field} grow`} placeholder="e.g. first strict muscle-up" value={g.description} onChange={(e) => setGoal(i, { description: e.target.value })} />
+            <input className={field} list="movement-names" placeholder="movement (optional)" value={g.movement ?? ""} onChange={(e) => setGoal(i, { movement: e.target.value || null })} />
+            <button type="button" className="text-sm underline" onClick={() => setP({ ...p, goals: p.goals.filter((_, j) => j !== i) })}>remove</button>
+          </div>
+        ))}
+        <button type="button" className={`${chip(false)} w-fit`} onClick={() => setP({ ...p, goals: [...p.goals, { movement: null, description: "" }] })}>Add goal</button>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Availability</h2>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <label className="flex items-center gap-2">Minutes per day
+            <input className={`${field} w-20`} type="number" min={1} value={p.availability.minutesPerDay ?? ""} onChange={(e) => setP({ ...p, availability: { ...p.availability, minutesPerDay: intOrNull(e.target.value) } })} />
+          </label>
+          <label className="flex items-center gap-2">Days per week
+            <input className={`${field} w-16`} type="number" min={1} max={7} value={p.availability.daysPerWeek ?? ""} onChange={(e) => setP({ ...p, availability: { ...p.availability, daysPerWeek: intOrNull(e.target.value) } })} />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {Weekday.options.map((d) => (
+            <button key={d} type="button" className={chip(p.availability.days.includes(d))}
+              onClick={() => setP({ ...p, availability: { ...p.availability, days: toggle(p.availability.days, d) } })}>{d}</button>
+          ))}
+        </div>
       </section>
 
       <div className="flex items-center gap-3">
-        <button onClick={save} className="rounded bg-black px-4 py-2 text-white">Save profile</button>
-        <span className="text-sm text-gray-500">{status}</span>
+        <button type="button" className="rounded bg-black px-4 py-2 text-white" onClick={save}>Save profile</button>
+        {status && <span className="text-sm text-neutral-600">{status}</span>}
       </div>
     </div>
   );
 }
 ```
 
-- [ ] **Step 7: Implement `src/app/profile/page.tsx`** (server component loads profile, renders form)
+- [ ] **Step 8: Manual check**
 
-```tsx
-import { auth } from "@/auth";
-import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
-import { normalizeProfile } from "@/lib/profile";
-import ProfileForm from "./ProfileForm";
+`pnpm dev`, sign in, open `/profile`: add `Knee pain` (left, mild) and `Unable to hang`, untick "fully equipped box" and pick dumbbell + jump rope, add a benchmark "T2B" / max reps / 15 / reps, a goal, availability; Save → "Saved", reload → values persist and the benchmark reads "Toes-to-Bar".
 
-export default async function ProfilePage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/signin");
-  const row = await prisma.athleteProfile.findUnique({ where: { userId: session.user.id } });
-  const initial = normalizeProfile(row ? {
-    injuries: row.injuries, benchmarks: row.benchmarks, equipment: row.equipment, goals: row.goals, availability: row.availability,
-  } : null);
-  return (
-    <main className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Your profile</h1>
-      <ProfileForm initial={initial} />
-    </main>
-  );
-}
-```
+- [ ] **Step 9: Verify and commit**
 
-- [ ] **Step 8: Manual check + commit**
-
-Run: `pnpm dev`, sign in, open `/profile`, toggle items, save, reload — confirm values persist.
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
 
 ```bash
 git add -A
-git commit -m "feat: profile API and profile form with injuries/equipment/availability/goals"
+git commit -m "feat: structured athlete profile (injuries with side and severity, benchmarks, equipment, goals, availability)"
 ```
 
-### Task 6.3: Tailor API endpoints (run + save)
+---
 
-> **Save never re-runs the pipeline.** The LLM is nondeterministic — re-running on save would persist a *different* workout than the one the athlete reviewed (and pay for three more LLM calls). So `POST /api/tailor` only runs and returns the result; `POST /api/tailor/save` persists the exact reviewed result the client sends back, validated against the Zod schemas.
+### Task U2: Quota and the NDJSON engine stream
 
 **Files:**
-- Create: `src/app/api/tailor/route.ts`, `src/app/api/tailor/save/route.ts`, `src/lib/tailor-service.ts`
-- Test: `tests/tailor/tailor-service.test.ts`
+- Create: `src/lib/quota.ts`, `src/lib/quota-store.ts`, `src/lib/engine-events.ts`, `src/lib/engine-stream.ts`
+- Test: `tests/lib/quota.test.ts`, `tests/lib/engine-stream.test.ts`
+- Modify: `.env.example`
 
 **Interfaces:**
-- Consumes: `runTailorPipeline` (Task 4.4), domain repository (Task 2.3), `auth()` (Task 5.1).
-- Produces: `runTailorForAthlete(args: RunTailorArgs): Promise<PipelineResult>`; `POST /api/tailor` → `PipelineResult` JSON; `POST /api/tailor/save` → `{ ok: true, id: string }` — used by `TailorClient` (Task 6.4).
+- Consumes: `EngineUnsafeError`, `ProgressStage` (E8); `PipelineResult` (E1); `prisma` (S1).
+- Produces:
+  - `@/lib/quota`: `type UsageKind = "tailor" | "refine"`, `interface QuotaStore { countSince(userId: string, since: Date): Promise<number>; record(userId: string, kind: UsageKind): Promise<void> }`, `dailyLimit(): number`, `consumeQuota(store, userId, kind, limit, now?): Promise<{ allowed: boolean; used: number; limit: number }>`.
+  - `@/lib/quota-store`: `prismaQuotaStore: QuotaStore`.
+  - `@/lib/engine-events` (client-safe): `type EngineErrorCode = "engine_failed" | "engine_unsafe"`, `type EngineEvent`, `readEngineStream(response, onEvent): Promise<void>`.
+  - `@/lib/engine-stream` (server): `engineStreamResponse(run: (onProgress) => Promise<PipelineResult>): Response`.
 
-- [ ] **Step 1: Write the failing test (service composes repo + pipeline with an injected provider)**
+- [ ] **Step 1: Write the failing tests**
 
-`tests/tailor/tailor-service.test.ts`:
-
+`tests/lib/quota.test.ts`:
 ```ts
-import { describe, it, expect } from "vitest";
-import { runTailorForAthlete } from "@/lib/tailor-service";
-import { FakeProvider } from "@/lib/ai/fake-provider";
-import type { AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
+import { describe, it, expect, afterEach } from "vitest";
+import { consumeQuota, dailyLimit, type QuotaStore, type UsageKind } from "@/lib/quota";
 
-describe("runTailorForAthlete", () => {
-  it("runs the pipeline with injected domain data and provider", async () => {
-    const provider = new FakeProvider({
-      StructuredWorkout: { name: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", source: "adhoc",
-        blocks: [{ title: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
-          components: [{ movement: "Pull-up", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
-      StimulusClassification: { primary: "muscular_endurance", secondary: [], rationale: "Bodyweight grind." },
-      TailoringResult: { workout: { name: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", source: "adhoc",
-          blocks: [{ title: "Cindy (mod)", rawText: "AMRAP 20: 5 ring rows, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
-            components: [{ movement: "Ring Row", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] },
-        changes: [{ original: "Pull-up", modified: "Ring Row", reason: "Shoulder-friendly pull." }],
-        rationale: "Keeps muscular-endurance stimulus.", safetyNote: null },
-    });
+function memoryStore(): QuotaStore & { rows: { userId: string; kind: UsageKind; at: Date }[] } {
+  const rows: { userId: string; kind: UsageKind; at: Date }[] = [];
+  return {
+    rows,
+    async countSince(userId, since) { return rows.filter((r) => r.userId === userId && r.at >= since).length; },
+    async record(userId, kind) { rows.push({ userId, kind, at: new Date() }); },
+  };
+}
 
-    const profile: AthleteProfileInput = { injuries: ["shoulder_impingement"], benchmarks: {}, equipment: [], goals: [], availability: {} };
-    const request: TailorRequest = { constraintType: "injury", details: "shoulder", timeCapMinutes: null, targetMovement: null };
+describe("consumeQuota", () => {
+  it("records usage until the limit and then refuses", async () => {
+    const store = memoryStore();
+    expect(await consumeQuota(store, "u1", "tailor", 2)).toEqual({ allowed: true, used: 1, limit: 2 });
+    expect(await consumeQuota(store, "u1", "refine", 2)).toEqual({ allowed: true, used: 2, limit: 2 });
+    expect(await consumeQuota(store, "u1", "tailor", 2)).toEqual({ allowed: false, used: 2, limit: 2 });
+    expect(await consumeQuota(store, "u2", "tailor", 2)).toMatchObject({ allowed: true });
+    expect(store.rows).toHaveLength(3);
+  });
 
-    const result = await runTailorForAthlete({
-      provider,
-      input: { kind: "raw", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats" },
-      profile, request,
-      // injected domain data (so the test does not hit the DB)
-      domain: {
-        taxonomy: [{ key: "muscular_endurance", label: "Muscular endurance", description: "..." }],
-        movements: [],
-        contraindicationsFor: async () => [
-          { injuryKey: "shoulder_impingement", label: "Shoulder impingement", avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "kipping"] }], avoidPositions: [], avoidMovements: ["Pull-up"], notes: null },
-        ],
-      },
-    });
+  it("only counts the last 24 hours", async () => {
+    const store = memoryStore();
+    store.rows.push({ userId: "u1", kind: "tailor", at: new Date(Date.now() - 25 * 3600 * 1000) });
+    expect((await consumeQuota(store, "u1", "tailor", 1)).allowed).toBe(true);
+  });
+});
 
-    expect(result.tailored.changes[0].modified).toBe("Ring Row");
+describe("dailyLimit", () => {
+  const original = process.env.DAILY_ENGINE_LIMIT;
+  afterEach(() => {
+    if (original === undefined) delete process.env.DAILY_ENGINE_LIMIT;
+    else process.env.DAILY_ENGINE_LIMIT = original;
+  });
+
+  it("reads a positive integer and defaults to 30", () => {
+    process.env.DAILY_ENGINE_LIMIT = "5";
+    expect(dailyLimit()).toBe(5);
+    process.env.DAILY_ENGINE_LIMIT = "abc";
+    expect(dailyLimit()).toBe(30);
   });
 });
 ```
 
-- [ ] **Step 2: Run it, verify it fails**
+`tests/lib/engine-stream.test.ts`:
+```ts
+import { describe, it, expect, vi } from "vitest";
+import { engineStreamResponse } from "@/lib/engine-stream";
+import { readEngineStream, type EngineEvent } from "@/lib/engine-events";
+import { EngineUnsafeError } from "@/lib/engine/pipeline";
+import type { PipelineResult } from "@/lib/engine/types";
+import { fran, identityResult } from "../fixtures/workouts";
 
-Run: `pnpm exec vitest run tests/tailor/tailor-service.test.ts`
-Expected: FAIL — module not found.
+const result: PipelineResult = {
+  original: fran(), conditions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  findings: [], feedbackHistory: [], model: "fake",
+};
+
+async function events(response: Response): Promise<EngineEvent[]> {
+  const out: EngineEvent[] = [];
+  await readEngineStream(response, (e) => out.push(e));
+  return out;
+}
+
+describe("engine stream", () => {
+  it("streams progress then the result as NDJSON", async () => {
+    const res = engineStreamResponse(async (progress) => {
+      progress("analyzing");
+      progress("tailoring");
+      return result;
+    });
+    expect(res.headers.get("content-type")).toContain("application/x-ndjson");
+    expect(await events(res)).toEqual([
+      { type: "progress", stage: "analyzing" },
+      { type: "progress", stage: "tailoring" },
+      { type: "result", result },
+    ]);
+  });
+
+  it("reports a fail-closed engine as engine_unsafe", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = engineStreamResponse(async () => { throw new EngineUnsafeError([]); });
+    expect(await events(res)).toEqual([{ type: "error", error: "engine_unsafe" }]);
+    warn.mockRestore();
+  });
+
+  it("hides any other failure behind engine_failed", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = engineStreamResponse(async () => { throw new Error("secret stack"); });
+    const out = await events(res);
+    expect(out).toEqual([{ type: "error", error: "engine_failed" }]);
+    expect(JSON.stringify(out)).not.toContain("secret");
+    error.mockRestore();
+  });
+});
+```
+
+- [ ] **Step 2: Run them, verify they fail**
+
+Run: `pnpm exec vitest run tests/lib` → FAIL (modules not found).
+
+- [ ] **Step 3: Implement the quota**
+
+`src/lib/quota.ts`:
+```ts
+export type UsageKind = "tailor" | "refine";
+
+export interface QuotaStore {
+  countSince(userId: string, since: Date): Promise<number>;
+  record(userId: string, kind: UsageKind): Promise<void>;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function dailyLimit(): number {
+  const n = Number(process.env.DAILY_ENGINE_LIMIT);
+  return Number.isInteger(n) && n > 0 ? n : 30;
+}
+
+/** Counts engine runs in the last 24 h; records this one only when it is allowed. */
+export async function consumeQuota(
+  store: QuotaStore, userId: string, kind: UsageKind, limit: number, now: Date = new Date(),
+): Promise<{ allowed: boolean; used: number; limit: number }> {
+  const used = await store.countSince(userId, new Date(now.getTime() - DAY_MS));
+  if (used >= limit) return { allowed: false, used, limit };
+  await store.record(userId, kind);
+  return { allowed: true, used: used + 1, limit };
+}
+```
+
+`src/lib/quota-store.ts`:
+```ts
+import { prisma } from "@/lib/db";
+import type { QuotaStore } from "@/lib/quota";
+
+export const prismaQuotaStore: QuotaStore = {
+  countSince: (userId, since) => prisma.llmUsage.count({ where: { userId, createdAt: { gte: since } } }),
+  record: async (userId, kind) => {
+    await prisma.llmUsage.create({ data: { userId, kind } });
+  },
+};
+```
+
+Append to `.env.example`:
+```bash
+# Engine runs (tailor + refine) allowed per user per rolling 24 h
+DAILY_ENGINE_LIMIT="30"
+```
+
+- [ ] **Step 4: Implement the stream**
+
+`src/lib/engine-events.ts` (imported by client components — keep it free of server code):
+```ts
+import type { ProgressStage } from "@/lib/engine/pipeline";
+import type { PipelineResult } from "@/lib/engine/types";
+
+export type EngineErrorCode = "engine_failed" | "engine_unsafe";
+
+export type EngineEvent =
+  | { type: "progress"; stage: ProgressStage }
+  | { type: "result"; result: PipelineResult }
+  | { type: "error"; error: EngineErrorCode };
+
+/** Reads an NDJSON engine stream, calling onEvent once per line. */
+export async function readEngineStream(response: Response, onEvent: (e: EngineEvent) => void): Promise<void> {
+  if (!response.body) throw new Error("empty engine response");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) onEvent(JSON.parse(line) as EngineEvent);
+      newline = buffer.indexOf("\n");
+    }
+  }
+  const rest = buffer.trim();
+  if (rest) onEvent(JSON.parse(rest) as EngineEvent);
+}
+```
+
+`src/lib/engine-stream.ts`:
+```ts
+import { EngineUnsafeError, type ProgressStage } from "@/lib/engine/pipeline";
+import type { PipelineResult } from "@/lib/engine/types";
+import type { EngineEvent } from "@/lib/engine-events";
+
+/** Streams progress stages, then the result or an error code, as NDJSON. Never leaks exception text. */
+export function engineStreamResponse(
+  run: (onProgress: (stage: ProgressStage) => void) => Promise<PipelineResult>,
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (e: EngineEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(e)}\n`));
+      try {
+        const result = await run((stage) => send({ type: "progress", stage }));
+        send({ type: "result", result });
+      } catch (e) {
+        if (e instanceof EngineUnsafeError) {
+          console.warn("engine failed closed", e.findings);
+          send({ type: "error", error: "engine_unsafe" });
+        } else {
+          console.error("engine failed", e);
+          send({ type: "error", error: "engine_failed" });
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+```
+
+- [ ] **Step 5: Run them, verify they pass**
+
+Run: `pnpm exec vitest run tests/lib` → PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: per-user daily engine quota and the NDJSON progress stream"
+```
+
+---
+
+### Task U3: Engine API routes (tailor, refine, save)
+
+**Files:**
+- Create: `src/lib/api-schemas.ts`, `src/lib/tailor-service.ts`, `src/app/api/tailor/route.ts`, `src/app/api/tailor/refine/route.ts`, `src/app/api/tailor/save/route.ts`
+- Test: `tests/lib/api-schemas.test.ts`
+
+**Interfaces:**
+- Consumes: `runTailorPipeline`, `runRefinePipeline` (E8); `getProvider` (E3); `getDomainData` (D5); `consumeQuota`, `dailyLimit`, `prismaQuotaStore`, `engineStreamResponse` (U2); `normalizeProfile`, `jsonError` (U1); `getUserId` (S2); `toJson` (S1).
+- Produces: `TailorBodySchema` (`{ input, request }`), `RefineBodySchema` (`{ previous, feedback, request }`), `SaveBodySchema` (`{ result, request }`) from `@/lib/api-schemas`; `loadProfile(userId): Promise<AthleteProfile>` from `@/lib/tailor-service`; routes `POST /api/tailor` and `POST /api/tailor/refine` (NDJSON `EngineEvent` stream; JSON error codes `unauthorized` 401, `invalid_request` 400, `engine_unavailable` 503, `quota_exceeded` 429), `POST /api/tailor/save` → `{ ok: true, id }`.
+
+- [ ] **Step 1: Write the failing test `tests/lib/api-schemas.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { RefineBodySchema, SaveBodySchema, TailorBodySchema } from "@/lib/api-schemas";
+import { emptyRequest, type PipelineResult } from "@/lib/engine/types";
+import { fran, identityResult } from "../fixtures/workouts";
+
+const result: PipelineResult = {
+  original: fran(), conditions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  findings: [], feedbackHistory: [], model: "fake",
+};
+
+describe("API bodies", () => {
+  it("accepts a paste and a manual tailor request", () => {
+    expect(TailorBodySchema.safeParse({ input: { kind: "paste", rawText: "Fran" }, request: emptyRequest() }).success).toBe(true);
+    expect(TailorBodySchema.safeParse({
+      input: { kind: "manual", workout: { name: null, blocks: [{ title: null, format: "amrap", scheme: null, timeDomainMinutes: 10, coachingNotes: null, components: [] }] } },
+      request: emptyRequest(),
+    }).success).toBe(true);
+  });
+
+  it("rejects an empty or oversized paste", () => {
+    expect(TailorBodySchema.safeParse({ input: { kind: "paste", rawText: "" }, request: emptyRequest() }).success).toBe(false);
+    expect(TailorBodySchema.safeParse({ input: { kind: "paste", rawText: "x".repeat(20001) }, request: emptyRequest() }).success).toBe(false);
+  });
+
+  it("requires feedback to refine", () => {
+    expect(RefineBodySchema.safeParse({ previous: result, feedback: "", request: emptyRequest() }).success).toBe(false);
+    expect(RefineBodySchema.safeParse({ previous: result, feedback: "too easy", request: emptyRequest() }).success).toBe(true);
+  });
+
+  it("saves a full pipeline result", () => {
+    expect(SaveBodySchema.safeParse({ result, request: emptyRequest() }).success).toBe(true);
+    expect(SaveBodySchema.safeParse({ result: { ...result, model: "" }, request: emptyRequest() }).success).toBe(false);
+  });
+});
+```
+
+Run: `pnpm exec vitest run tests/lib/api-schemas.test.ts` → FAIL.
+
+- [ ] **Step 2: Implement `src/lib/api-schemas.ts`**
+
+```ts
+import { z } from "zod";
+import { ManualWorkoutSchema, PipelineResultSchema, TailorRequestSchema } from "@/lib/engine/types";
+
+export const WorkoutInputSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("paste"), rawText: z.string().min(1).max(20000) }),
+  z.object({ kind: z.literal("manual"), workout: ManualWorkoutSchema }),
+]);
+
+export const TailorBodySchema = z.object({ input: WorkoutInputSchema, request: TailorRequestSchema });
+export const RefineBodySchema = z.object({
+  previous: PipelineResultSchema,
+  feedback: z.string().trim().min(1).max(2000),
+  request: TailorRequestSchema,
+});
+export const SaveBodySchema = z.object({ result: PipelineResultSchema, request: TailorRequestSchema });
+```
+
+Run: `pnpm exec vitest run tests/lib/api-schemas.test.ts` → PASS.
 
 - [ ] **Step 3: Implement `src/lib/tailor-service.ts`**
 
 ```ts
-import type { LlmProvider } from "@/lib/ai/provider";
-import { runTailorPipeline, type WorkoutInput, type PipelineResult } from "@/lib/engine/pipeline";
-import type { AthleteProfileInput, TailorRequest } from "@/lib/engine/types";
-import type { Movement, InjuryContraindication, StimulusDef } from "@/lib/domain/types";
-import { getAllMovements, getContraindicationsForInjuries, getStimulusDefs } from "@/lib/domain/repository";
-
-export interface DomainData {
-  taxonomy: StimulusDef[];
-  movements: Movement[];
-  contraindicationsFor: (injuryKeys: string[]) => Promise<InjuryContraindication[]>;
-}
-
-export interface RunTailorArgs {
-  provider: LlmProvider;
-  input: WorkoutInput;
-  profile: AthleteProfileInput;
-  request: TailorRequest;
-  domain?: DomainData; // injectable for tests; defaults to DB-backed
-}
-
-async function defaultDomain(): Promise<DomainData> {
-  const [taxonomy, movements] = await Promise.all([getStimulusDefs(), getAllMovements()]);
-  return { taxonomy, movements, contraindicationsFor: getContraindicationsForInjuries };
-}
-
-export async function runTailorForAthlete(args: RunTailorArgs): Promise<PipelineResult> {
-  const domain = args.domain ?? (await defaultDomain());
-  const contraindications = await domain.contraindicationsFor(args.profile.injuries);
-  return runTailorPipeline(args.provider, {
-    input: args.input,
-    profile: args.profile,
-    request: args.request,
-    taxonomy: domain.taxonomy,
-    movements: domain.movements,
-    contraindications,
-  });
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/tailor/tailor-service.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Implement `src/app/api/tailor/route.ts`** (run only — no persistence)
-
-```ts
-import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
-import { getProvider } from "@/lib/ai";
+import type { AthleteProfile } from "@/lib/engine/types";
 import { normalizeProfile } from "@/lib/profile";
-import { runTailorForAthlete } from "@/lib/tailor-service";
-import { StructuredWorkoutSchema, TailorRequestSchema } from "@/lib/engine/types";
-import { z } from "zod";
 
-const BodySchema = z.object({
-  input: z.union([
-    z.object({ kind: z.literal("raw"), rawText: z.string().min(1) }),
-    z.object({ kind: z.literal("structured"), workout: StructuredWorkoutSchema }),
-  ]),
-  request: TailorRequestSchema,
-});
-
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  let body;
-  try {
-    body = BodySchema.parse(await req.json());
-  } catch {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
-  }
-
-  const row = await prisma.athleteProfile.findUnique({ where: { userId: session.user.id } });
-  const profile = normalizeProfile(row ? {
-    injuries: row.injuries, benchmarks: row.benchmarks, equipment: row.equipment, goals: row.goals, availability: row.availability,
-  } : null);
-
-  try {
-    const result = await runTailorForAthlete({ provider: getProvider(), input: body.input, profile, request: body.request });
-    return NextResponse.json(result);
-  } catch (e) {
-    console.error("tailor pipeline failed", e); // never leak exception text to the client
-    return NextResponse.json({ error: "engine_failed" }, { status: 502 });
-  }
+export async function loadProfile(userId: string): Promise<AthleteProfile> {
+  const row = await prisma.athleteProfile.findUnique({ where: { userId } });
+  return normalizeProfile(row?.data);
 }
 ```
 
-- [ ] **Step 6: Implement `src/app/api/tailor/save/route.ts`** (persist a reviewed result — no LLM calls)
+- [ ] **Step 4: Implement `src/app/api/tailor/route.ts`**
 
 ```ts
-import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { prisma } from "@/lib/db";
-import {
-  StructuredWorkoutSchema, StimulusClassificationSchema, TailoringResultSchema, TailorRequestSchema,
-} from "@/lib/engine/types";
-import { z } from "zod";
+import { getProvider } from "@/lib/ai";
+import type { LlmProvider } from "@/lib/ai/provider";
+import { TailorBodySchema } from "@/lib/api-schemas";
+import { getDomainData } from "@/lib/domain/repository";
+import { runTailorPipeline } from "@/lib/engine/pipeline";
+import { engineStreamResponse } from "@/lib/engine-stream";
+import { jsonError } from "@/lib/http";
+import { consumeQuota, dailyLimit } from "@/lib/quota";
+import { prismaQuotaStore } from "@/lib/quota-store";
+import { getUserId } from "@/lib/session";
+import { loadProfile } from "@/lib/tailor-service";
 
-const SaveBodySchema = z.object({
-  original: StructuredWorkoutSchema,
-  classification: StimulusClassificationSchema,
-  tailored: TailoringResultSchema,
-  request: TailorRequestSchema,
-});
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await getUserId();
+  if (!userId) return jsonError("unauthorized", 401);
+  const body = TailorBodySchema.safeParse(await req.json().catch(() => null));
+  if (!body.success) return jsonError("invalid_request", 400);
 
-  let body;
+  let provider: LlmProvider;
   try {
-    body = SaveBodySchema.parse(await req.json());
-  } catch {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
+    provider = getProvider();
+  } catch (e) {
+    console.error("engine unavailable", e);
+    return jsonError("engine_unavailable", 503);
   }
+  const quota = await consumeQuota(prismaQuotaStore, userId, "tailor", dailyLimit());
+  if (!quota.allowed) return jsonError("quota_exceeded", 429);
 
-  const saved = await prisma.tailoredWorkout.create({
-    data: {
-      userId: session.user.id,
-      originalWorkout: body.original,
-      request: body.request,
-      tailoredWorkout: body.tailored.workout,
-      changes: body.tailored.changes,
-      rationale: body.tailored.rationale,
-      safetyNote: body.tailored.safetyNote,
-      stimulus: body.classification,
-    },
-  });
-
-  return NextResponse.json({ ok: true, id: saved.id });
-}
-```
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add -A
-git commit -m "feat: tailor service, POST /api/tailor (run) and POST /api/tailor/save (persist)"
-```
-
-### Task 6.4: Tailor page (ingest → constraint → result)
-
-**Files:**
-- Create: `src/app/tailor/page.tsx`, `src/app/tailor/TailorClient.tsx`, `src/components/WorkoutView.tsx`
-
-- [ ] **Step 1: Implement `src/components/WorkoutView.tsx`** (renders a StructuredWorkout)
-
-```tsx
-import type { StructuredWorkout } from "@/lib/engine/types";
-
-export function WorkoutView({ workout, title }: { workout: StructuredWorkout; title: string }) {
-  return (
-    <div className="rounded border p-4">
-      <div className="text-xs uppercase tracking-wide text-gray-500">{title}</div>
-      <div className="font-semibold">{workout.name ?? "Workout"}</div>
-      <div className="mt-2 flex flex-col gap-3">
-        {workout.blocks.map((b, bi) => (
-          <div key={bi} className="border-l-2 border-gray-200 pl-3">
-            {b.title && <div className="text-sm font-medium">{b.title}</div>}
-            <div className="text-xs uppercase tracking-wide text-gray-400">
-              {b.format.replaceAll("_", " ")}
-              {b.scheme ? ` · ${b.scheme}` : ""}
-              {b.timeDomainMinutes != null ? ` · ~${b.timeDomainMinutes} min` : ""}
-            </div>
-            {b.components.length > 0 && (
-              <ul className="mt-1 list-disc pl-5 text-sm">
-                {b.components.map((c, i) => (
-                  <li key={i}>
-                    {c.reps != null ? `${c.reps} ` : ""}{c.movement}
-                    {c.load ? ` @ ${c.load}` : ""}
-                    {c.distanceMeters ? ` ${c.distanceMeters} m` : ""}
-                    {c.calories ? ` ${c.calories} cal` : ""}
-                    {c.durationSeconds ? ` ${c.durationSeconds}s` : ""}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {b.coachingNotes && <p className="mt-1 text-xs text-gray-600">{b.coachingNotes}</p>}
-          </div>
-        ))}
-      </div>
-    </div>
+  const [profile, domain] = await Promise.all([loadProfile(userId), getDomainData()]);
+  return engineStreamResponse((onProgress) =>
+    runTailorPipeline(provider, { input: body.data.input, profile, request: body.data.request, domain, onProgress }),
   );
 }
 ```
 
-- [ ] **Step 2: Implement `src/app/tailor/TailorClient.tsx`** (client component)
+- [ ] **Step 5: Implement `src/app/api/tailor/refine/route.ts`**
+
+```ts
+import { getProvider } from "@/lib/ai";
+import type { LlmProvider } from "@/lib/ai/provider";
+import { RefineBodySchema } from "@/lib/api-schemas";
+import { getDomainData } from "@/lib/domain/repository";
+import { runRefinePipeline } from "@/lib/engine/pipeline";
+import { engineStreamResponse } from "@/lib/engine-stream";
+import { jsonError } from "@/lib/http";
+import { consumeQuota, dailyLimit } from "@/lib/quota";
+import { prismaQuotaStore } from "@/lib/quota-store";
+import { getUserId } from "@/lib/session";
+import { loadProfile } from "@/lib/tailor-service";
+
+export const maxDuration = 120;
+
+export async function POST(req: Request) {
+  const userId = await getUserId();
+  if (!userId) return jsonError("unauthorized", 401);
+  const body = RefineBodySchema.safeParse(await req.json().catch(() => null));
+  if (!body.success) return jsonError("invalid_request", 400);
+
+  let provider: LlmProvider;
+  try {
+    provider = getProvider();
+  } catch (e) {
+    console.error("engine unavailable", e);
+    return jsonError("engine_unavailable", 503);
+  }
+  const quota = await consumeQuota(prismaQuotaStore, userId, "refine", dailyLimit());
+  if (!quota.allowed) return jsonError("quota_exceeded", 429);
+
+  const [profile, domain] = await Promise.all([loadProfile(userId), getDomainData()]);
+  return engineStreamResponse((onProgress) =>
+    runRefinePipeline(provider, {
+      previous: body.data.previous, feedback: body.data.feedback, profile, request: body.data.request, domain, onProgress,
+    }),
+  );
+}
+```
+
+- [ ] **Step 6: Implement `src/app/api/tailor/save/route.ts`** (persists exactly what was reviewed — never re-runs the nondeterministic engine)
+
+```ts
+import { NextResponse } from "next/server";
+import { SaveBodySchema } from "@/lib/api-schemas";
+import { prisma } from "@/lib/db";
+import { jsonError } from "@/lib/http";
+import { toJson } from "@/lib/json";
+import { getUserId } from "@/lib/session";
+
+export async function POST(req: Request) {
+  const userId = await getUserId();
+  if (!userId) return jsonError("unauthorized", 401);
+  const body = SaveBodySchema.safeParse(await req.json().catch(() => null));
+  if (!body.success) return jsonError("invalid_request", 400);
+  const { result, request } = body.data;
+  const saved = await prisma.tailoredWorkout.create({
+    data: {
+      userId,
+      original: toJson(result.original),
+      request: toJson(request),
+      conditions: toJson(result.conditions),
+      tailored: toJson(result.tailored),
+      findings: toJson(result.findings),
+      feedbackHistory: toJson(result.feedbackHistory),
+      model: result.model,
+    },
+  });
+  return NextResponse.json({ ok: true, id: saved.id });
+}
+```
+
+- [ ] **Step 7: Smoke-test the routes** (signed in, `pnpm dev`, `GEMINI_API_KEY` set)
+
+In the browser devtools console on `http://localhost:3000`:
+```js
+const r = await fetch("/api/tailor", { method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ input: { kind: "paste", rawText: "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
+    request: { situation: "sore right shoulder", timeCapMinutes: null, targetMovement: null, equipmentToday: null } }) });
+console.log(await r.text());
+```
+Expected: NDJSON lines `progress` (analyzing, tailoring, validating) then one `result` without Thruster or Pull-up. Signed out, the same call returns `{"error":"unauthorized"}` with 401.
+
+- [ ] **Step 8: Verify and commit**
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
+
+```bash
+git add -A
+git commit -m "feat: streaming tailor and refine endpoints with quota, and save-what-you-reviewed"
+```
+
+---
+
+### Task U4: Tailor page — input, request, progress and result
+
+**Files:**
+- Create: `src/components/WorkoutView.tsx`, `src/app/tailor/page.tsx`, `src/app/tailor/TailorClient.tsx`, `src/app/tailor/ResultView.tsx`, `src/app/tailor/ManualEntryForm.tsx` (a stub here; completed in U5)
+
+**Interfaces:**
+- Consumes: `readEngineStream`, `EngineEvent` (U2); `renderComponent` (E4); E1 types; routes (U3).
+- Produces: `WorkoutView({ heading, name, blocks, badge? })`, `ResultView({ result, conditionLabels })`, `TailorClient({ movementNames, equipmentOptions, conditionLabels })`, `ManualEntryForm({ value, onChange, movementNames })`, `emptyManualWorkout()`.
+
+- [ ] **Step 1: Implement `src/components/WorkoutView.tsx`**
 
 ```tsx
-"use client";
-import { useState } from "react";
-import type { PipelineResult } from "@/lib/engine/pipeline";
-import type { TailorRequest } from "@/lib/engine/types";
+import type { ReactNode } from "react";
+import { renderComponent } from "@/lib/engine/render-text";
+import type { WorkoutBlock, WorkoutComponent } from "@/lib/engine/types";
+
+interface Props {
+  heading: string;
+  name: string | null;
+  blocks: WorkoutBlock[];
+  badge?: (blockIndex: number, component: WorkoutComponent) => ReactNode;
+}
+
+const words = (s: string) => s.replaceAll("_", " ");
+
+export function WorkoutView({ heading, name, blocks, badge }: Props) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{heading}</h3>
+      {name && <div className="font-medium">{name}</div>}
+      {blocks.map((b, i) => (
+        <div key={i} className="rounded border p-3">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="font-medium">{b.title ?? `Block ${i + 1}`}</span>
+            {b.day !== null && <span className="text-xs text-neutral-500">Day {b.day}</span>}
+            <span className="text-xs text-neutral-500">
+              {words(b.format)}{b.timeDomainMinutes !== null ? ` · ~${b.timeDomainMinutes} min` : ""}
+            </span>
+            {b.stimulus && (
+              <span className="rounded bg-neutral-100 px-2 text-xs">
+                {words(b.stimulus.quality)}{b.stimulus.energySystem ? ` · ${b.stimulus.energySystem}` : ""}
+              </span>
+            )}
+          </div>
+          {b.scheme && <div className="text-sm">{b.scheme}</div>}
+          {b.components.length > 0 ? (
+            <ul className="mt-1 flex flex-col gap-1 text-sm">
+              {b.components.map((c, j) => (
+                <li key={j} className="flex flex-wrap items-center gap-2">{renderComponent(c)}{badge?.(i, c)}</li>
+              ))}
+            </ul>
+          ) : (
+            <pre className="mt-1 whitespace-pre-wrap font-sans text-sm">{b.rawText}</pre>
+          )}
+          {b.coachingNotes && <p className="mt-1 text-xs text-neutral-600">{b.coachingNotes}</p>}
+        </div>
+      ))}
+    </section>
+  );
+}
+```
+
+- [ ] **Step 2: Implement `src/app/tailor/ResultView.tsx`**
+
+```tsx
 import { WorkoutView } from "@/components/WorkoutView";
+import type { Finding, PipelineResult, WorkoutComponent } from "@/lib/engine/types";
 
-const CONSTRAINTS: { value: TailorRequest["constraintType"]; label: string }[] = [
-  { value: "none", label: "No constraint" },
-  { value: "injury", label: "Injury / pain" },
-  { value: "time", label: "Limited time" },
-  { value: "missed_days", label: "Missed days" },
-  { value: "movement_goal", label: "Improve a movement" },
-];
+const BADGE: Partial<Record<Finding["kind"], { text: string; className: string }>> = {
+  caution_movement: { text: "caution", className: "bg-amber-100 text-amber-900" },
+  unrecognized_movement: { text: "not verified", className: "bg-neutral-200 text-neutral-800" },
+  equipment_unavailable: { text: "missing equipment", className: "bg-red-100 text-red-900" },
+  contraindicated_movement: { text: "contraindicated", className: "bg-red-100 text-red-900" },
+};
 
-export default function TailorClient() {
-  const [rawText, setRawText] = useState("");
-  const [constraintType, setConstraintType] = useState<TailorRequest["constraintType"]>("none");
-  const [details, setDetails] = useState("");
-  const [timeCap, setTimeCap] = useState<string>("");
-  const [target, setTarget] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<PipelineResult | null>(null);
-  // The request that produced `result` — sent along on save so history records what was asked.
-  const [lastRequest, setLastRequest] = useState<TailorRequest | null>(null);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-
-  function buildRequest(): TailorRequest {
-    return {
-      constraintType, details,
-      timeCapMinutes: constraintType === "time" && timeCap ? Number(timeCap) : null,
-      targetMovement: constraintType === "movement_goal" && target ? target : null,
-    };
-  }
-
-  async function run() {
-    setLoading(true); setError(""); setResult(null); setSaveStatus("idle");
-    const request = buildRequest();
-    const res = await fetch("/api/tailor", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: { kind: "raw", rawText }, request }),
-    });
-    setLoading(false);
-    if (!res.ok) { setError("Could not tailor this workout. Try again."); return; }
-    setLastRequest(request);
-    setResult(await res.json());
-  }
-
-  // Persists the EXACT result on screen — no pipeline re-run (the LLM is nondeterministic).
-  async function save() {
-    if (!result || !lastRequest) return;
-    setSaveStatus("saving");
-    const res = await fetch("/api/tailor/save", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        original: result.original,
-        classification: result.classification,
-        tailored: result.tailored,
-        request: lastRequest,
-      }),
-    });
-    setSaveStatus(res.ok ? "saved" : "error");
-  }
+export function ResultView({ result, conditionLabels }: { result: PipelineResult; conditionLabels: Record<string, string> }) {
+  const { tailored } = result;
+  const badges = (blockIndex: number, c: WorkoutComponent) =>
+    result.findings
+      .filter((f) => f.blockIndex === blockIndex && f.movement === (c.canonical ?? c.movement) && BADGE[f.kind])
+      .map((f) => (
+        <span key={f.kind} title={f.message} className={`rounded px-2 text-xs ${BADGE[f.kind]!.className}`}>
+          {BADGE[f.kind]!.text}
+        </span>
+      ));
 
   return (
-    <div className="flex flex-col gap-5">
-      <label className="flex flex-col gap-1">
-        <span className="font-semibold">Paste today's workout</span>
-        <textarea rows={5} className="rounded border p-2" value={rawText} onChange={(e) => setRawText(e.target.value)}
-          placeholder={"e.g.\n21-15-9 for time\nThrusters 95 lb\nPull-ups"} />
-      </label>
-
-      <div className="flex flex-col gap-2">
-        <span className="font-semibold">What's today's situation?</span>
-        <div className="flex flex-wrap gap-2">
-          {CONSTRAINTS.map((c) => (
-            <button key={c.value} type="button" onClick={() => setConstraintType(c.value)}
-              className={`rounded border px-3 py-1 text-sm ${constraintType === c.value ? "bg-black text-white" : ""}`}>{c.label}</button>
+    <div className="flex flex-col gap-6">
+      {result.conditions.length > 0 && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {result.conditions.map((c) => (
+            <span key={c.key} className="rounded border px-2 py-1">
+              {conditionLabels[c.key] ?? c.key}{c.side ? ` (${c.side})` : ""} · {c.severity}
+              {c.source === "today" ? " · today" : ""}
+            </span>
           ))}
         </div>
-        {constraintType !== "none" && (
-          <textarea rows={2} className="rounded border p-2" value={details} onChange={(e) => setDetails(e.target.value)}
-            placeholder="Add detail (e.g., sore right shoulder, no overhead pressing)" />
-        )}
-        {constraintType === "time" && (
-          <input type="number" min={5} className="w-32 rounded border p-2" value={timeCap} onChange={(e) => setTimeCap(e.target.value)} placeholder="minutes" />
-        )}
-        {constraintType === "movement_goal" && (
-          <input className="rounded border p-2" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="movement to improve (e.g., Toes-to-Bar)" />
-        )}
+      )}
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <WorkoutView heading="Original" name={result.original.name} blocks={result.original.blocks} />
+        <WorkoutView heading="Tailored for today" name={tailored.name} blocks={tailored.blocks} badge={badges} />
       </div>
 
-      <div className="flex gap-3">
-        <button disabled={!rawText || loading} onClick={run} className="rounded bg-black px-4 py-2 text-white disabled:opacity-40">
-          {loading ? "Tailoring…" : "Tailor it"}
-        </button>
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {tailored.droppedBlocks.length > 0 && (
+        <section>
+          <h3 className="font-semibold">Dropped</h3>
+          <ul className="list-disc pl-5 text-sm">
+            {tailored.droppedBlocks.map((d) => (
+              <li key={d.index}>{result.original.blocks[d.index]?.title ?? `Block ${d.index + 1}`}: {d.reason}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      {result && (
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <WorkoutView workout={result.original} title="Original" />
-            <WorkoutView workout={result.tailored.workout} title="Tailored for you" />
-          </div>
-          <div className="rounded border p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">Stimulus</div>
-            <div className="text-sm">{result.classification.primary.replaceAll("_", " ")} — {result.classification.rationale}</div>
-          </div>
-          <div className="rounded border p-4">
-            <div className="text-xs uppercase tracking-wide text-gray-500">What changed</div>
-            <ul className="mt-1 list-disc pl-5 text-sm">
-              {result.tailored.changes.map((c, i) => (<li key={i}><b>{c.original}</b> → <b>{c.modified}</b>: {c.reason}</li>))}
-              {result.tailored.changes.length === 0 && <li>No changes — the original already fits.</li>}
-            </ul>
-            <p className="mt-2 text-sm">{result.tailored.rationale}</p>
-            {result.tailored.safetyNote && <p className="mt-2 text-sm text-amber-700">⚠ {result.tailored.safetyNote}</p>}
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={save} disabled={saveStatus === "saving" || saveStatus === "saved"} className="rounded border px-4 py-2 disabled:opacity-40">
-              {saveStatus === "saved" ? "Saved ✓" : saveStatus === "saving" ? "Saving…" : "Save to history"}
-            </button>
-            {saveStatus === "error" && <span className="text-sm text-red-600">Could not save. Try again.</span>}
-          </div>
-        </div>
+      {tailored.changes.length > 0 && (
+        <section>
+          <h3 className="font-semibold">What changed</h3>
+          <ul className="list-disc pl-5 text-sm">
+            {tailored.changes.map((c, i) => (
+              <li key={i}><span className="line-through">{c.original}</span> → <b>{c.modified}</b>: {c.reason}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section>
+        <h3 className="font-semibold">Why the stimulus is preserved</h3>
+        <p className="text-sm">{tailored.rationale}</p>
+      </section>
+
+      {tailored.safetyNote && (
+        <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">{tailored.safetyNote}</p>
+      )}
+
+      {result.findings.some((f) => !BADGE[f.kind] || f.blockIndex === null) && (
+        <section>
+          <h3 className="font-semibold">Checks</h3>
+          <ul className="list-disc pl-5 text-sm text-neutral-700">
+            {result.findings.filter((f) => !BADGE[f.kind] || f.blockIndex === null).map((f, i) => <li key={i}>{f.message}</li>)}
+          </ul>
+        </section>
       )}
     </div>
   );
 }
 ```
 
-- [ ] **Step 3: Implement `src/app/tailor/page.tsx`**
+- [ ] **Step 3: Create the manual-entry stub `src/app/tailor/ManualEntryForm.tsx`** (U5 replaces the component body)
 
 ```tsx
-import { auth } from "@/auth";
+"use client";
+
+import type { ComponentDraft, ManualBlock, ManualWorkout } from "@/lib/engine/types";
+
+export const emptyComponent = (): ComponentDraft => ({
+  movement: "", reps: null, load: null, loadKg: null, percent1RM: null,
+  distanceMeters: null, calories: null, durationSeconds: null, notes: null,
+});
+export const emptyBlock = (): ManualBlock => ({
+  title: null, format: "for_time", scheme: null, timeDomainMinutes: null, coachingNotes: null, components: [emptyComponent()],
+});
+export const emptyManualWorkout = (): ManualWorkout => ({ name: null, blocks: [emptyBlock()] });
+
+interface Props {
+  value: ManualWorkout;
+  onChange: (w: ManualWorkout) => void;
+  movementNames: string[];
+}
+
+export function ManualEntryForm(_props: Props) {
+  return <p className="text-sm text-neutral-600">Manual entry is coming in the next step.</p>;
+}
+```
+
+- [ ] **Step 4: Implement `src/app/tailor/page.tsx`**
+
+```tsx
 import { redirect } from "next/navigation";
-import TailorClient from "./TailorClient";
+import { getDomainData } from "@/lib/domain/repository";
+import { Equipment } from "@/lib/domain/types";
+import { getUserId } from "@/lib/session";
+import { TailorClient } from "./TailorClient";
 
 export default async function TailorPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/signin");
+  if (!(await getUserId())) redirect("/signin");
+  const domain = await getDomainData();
   return (
-    <main className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Tailor a workout</h1>
-      <TailorClient />
-    </main>
+    <TailorClient
+      movementNames={domain.movements.map((m) => m.name)}
+      equipmentOptions={[...Equipment.options]}
+      conditionLabels={Object.fromEntries(domain.contraindications.map((c) => [c.key, c.label]))}
+    />
   );
 }
 ```
 
-- [ ] **Step 4: Manual end-to-end check (requires `GEMINI_API_KEY` and a pushed schema — `pnpm db:push`)**
+- [ ] **Step 5: Implement `src/app/tailor/TailorClient.tsx`**
 
-Run: `pnpm dev`, sign in, set a profile (e.g., shoulder_impingement), go to `/tailor`, paste a workout, pick "Injury", tailor it. Confirm original vs tailored render, changes avoid contraindicated movements, and a stimulus + rationale appear.
+```tsx
+"use client";
 
-- [ ] **Step 5: Commit**
+import { useState } from "react";
+import type { Equipment } from "@/lib/domain/types";
+import type { ProgressStage } from "@/lib/engine/pipeline";
+import { ManualWorkoutSchema, type ManualWorkout, type PipelineResult, type TailorRequest } from "@/lib/engine/types";
+import { readEngineStream } from "@/lib/engine-events";
+import { ManualEntryForm, emptyManualWorkout } from "./ManualEntryForm";
+import { ResultView } from "./ResultView";
+
+interface Props {
+  movementNames: string[];
+  equipmentOptions: Equipment[];
+  conditionLabels: Record<string, string>;
+}
+
+const STAGE_TEXT: Record<ProgressStage, string> = {
+  analyzing: "Reading the workout and your situation…",
+  tailoring: "Tailoring the session…",
+  validating: "Checking it against your conditions and equipment…",
+  retrying: "Fixing what the check found…",
+};
+
+const ERROR_TEXT: Record<string, string> = {
+  unauthorized: "Your session expired. Sign in again.",
+  invalid_request: "Something in the form is not valid.",
+  quota_exceeded: "You reached today's limit. Try again tomorrow.",
+  engine_unavailable: "The engine is not configured.",
+  engine_failed: "The engine failed. Try again.",
+  engine_unsafe: "We could not produce a modification that is safe for your conditions. Rephrase your situation, or check with a professional.",
+};
+
+const field = "rounded border px-2 py-1 text-sm";
+const chip = (on: boolean) => `rounded border px-3 py-1 text-sm ${on ? "bg-black text-white" : ""}`;
+
+export function TailorClient({ movementNames, equipmentOptions, conditionLabels }: Props) {
+  const [mode, setMode] = useState<"paste" | "manual">("paste");
+  const [rawText, setRawText] = useState("");
+  const [manual, setManual] = useState<ManualWorkout>(emptyManualWorkout());
+  const [situation, setSituation] = useState("");
+  const [timeCap, setTimeCap] = useState("");
+  const [target, setTarget] = useState("");
+  const [overrideEquipment, setOverrideEquipment] = useState(false);
+  const [equipmentToday, setEquipmentToday] = useState<Equipment[]>([]);
+  const [stage, setStage] = useState<ProgressStage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<PipelineResult | null>(null);
+  const [request, setRequest] = useState<TailorRequest | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [saved, setSaved] = useState(false);
+  const busy = stage !== null;
+
+  function buildRequest(): TailorRequest {
+    return {
+      situation: situation.trim(),
+      timeCapMinutes: timeCap.trim() ? Math.max(1, Math.round(Number(timeCap))) : null,
+      targetMovement: target.trim() || null,
+      equipmentToday: overrideEquipment ? equipmentToday : null,
+    };
+  }
+
+  async function runEngine(url: string, body: unknown) {
+    setError(null);
+    setSaved(false);
+    setStage("analyzing");
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const { error: code } = await res.json().catch(() => ({ error: "engine_failed" }));
+        setError(ERROR_TEXT[code] ?? ERROR_TEXT.engine_failed);
+        return;
+      }
+      await readEngineStream(res, (e) => {
+        if (e.type === "progress") setStage(e.stage);
+        else if (e.type === "result") {
+          setResult(e.result);
+          setFeedback("");
+        } else setError(ERROR_TEXT[e.error]);
+      });
+    } catch {
+      setError(ERROR_TEXT.engine_failed);
+    } finally {
+      setStage(null);
+    }
+  }
+
+  function submit() {
+    const req = buildRequest();
+    if (mode === "paste") {
+      if (!rawText.trim()) return setError("Paste a workout first.");
+      setRequest(req);
+      void runEngine("/api/tailor", { input: { kind: "paste", rawText }, request: req });
+      return;
+    }
+    const parsed = ManualWorkoutSchema.safeParse(manual);
+    if (!parsed.success) return setError("Give every movement a name.");
+    setRequest(req);
+    void runEngine("/api/tailor", { input: { kind: "manual", workout: parsed.data }, request: req });
+  }
+
+  function refine() {
+    if (!result || !request || !feedback.trim()) return;
+    void runEngine("/api/tailor/refine", { previous: result, feedback: feedback.trim(), request });
+  }
+
+  async function save() {
+    if (!result || !request) return;
+    const res = await fetch("/api/tailor/save", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ result, request }),
+    });
+    if (res.ok) setSaved(true);
+    else setError("Could not save the result.");
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <datalist id="movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <button type="button" className={chip(mode === "paste")} onClick={() => setMode("paste")}>Paste</button>
+          <button type="button" className={chip(mode === "manual")} onClick={() => setMode("manual")}>Enter manually</button>
+        </div>
+        {mode === "paste" ? (
+          <>
+            <textarea className={`${field} min-h-48`} value={rawText} onChange={(e) => setRawText(e.target.value)}
+              placeholder={"Paste today's session exactly as programmed.\nMissed days? Paste all of them."} />
+          </>
+        ) : (
+          <ManualEntryForm value={manual} onChange={setManual} movementNames={movementNames} />
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Today</h2>
+        <textarea className={`${field} min-h-20`} value={situation} onChange={(e) => setSituation(e.target.value)}
+          placeholder="How are you? Pain, fatigue, missing equipment… in your own words (optional)" />
+        <div className="flex flex-wrap gap-3 text-sm">
+          <label className="flex items-center gap-2">Time cap (min)
+            <input className={`${field} w-20`} type="number" min={1} value={timeCap} onChange={(e) => setTimeCap(e.target.value)} />
+          </label>
+          <label className="flex items-center gap-2">Work on
+            <input className={field} list="movement-names" placeholder="movement (optional)" value={target} onChange={(e) => setTarget(e.target.value)} />
+          </label>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={overrideEquipment} onChange={(e) => setOverrideEquipment(e.target.checked)} />
+          Different equipment than usual today
+        </label>
+        {overrideEquipment && (
+          <div className="flex flex-wrap gap-2">
+            {equipmentOptions.map((e) => (
+              <button key={e} type="button" className={chip(equipmentToday.includes(e))}
+                onClick={() => setEquipmentToday(equipmentToday.includes(e) ? equipmentToday.filter((x) => x !== e) : [...equipmentToday, e])}>
+                {e.replaceAll("_", " ")}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <button type="button" className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-50" disabled={busy} onClick={submit}>
+        Tailor my workout
+      </button>
+
+      {busy && <p className="text-sm text-neutral-600" aria-live="polite">{STAGE_TEXT[stage!]}</p>}
+      {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
+
+      {result && (
+        <>
+          <ResultView result={result} conditionLabels={conditionLabels} />
+          <section className="flex flex-col gap-2">
+            <h2 className="font-semibold">Not quite right?</h2>
+            <textarea className={`${field} min-h-16`} value={feedback} onChange={(e) => setFeedback(e.target.value)}
+              placeholder="e.g. still hurts, too easy, no rower" />
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={chip(false)} disabled={busy || !feedback.trim()} onClick={refine}>Refine</button>
+              <button type="button" className="rounded bg-black px-4 py-1 text-sm text-white disabled:opacity-50" disabled={busy || saved} onClick={save}>
+                {saved ? "Saved" : "Save to history"}
+              </button>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 6: Manual check on a phone-sized viewport (375 px)**
+
+`pnpm dev`, sign in, `/tailor`: paste Fran, situation "me duele el hombro derecho", submit. Expected: the stage text advances; the result shows the shoulder condition chip, original and tailored blocks stacked, no Thruster/Pull-up, any caution badge with its tooltip, the rationale and the safety note. Refine with "too easy" → a new result; Save → "Saved". No horizontal scrolling at 375 px.
+
+- [ ] **Step 7: Verify and commit**
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
 
 ```bash
 git add -A
-git commit -m "feat: tailor page with ingest, constraint selection, and result view"
+git commit -m "feat: tailor page with streamed progress, side-by-side result, refine and save"
 ```
 
-### Task 6.5: History page
+---
+
+### Task U5: Manual structured entry
+
+**Files:**
+- Modify: `src/app/tailor/ManualEntryForm.tsx` (replace the stub component)
+
+**Interfaces:**
+- Consumes: `BlockFormat`, `ComponentDraft`, `ManualBlock`, `ManualWorkout` (E1).
+- Produces: the full `ManualEntryForm`; `emptyComponent`, `emptyBlock`, `emptyManualWorkout` keep their U4 signatures.
+
+- [ ] **Step 1: Replace `ManualEntryForm` in `src/app/tailor/ManualEntryForm.tsx`**
+
+Keep the three `empty*` helpers and the `Props` interface from U4; add `BlockFormat` to the import (`import { BlockFormat, type ComponentDraft, type ManualBlock, type ManualWorkout } from "@/lib/engine/types";`) and replace the stub function with:
+
+```tsx
+const field = "rounded border px-2 py-1 text-sm";
+const textOrNull = (v: string) => (v.trim() === "" ? null : v);
+const numberOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
+const repsValue = (v: string): ComponentDraft["reps"] => {
+  if (v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : v;
+};
+
+export function ManualEntryForm({ value, onChange, movementNames }: Props) {
+  const setBlock = (i: number, patch: Partial<ManualBlock>) =>
+    onChange({ ...value, blocks: value.blocks.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
+  const setComponent = (bi: number, ci: number, patch: Partial<ComponentDraft>) =>
+    setBlock(bi, { components: value.blocks[bi].components.map((c, j) => (j === ci ? { ...c, ...patch } : c)) });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <datalist id="manual-movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
+      <input className={field} placeholder="Session name (optional)" value={value.name ?? ""}
+        onChange={(e) => onChange({ ...value, name: textOrNull(e.target.value) })} />
+
+      {value.blocks.map((b, bi) => (
+        <div key={bi} className="flex flex-col gap-2 rounded border p-3">
+          <div className="flex flex-wrap gap-2">
+            <input className={field} placeholder={`Block ${bi + 1} title`} value={b.title ?? ""}
+              onChange={(e) => setBlock(bi, { title: textOrNull(e.target.value) })} />
+            <select className={field} value={b.format} onChange={(e) => setBlock(bi, { format: BlockFormat.parse(e.target.value) })}>
+              {BlockFormat.options.map((f) => <option key={f} value={f}>{f.replaceAll("_", " ")}</option>)}
+            </select>
+            <input className={field} placeholder="scheme, e.g. AMRAP 12" value={b.scheme ?? ""}
+              onChange={(e) => setBlock(bi, { scheme: textOrNull(e.target.value) })} />
+            <input className={`${field} w-24`} type="number" min={0} placeholder="min" value={b.timeDomainMinutes ?? ""}
+              onChange={(e) => setBlock(bi, { timeDomainMinutes: numberOrNull(e.target.value) })} />
+          </div>
+
+          {b.components.map((c, ci) => (
+            <div key={ci} className="flex flex-wrap gap-2">
+              <input className={`${field} grow`} list="manual-movement-names" placeholder="movement" value={c.movement}
+                onChange={(e) => setComponent(bi, ci, { movement: e.target.value })} />
+              <input className={`${field} w-20`} placeholder="reps" value={c.reps ?? ""}
+                onChange={(e) => setComponent(bi, ci, { reps: repsValue(e.target.value) })} />
+              <input className={`${field} w-28`} placeholder="load" value={c.load ?? ""}
+                onChange={(e) => setComponent(bi, ci, { load: textOrNull(e.target.value) })} />
+              <input className={`${field} w-20`} type="number" min={0} placeholder="m" value={c.distanceMeters ?? ""}
+                onChange={(e) => setComponent(bi, ci, { distanceMeters: numberOrNull(e.target.value) })} />
+              <input className={`${field} w-20`} type="number" min={0} placeholder="cal" value={c.calories ?? ""}
+                onChange={(e) => setComponent(bi, ci, { calories: numberOrNull(e.target.value) })} />
+              <button type="button" className="text-sm underline"
+                onClick={() => setBlock(bi, { components: b.components.filter((_, j) => j !== ci) })}>remove</button>
+            </div>
+          ))}
+
+          <textarea className={field} placeholder="Coaching notes (tempo, intensity, scaling)" value={b.coachingNotes ?? ""}
+            onChange={(e) => setBlock(bi, { coachingNotes: textOrNull(e.target.value) })} />
+          <div className="flex gap-3 text-sm">
+            <button type="button" className="underline" onClick={() => setBlock(bi, { components: [...b.components, emptyComponent()] })}>
+              Add movement
+            </button>
+            {value.blocks.length > 1 && (
+              <button type="button" className="underline"
+                onClick={() => onChange({ ...value, blocks: value.blocks.filter((_, j) => j !== bi) })}>Remove block</button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <button type="button" className="w-fit rounded border px-3 py-1 text-sm"
+        onClick={() => onChange({ ...value, blocks: [...value.blocks, emptyBlock()] })}>Add block</button>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Manual check**
+
+`/tailor` → "Enter manually": one strength block (Back Squat, 5x5, 100 kg) and one AMRAP block (T2B 10, Burpee 10). Submit with "no pull-up bar today". Expected: the original shows both blocks with a stimulus chip each; the tailored version has no Toes-to-Bar. Leaving a movement name empty shows "Give every movement a name." without calling the API.
+
+- [ ] **Step 3: Verify and commit**
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
+
+```bash
+git add -A
+git commit -m "feat: manual structured workout entry"
+```
+
+---
+
+### Task U6: History page
 
 **Files:**
 - Create: `src/app/history/page.tsx`
 
+**Interfaces:**
+- Consumes: `prisma` (S1), `getUserId` (S2), `WorkoutView` (U4), `StructuredWorkoutSchema`, `TailoringResultSchema` (E1).
+
 - [ ] **Step 1: Implement `src/app/history/page.tsx`**
 
 ```tsx
-import { auth } from "@/auth";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { z } from "zod";
 import { WorkoutView } from "@/components/WorkoutView";
-import type { StructuredWorkout } from "@/lib/engine/types";
+import { prisma } from "@/lib/db";
+import { StructuredWorkoutSchema, TailoringResultSchema } from "@/lib/engine/types";
+import { getUserId } from "@/lib/session";
 
 export default async function HistoryPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/signin");
-  const items = await prisma.tailoredWorkout.findMany({
-    where: { userId: session.user.id }, orderBy: { createdAt: "desc" }, take: 50,
-  });
-  return (
-    <main className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-4 text-2xl font-semibold">History</h1>
-      {items.length === 0 && <p className="text-gray-600">No saved workouts yet.</p>}
-      <div className="flex flex-col gap-6">
-        {items.map((it) => (
-          <div key={it.id} className="flex flex-col gap-2">
-            <div className="text-xs text-gray-500">{new Date(it.createdAt).toLocaleString()}</div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <WorkoutView workout={it.originalWorkout as unknown as StructuredWorkout} title="Original" />
-              <WorkoutView workout={it.tailoredWorkout as unknown as StructuredWorkout} title="Tailored" />
-            </div>
-            <p className="text-sm">{it.rationale}</p>
-          </div>
-        ))}
-      </div>
-    </main>
-  );
-}
-```
-
-- [ ] **Step 2: Manual check + commit**
-
-Run: `pnpm dev`, save a tailored workout, visit `/history`, confirm it appears.
-
-```bash
-git add -A
-git commit -m "feat: history page listing saved tailored workouts"
-```
-
-### Task 6.6: Refine loop (service + endpoint + UI)
-
-Spec pipeline step 6: the athlete reacts ("still hurts", "too easy", "no rower today") and the engine re-tailors with that feedback. Uses the `previousAttempt` support from Task 4.5 — the refine re-runs **only** the tailor step (one LLM call; no re-parse, no re-classify).
-
-**Files:**
-- Create: `src/app/api/tailor/refine/route.ts`
-- Modify: `src/lib/tailor-service.ts`, `src/app/tailor/TailorClient.tsx`
-- Test: `tests/tailor/tailor-service.test.ts` (extend)
-
-**Interfaces:**
-- Consumes: `tailor()` with `previousAttempt` (Task 4.5), `DomainData` (Task 6.3), `PipelineResult` (Task 4.4).
-- Produces: `runRefineForAthlete(args: RunRefineArgs): Promise<PipelineResult>`; `POST /api/tailor/refine` → `PipelineResult` JSON.
-
-- [ ] **Step 1: Write the failing test** (append to `tests/tailor/tailor-service.test.ts`)
-
-```ts
-import { runRefineForAthlete } from "@/lib/tailor-service";
-import type { StructuredWorkout, StimulusClassification } from "@/lib/engine/types";
-
-describe("runRefineForAthlete", () => {
-  it("re-tailors with the previous attempt and feedback, keeping the original classification", async () => {
-    const original: StructuredWorkout = { name: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", source: "adhoc",
-      blocks: [{ title: "Cindy", rawText: "AMRAP 20: 5 pull-ups, 10 push-ups, 15 air squats", format: "amrap", scheme: "AMRAP 20", timeDomainMinutes: 20, coachingNotes: null,
-        components: [{ movement: "Pull-up", reps: 5, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null }] }] };
-    const previousWorkout: StructuredWorkout = { ...original, name: "Cindy (mod)" };
-    const classification: StimulusClassification = { primary: "muscular_endurance", secondary: [], rationale: "Bodyweight grind." };
-
-    const provider = new FakeProvider({
-      TailoringResult: { workout: { ...original, name: "Cindy (mod 2)" },
-        changes: [{ original: "Ring Row", modified: "Bent-over Row", reason: "Rings still bother the shoulder per feedback." }],
-        rationale: "Same pulling volume, more support.", safetyNote: null },
-    });
-
-    const result = await runRefineForAthlete({
-      provider, original, classification, previousWorkout,
-      feedback: "Ring rows still hurt.",
-      profile: { injuries: ["shoulder_impingement"], benchmarks: {}, equipment: [], goals: [], availability: {} },
-      request: { constraintType: "injury", details: "shoulder", timeCapMinutes: null, targetMovement: null },
-      domain: {
-        taxonomy: [{ key: "muscular_endurance", label: "Muscular endurance", description: "..." }],
-        movements: [],
-        contraindicationsFor: async () => [],
-      },
-    });
-
-    expect(result.original.name).toBe("Cindy");
-    expect(result.classification.primary).toBe("muscular_endurance"); // not re-classified
-    expect(result.tailored.workout.name).toBe("Cindy (mod 2)");
-  });
-});
-```
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/tailor/tailor-service.test.ts`
-Expected: FAIL — `runRefineForAthlete` not exported.
-
-- [ ] **Step 3: Add `runRefineForAthlete` to `src/lib/tailor-service.ts`**
-
-Extend the imports and append:
-
-```ts
-import { tailor } from "@/lib/engine/tailor";
-import type { StructuredWorkout, StimulusClassification } from "@/lib/engine/types";
-
-export interface RunRefineArgs {
-  provider: LlmProvider;
-  original: StructuredWorkout;
-  classification: StimulusClassification;
-  previousWorkout: StructuredWorkout;
-  feedback: string;
-  profile: AthleteProfileInput;
-  request: TailorRequest;
-  domain?: DomainData; // injectable for tests; defaults to JSON-backed repository
-}
-
-/** Refine = re-run ONLY the tailor step with the rejected attempt + feedback. */
-export async function runRefineForAthlete(args: RunRefineArgs): Promise<PipelineResult> {
-  const domain = args.domain ?? (await defaultDomain());
-  const contraindications = await domain.contraindicationsFor(args.profile.injuries);
-  const tailored = await tailor(args.provider, {
-    workout: args.original,
-    classification: args.classification,
-    profile: args.profile,
-    request: args.request,
-    movements: domain.movements,
-    contraindications,
-    previousAttempt: { workout: args.previousWorkout, feedback: args.feedback },
-  });
-  return { original: args.original, classification: args.classification, tailored };
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/tailor/tailor-service.test.ts`
-Expected: PASS (2 tests).
-
-- [ ] **Step 5: Implement `src/app/api/tailor/refine/route.ts`**
-
-```ts
-import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { prisma } from "@/lib/db";
-import { getProvider } from "@/lib/ai";
-import { normalizeProfile } from "@/lib/profile";
-import { runRefineForAthlete } from "@/lib/tailor-service";
-import {
-  StructuredWorkoutSchema, StimulusClassificationSchema, TailorRequestSchema,
-} from "@/lib/engine/types";
-import { z } from "zod";
-
-const RefineBodySchema = z.object({
-  original: StructuredWorkoutSchema,
-  classification: StimulusClassificationSchema,
-  previousWorkout: StructuredWorkoutSchema,
-  request: TailorRequestSchema,
-  feedback: z.string().min(1),
-});
-
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  let body;
-  try {
-    body = RefineBodySchema.parse(await req.json());
-  } catch {
-    return NextResponse.json({ error: "invalid request" }, { status: 400 });
-  }
-
-  const row = await prisma.athleteProfile.findUnique({ where: { userId: session.user.id } });
-  const profile = normalizeProfile(row ? {
-    injuries: row.injuries, benchmarks: row.benchmarks, equipment: row.equipment, goals: row.goals, availability: row.availability,
-  } : null);
-
-  try {
-    const result = await runRefineForAthlete({
-      provider: getProvider(),
-      original: body.original,
-      classification: body.classification,
-      previousWorkout: body.previousWorkout,
-      feedback: body.feedback,
-      profile,
-      request: body.request,
-    });
-    return NextResponse.json(result);
-  } catch (e) {
-    console.error("refine failed", e); // never leak exception text to the client
-    return NextResponse.json({ error: "engine_failed" }, { status: 502 });
-  }
-}
-```
-
-- [ ] **Step 6: Add the refine UI to `src/app/tailor/TailorClient.tsx`**
-
-Add state next to the existing hooks:
-
-```tsx
-const [feedback, setFeedback] = useState("");
-```
-
-Add the handler next to `save()`:
-
-```tsx
-async function refine() {
-  if (!result || !lastRequest || !feedback.trim()) return;
-  setLoading(true); setError("");
-  const res = await fetch("/api/tailor/refine", {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      original: result.original,
-      classification: result.classification,
-      previousWorkout: result.tailored.workout,
-      request: lastRequest,
-      feedback,
-    }),
-  });
-  setLoading(false);
-  if (!res.ok) { setError("Could not refine this workout. Try again."); return; }
-  setResult(await res.json());
-  setFeedback("");
-  setSaveStatus("idle"); // the refined result has not been saved yet
-}
-```
-
-In the result JSX, insert a refine card between the "What changed" card and the save button:
-
-```tsx
-<div className="rounded border p-4">
-  <div className="text-xs uppercase tracking-wide text-gray-500">Not quite right?</div>
-  <textarea rows={2} className="mt-2 w-full rounded border p-2" value={feedback}
-    onChange={(e) => setFeedback(e.target.value)}
-    placeholder='e.g., "still hurts my shoulder", "too easy", "no rower available"' />
-  <button disabled={!feedback.trim() || loading} onClick={refine}
-    className="mt-2 rounded bg-black px-4 py-2 text-white disabled:opacity-40">
-    {loading ? "Refining…" : "Refine"}
-  </button>
-</div>
-```
-
-- [ ] **Step 7: Manual check + commit**
-
-Run: `pnpm dev`, tailor a workout, enter feedback like "too easy", refine. Confirm a new tailored version replaces the old one and the stimulus stays the same.
-
-```bash
-git add -A
-git commit -m "feat: refine loop (service, POST /api/tailor/refine, feedback UI)"
-```
-
-### Task 6.7: Benchmarks section in the profile form
-
-The spec's onboarding includes "strength & benchmarks", and the tailor prompt scales loads to them — so athletes must be able to enter them. Free-form key/value rows; values coerce to number/boolean where obvious.
-
-**Files:**
-- Modify: `src/lib/profile.ts`, `src/app/profile/ProfileForm.tsx`
-- Test: `tests/profile/profile-helpers.test.ts` (extend)
-
-**Interfaces:**
-- Produces: `coerceBenchmarkValue(v: string): number | boolean | string` from `@/lib/profile`.
-
-- [ ] **Step 1: Write the failing test** (append to `tests/profile/profile-helpers.test.ts`)
-
-```ts
-import { coerceBenchmarkValue } from "@/lib/profile";
-
-describe("coerceBenchmarkValue", () => {
-  it("coerces numeric strings to numbers", () => {
-    expect(coerceBenchmarkValue("140")).toBe(140);
-    expect(coerceBenchmarkValue("62.5")).toBe(62.5);
-  });
-  it("coerces true/false to booleans", () => {
-    expect(coerceBenchmarkValue("true")).toBe(true);
-    expect(coerceBenchmarkValue("false")).toBe(false);
-  });
-  it("keeps everything else as a trimmed string", () => {
-    expect(coerceBenchmarkValue(" 3:45 Fran ")).toBe("3:45 Fran");
-  });
-});
-```
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/profile/profile-helpers.test.ts`
-Expected: FAIL — `coerceBenchmarkValue` not exported.
-
-- [ ] **Step 3: Add `coerceBenchmarkValue` to `src/lib/profile.ts`**
-
-```ts
-export function coerceBenchmarkValue(v: string): number | boolean | string {
-  const t = v.trim();
-  if (t !== "" && !Number.isNaN(Number(t))) return Number(t);
-  if (t === "true") return true;
-  if (t === "false") return false;
-  return t;
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/profile/profile-helpers.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Add the benchmarks section to `src/app/profile/ProfileForm.tsx`**
-
-Add the import and state:
-
-```tsx
-import { coerceBenchmarkValue } from "@/lib/profile";
-// inside the component:
-const [newBenchKey, setNewBenchKey] = useState("");
-const [newBenchVal, setNewBenchVal] = useState("");
-```
-
-Insert this section between "Equipment" and "Availability":
-
-```tsx
-<section>
-  <h2 className="font-semibold">Benchmarks</h2>
-  <p className="text-sm text-gray-500">1RMs, benchmark times, skills — e.g. backSquat1RM → 140, canDoMuscleUp → true, fran → 3:45.</p>
-  <div className="mt-2 flex flex-col gap-2">
-    {Object.entries(p.benchmarks).map(([k, v]) => (
-      <div key={k} className="flex items-center gap-2 text-sm">
-        <span className="w-40 truncate font-mono">{k}</span>
-        <input className="w-32 rounded border p-1" defaultValue={String(v)}
-          onBlur={(e) => setP({ ...p, benchmarks: { ...p.benchmarks, [k]: coerceBenchmarkValue(e.target.value) } })} />
-        <button type="button" className="text-red-600"
-          onClick={() => { const rest = { ...p.benchmarks }; delete rest[k]; setP({ ...p, benchmarks: rest }); }}>
-          remove
-        </button>
-      </div>
-    ))}
-    <div className="flex items-center gap-2 text-sm">
-      <input className="w-40 rounded border p-1" placeholder="name (e.g. deadlift1RM)" value={newBenchKey} onChange={(e) => setNewBenchKey(e.target.value)} />
-      <input className="w-32 rounded border p-1" placeholder="value" value={newBenchVal} onChange={(e) => setNewBenchVal(e.target.value)} />
-      <button type="button" className="rounded border px-2 py-1 disabled:opacity-40" disabled={!newBenchKey.trim()}
-        onClick={() => {
-          setP({ ...p, benchmarks: { ...p.benchmarks, [newBenchKey.trim()]: coerceBenchmarkValue(newBenchVal) } });
-          setNewBenchKey(""); setNewBenchVal("");
-        }}>
-        Add
-      </button>
-    </div>
-  </div>
-</section>
-```
-
-- [ ] **Step 6: Manual check + commit**
-
-Run: `pnpm dev`, open `/profile`, add `backSquat1RM` = `140` and `canDoMuscleUp` = `true`, save, reload — confirm values persist and render.
-
-```bash
-git add -A
-git commit -m "feat: benchmarks section in profile form with value coercion"
-```
-
-### Task 6.8: Manual structured entry (spec v1 ingestion: paste OR manual)
-
-The API already accepts `{ kind: "structured" }`; this task adds the UI. A manual workout still needs `rawText` (it is the engine's source of truth), so a pure helper renders the draft to text.
-
-**Files:**
-- Create: `src/lib/engine/render-text.ts`, `src/app/tailor/ManualEntryForm.tsx`
-- Modify: `src/app/tailor/TailorClient.tsx`
-- Test: `tests/engine/render-text.test.ts`
-
-**Interfaces:**
-- Consumes: `WorkoutBlock`, `StructuredWorkout`, `StructuredWorkoutSchema`, `BlockFormat` from `@/lib/engine/types` (Task 3.1).
-- Produces: `type ManualBlockDraft = Omit<WorkoutBlock, "rawText">`, `interface ManualWorkoutDraft { name: string | null; blocks: ManualBlockDraft[] }`, `draftToStructuredWorkout(draft: ManualWorkoutDraft): StructuredWorkout` from `@/lib/engine/render-text`.
-
-- [ ] **Step 1: Write the failing test**
-
-`tests/engine/render-text.test.ts`:
-
-```ts
-import { describe, it, expect } from "vitest";
-import { draftToStructuredWorkout } from "@/lib/engine/render-text";
-
-describe("draftToStructuredWorkout", () => {
-  it("renders a manual draft into a StructuredWorkout with generated rawText", () => {
-    const w = draftToStructuredWorkout({
-      name: "Manual day",
-      blocks: [{
-        title: "Conditioning", format: "amrap", scheme: "AMRAP 12",
-        timeDomainMinutes: 12, coachingNotes: "Steady pace.",
-        components: [
-          { movement: "Burpee", reps: 10, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null },
-          { movement: "Row (Erg)", reps: null, load: null, distanceMeters: null, calories: 12, durationSeconds: null, notes: null },
-        ],
-      }],
-    });
-    expect(w.source).toBe("adhoc");
-    expect(w.rawText).toContain("AMRAP 12");
-    expect(w.rawText).toContain("10 Burpee");
-    expect(w.blocks[0].rawText).toContain("12 cal");
-    expect(w.blocks[0].rawText).toContain("Steady pace.");
-  });
-
-  it("never produces an empty block rawText (schema requires min length 1)", () => {
-    const w = draftToStructuredWorkout({
-      name: null,
-      blocks: [{ title: null, format: "rest", scheme: null, timeDomainMinutes: null, coachingNotes: null, components: [] }],
-    });
-    expect(w.blocks[0].rawText.length).toBeGreaterThan(0);
-  });
-});
-```
-
-- [ ] **Step 2: Run it, verify it fails**
-
-Run: `pnpm exec vitest run tests/engine/render-text.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement `src/lib/engine/render-text.ts`**
-
-```ts
-import { StructuredWorkoutSchema, type StructuredWorkout, type WorkoutBlock } from "@/lib/engine/types";
-
-export type ManualBlockDraft = Omit<WorkoutBlock, "rawText">;
-
-export interface ManualWorkoutDraft {
-  name: string | null;
-  blocks: ManualBlockDraft[];
-}
-
-function renderBlockText(b: ManualBlockDraft): string {
-  const lines: string[] = [];
-  if (b.title) lines.push(b.title);
-  if (b.scheme) lines.push(b.scheme);
-  for (const c of b.components) {
-    const parts = [
-      c.reps != null ? String(c.reps) : null,
-      c.movement,
-      c.load ? `@ ${c.load}` : null,
-      c.distanceMeters != null ? `${c.distanceMeters} m` : null,
-      c.calories != null ? `${c.calories} cal` : null,
-      c.durationSeconds != null ? `${c.durationSeconds}s` : null,
-      c.notes ? `(${c.notes})` : null,
-    ].filter(Boolean);
-    lines.push(parts.join(" "));
-  }
-  if (b.coachingNotes) lines.push(b.coachingNotes);
-  if (lines.length === 0) lines.push(b.format); // e.g. a bare "rest" block
-  return lines.join("\n");
-}
-
-/** Manual entry: the rendered text becomes the workout's rawText source of truth. */
-export function draftToStructuredWorkout(draft: ManualWorkoutDraft): StructuredWorkout {
-  const blocks = draft.blocks.map((b) => ({ ...b, rawText: renderBlockText(b) }));
-  return StructuredWorkoutSchema.parse({
-    name: draft.name,
-    rawText: blocks.map((b) => b.rawText).join("\n\n"),
-    source: "adhoc",
-    blocks,
-  });
-}
-```
-
-- [ ] **Step 4: Run it, verify it passes**
-
-Run: `pnpm exec vitest run tests/engine/render-text.test.ts`
-Expected: PASS (2 tests).
-
-- [ ] **Step 5: Implement `src/app/tailor/ManualEntryForm.tsx`** (client component)
-
-```tsx
-"use client";
-import { useState } from "react";
-import { BlockFormat, type StructuredWorkout, type WorkoutComponent } from "@/lib/engine/types";
-import { draftToStructuredWorkout, type ManualBlockDraft } from "@/lib/engine/render-text";
-
-function emptyComponent(): WorkoutComponent {
-  return { movement: "", reps: null, load: null, distanceMeters: null, calories: null, durationSeconds: null, notes: null };
-}
-function emptyBlock(): ManualBlockDraft {
-  return { title: null, format: "for_time", scheme: null, timeDomainMinutes: null, coachingNotes: null, components: [emptyComponent()] };
-}
-
-export default function ManualEntryForm({ onSubmit }: { onSubmit: (workout: StructuredWorkout) => void }) {
-  const [name, setName] = useState("");
-  const [blocks, setBlocks] = useState<ManualBlockDraft[]>([emptyBlock()]);
-  const [error, setError] = useState("");
-
-  function updateBlock(bi: number, patch: Partial<ManualBlockDraft>) {
-    setBlocks(blocks.map((b, i) => (i === bi ? { ...b, ...patch } : b)));
-  }
-  function updateComponent(bi: number, ci: number, patch: Partial<WorkoutComponent>) {
-    setBlocks(blocks.map((b, i) => i === bi
-      ? { ...b, components: b.components.map((c, j) => (j === ci ? { ...c, ...patch } : c)) }
-      : b));
-  }
-
-  function submit() {
-    try {
-      const workout = draftToStructuredWorkout({
-        name: name.trim() || null,
-        blocks: blocks.map((b) => ({ ...b, components: b.components.filter((c) => c.movement.trim() !== "") })),
-      });
-      setError("");
-      onSubmit(workout);
-    } catch {
-      setError("Please complete the workout — every listed movement needs a name.");
-    }
+  const userId = await getUserId();
+  if (!userId) redirect("/signin");
+  const rows = await prisma.tailoredWorkout.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 50 });
+
+  if (rows.length === 0) {
+    return <p>Nothing saved yet. <Link className="underline" href="/tailor">Tailor a workout</Link>.</p>;
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded border p-4">
-      <input className="rounded border p-2" placeholder="Workout name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
-      {blocks.map((b, bi) => (
-        <div key={bi} className="flex flex-col gap-2 border-l-2 border-gray-200 pl-3">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <input className="rounded border p-1" placeholder="Block title" value={b.title ?? ""}
-              onChange={(e) => updateBlock(bi, { title: e.target.value || null })} />
-            <select className="rounded border p-1" value={b.format}
-              onChange={(e) => updateBlock(bi, { format: e.target.value as ManualBlockDraft["format"] })}>
-              {BlockFormat.options.map((f) => (<option key={f} value={f}>{f.replaceAll("_", " ")}</option>))}
-            </select>
-            <input className="rounded border p-1" placeholder='Scheme (e.g. "AMRAP 12", "5x5")' value={b.scheme ?? ""}
-              onChange={(e) => updateBlock(bi, { scheme: e.target.value || null })} />
-            <input type="number" min={1} className="w-20 rounded border p-1" placeholder="min" value={b.timeDomainMinutes ?? ""}
-              onChange={(e) => updateBlock(bi, { timeDomainMinutes: e.target.value ? Number(e.target.value) : null })} />
-          </div>
-          {b.components.map((c, ci) => (
-            <div key={ci} className="flex flex-wrap items-center gap-2 text-sm">
-              <input className="w-24 rounded border p-1" placeholder="Reps" value={c.reps == null ? "" : String(c.reps)}
-                onChange={(e) => updateComponent(bi, ci, { reps: e.target.value || null })} />
-              <input className="w-44 rounded border p-1" placeholder="Movement (e.g. Thruster)" value={c.movement}
-                onChange={(e) => updateComponent(bi, ci, { movement: e.target.value })} />
-              <input className="w-28 rounded border p-1" placeholder="Load" value={c.load ?? ""}
-                onChange={(e) => updateComponent(bi, ci, { load: e.target.value || null })} />
-              <button type="button" className="text-red-600"
-                onClick={() => updateBlock(bi, { components: b.components.filter((_, j) => j !== ci) })}>×</button>
-            </div>
-          ))}
-          <div className="flex gap-2 text-sm">
-            <button type="button" className="rounded border px-2 py-1"
-              onClick={() => updateBlock(bi, { components: [...b.components, emptyComponent()] })}>+ movement</button>
-            {blocks.length > 1 && (
-              <button type="button" className="rounded border px-2 py-1 text-red-600"
-                onClick={() => setBlocks(blocks.filter((_, i) => i !== bi))}>remove block</button>
+    <section className="flex flex-col gap-3">
+      <h1 className="text-xl font-semibold">History</h1>
+      {rows.map((row) => {
+        const tailored = TailoringResultSchema.safeParse(row.tailored);
+        const original = StructuredWorkoutSchema.safeParse(row.original);
+        const feedback = z.array(z.string()).safeParse(row.feedbackHistory);
+        const title = (tailored.success && tailored.data.name) || (original.success && original.data.name) || "Workout";
+        return (
+          <details key={row.id} className="rounded border p-3">
+            <summary className="cursor-pointer">
+              <span className="font-medium">{title}</span>{" "}
+              <span className="text-sm text-neutral-500">{row.createdAt.toLocaleDateString()}</span>
+            </summary>
+            {tailored.success ? (
+              <div className="mt-3 flex flex-col gap-3">
+                <WorkoutView heading="Tailored" name={null} blocks={tailored.data.blocks} />
+                <p className="text-sm">{tailored.data.rationale}</p>
+                {tailored.data.changes.length > 0 && (
+                  <ul className="list-disc pl-5 text-sm">
+                    {tailored.data.changes.map((c, i) => <li key={i}>{c.original} → {c.modified}: {c.reason}</li>)}
+                  </ul>
+                )}
+                {feedback.success && feedback.data.length > 0 && (
+                  <p className="text-xs text-neutral-500">Refined with: {feedback.data.join(" · ")}</p>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-red-700">This entry could not be read.</p>
             )}
-          </div>
-          <textarea rows={2} className="rounded border p-2 text-sm" placeholder="Coaching notes (tempo, intensity, Rx/scaled tiers…)"
-            value={b.coachingNotes ?? ""} onChange={(e) => updateBlock(bi, { coachingNotes: e.target.value || null })} />
-        </div>
-      ))}
-      <div className="flex items-center gap-3">
-        <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => setBlocks([...blocks, emptyBlock()])}>+ block</button>
-        <button type="button" className="rounded bg-black px-4 py-2 text-sm text-white" onClick={submit}>Use this workout</button>
-        {error && <span className="text-sm text-red-600">{error}</span>}
-      </div>
-    </div>
+          </details>
+        );
+      })}
+    </section>
   );
 }
 ```
 
-- [ ] **Step 6: Add the paste/manual toggle to `src/app/tailor/TailorClient.tsx`**
+- [ ] **Step 2: Manual check**
 
-Add imports and state:
+After saving a result in U4, `/history` lists it; expanding it shows the tailored blocks, the changes and the refine feedback.
 
-```tsx
-import ManualEntryForm from "./ManualEntryForm";
-import { WorkoutView } from "@/components/WorkoutView";           // already imported
-import type { StructuredWorkout } from "@/lib/engine/types";
+- [ ] **Step 3: Verify and commit**
 
-// inside the component:
-const [mode, setMode] = useState<"paste" | "manual">("paste");
-const [manualWorkout, setManualWorkout] = useState<StructuredWorkout | null>(null);
-```
-
-In `run()`, build the input from the mode (replace the fetch body's `input`):
-
-```tsx
-const input = mode === "paste"
-  ? { kind: "raw" as const, rawText }
-  : { kind: "structured" as const, workout: manualWorkout! };
-// ...
-body: JSON.stringify({ input, request }),
-```
-
-Replace the single paste `<label>` with a mode toggle + conditional source:
-
-```tsx
-<div className="flex flex-col gap-2">
-  <div className="flex gap-2">
-    <button type="button" onClick={() => setMode("paste")}
-      className={`rounded border px-3 py-1 text-sm ${mode === "paste" ? "bg-black text-white" : ""}`}>Paste text</button>
-    <button type="button" onClick={() => { setMode("manual"); setManualWorkout(null); }}
-      className={`rounded border px-3 py-1 text-sm ${mode === "manual" ? "bg-black text-white" : ""}`}>Enter manually</button>
-  </div>
-  {mode === "paste" ? (
-    <label className="flex flex-col gap-1">
-      <span className="font-semibold">Paste today's workout</span>
-      <textarea rows={5} className="rounded border p-2" value={rawText} onChange={(e) => setRawText(e.target.value)}
-        placeholder={"e.g.\n21-15-9 for time\nThrusters 95 lb\nPull-ups"} />
-    </label>
-  ) : manualWorkout ? (
-    <div className="flex flex-col gap-2">
-      <WorkoutView workout={manualWorkout} title="Your workout" />
-      <button type="button" className="self-start rounded border px-3 py-1 text-sm" onClick={() => setManualWorkout(null)}>Edit</button>
-    </div>
-  ) : (
-    <ManualEntryForm onSubmit={setManualWorkout} />
-  )}
-</div>
-```
-
-Update the Tailor button's disabled condition:
-
-```tsx
-<button disabled={loading || (mode === "paste" ? !rawText : !manualWorkout)} onClick={run} ...>
-```
-
-- [ ] **Step 7: Manual check + commit**
-
-Run: `pnpm dev`, switch to "Enter manually", build a two-block workout, "Use this workout", tailor it. Confirm the pipeline runs without a parse step (the structured input goes straight to classification).
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
 
 ```bash
 git add -A
-git commit -m "feat: manual structured workout entry with text rendering"
-```
-
-### Task 6.9: Missed-days support (multi-day paste → one merged session)
-
-Spec: "Missed days — help prioritize/merge when rejoining; the paste may span several missed days." The single-workout pipeline handles this via prompting: the parser accepts multi-day pastes (days become blocks) and the tailor merges/prioritizes for the `missed_days` constraint. UI hints tell the athlete to paste everything.
-
-**Files:**
-- Modify: `src/lib/engine/parse-workout.ts`, `src/lib/engine/tailor.ts`, `src/app/tailor/TailorClient.tsx`
-- Test: `tests/engine/parse-workout.test.ts`, `tests/engine/tailor.test.ts` (extend)
-
-- [ ] **Step 1: Write the failing tests** (guardrails that the prompts cover multi-day input)
-
-Append to `tests/engine/parse-workout.test.ts` (uses the same inline capturing pattern as Task 4.5):
-
-```ts
-it("instructs the model to handle multi-day pastes", async () => {
-  let capturedSystem = "";
-  const capturing: LlmProvider = {
-    async generateStructured(args) {
-      capturedSystem = args.systemPrompt ?? "";
-      throw new Error("only capturing"); // fallback path is fine for this test
-    },
-  };
-  await parseWorkout(capturing, "Day 1 ...\nDay 2 ...");
-  expect(capturedSystem).toContain("MULTIPLE days");
-});
-```
-
-Append to `tests/engine/tailor.test.ts` (reuses `CapturingProvider` from Task 4.5):
-
-```ts
-it("instructs the model to merge multi-day input for missed_days requests", async () => {
-  const provider = new CapturingProvider({ workout: fran, changes: [], rationale: "Merged.", safetyNote: null });
-  await tailor(provider, {
-    workout: fran, classification, profile,
-    request: { constraintType: "missed_days", details: "Missed Mon+Tue", timeCapMinutes: null, targetMovement: null },
-    movements: [], contraindications: [],
-  });
-  expect(provider.lastArgs?.systemPrompt).toContain("missed_days");
-});
-```
-
-- [ ] **Step 2: Run them, verify they fail**
-
-Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts tests/engine/tailor.test.ts`
-Expected: FAIL — prompts do not contain the expected instructions.
-
-- [ ] **Step 3: Extend the prompts**
-
-In `src/lib/engine/parse-workout.ts`, append to the `SYSTEM` string:
-
-```
-- The paste may contain MULTIPLE days of programming (e.g., an athlete catching up on missed days).
-  Keep everything: represent each day's pieces as ordered blocks and keep any day labels
-  (e.g., "Day 1", "Monday") in the block titles.
-```
-
-In `src/lib/engine/tailor.ts`, append to the `SYSTEM` string:
-
-```
-- If the request's constraintType is "missed_days", the original may span SEVERAL days of programming.
-  Merge and prioritize into ONE session that fits the athlete's availability and time budget: keep the
-  most important stimuli (favor the primary classification), drop or shrink redundant volume, and list
-  every dropped piece in "changes" with the reason.
-```
-
-- [ ] **Step 4: Run them, verify they pass**
-
-Run: `pnpm exec vitest run tests/engine/parse-workout.test.ts tests/engine/tailor.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Add the UI hint in `src/app/tailor/TailorClient.tsx`**
-
-Below the constraint detail textarea (inside the `constraintType !== "none"` block), add:
-
-```tsx
-{constraintType === "missed_days" && (
-  <p className="text-sm text-gray-500">
-    Tip: paste ALL the missed days above (in order) — they'll be merged into one session that fits today.
-  </p>
-)}
-```
-
-- [ ] **Step 6: Manual check + commit**
-
-Run: `pnpm dev`, paste two days of programming, pick "Missed days", tailor. Confirm the result is a single merged session and dropped pieces appear in "What changed".
-
-```bash
-git add -A
-git commit -m "feat: missed-days support (multi-day parse + merge prompts, UI hint)"
+git commit -m "feat: history of saved tailored workouts"
 ```
 
 ---
 
-## Phase 7 — Final wiring & verification
+## Phase F — Final
 
-### Task 7.1: README, env check, and full verification
+### Task F1: README, deployment notes and full verification
 
 **Files:**
-- Modify: `README.md` (replace the create-next-app boilerplate)
+- Modify: `README.md` (replace the create-next-app boilerplate), `docs/plans/training-tailor-engine-v1-plan.md` (Status), `.env.example` (final check)
 
-- [ ] **Step 1: Rewrite `README.md`** with: prerequisites (Node 20+, Postgres, a `GEMINI_API_KEY`), setup steps (`pnpm install`, set `.env` from `.env.example`, `pnpm db:push`, `pnpm dev` — note there is **no seed step**; domain data ships as JSON in `data/`), how auth works in dev (magic link printed to console), and how to run tests (`pnpm test`).
+- [ ] **Step 1: Rewrite `README.md`** with these sections, each short and concrete:
+  1. **What it is** — one paragraph from the spec's *Problem*.
+  2. **Prerequisites** — Node 20+, pnpm, Postgres (local or Neon), a Gemini API key, a Google OAuth client.
+  3. **Setup** — `pnpm install` (runs `prisma generate`), copy `.env.example` to `.env` and fill it, `pnpm db:migrate`, `pnpm dev`. No seed step: domain data ships in `data/`.
+  4. **Commands** — `pnpm test` (deterministic, no network/DB), `pnpm eval [caseId]`, `pnpm coverage`, `pnpm lint`, `pnpm build`, `pnpm db:migrate`, `pnpm db:deploy`, `pnpm db:studio`.
+  5. **Architecture** — the pipeline diagram from the spec and the boundary rule.
+  6. **Domain data** — where it lives, that it is edited through scripts using `scripts/lib/domain-json.mjs`, and that `tests/domain` guards it.
+  7. **Safety** — fail-closed validation; not medical advice.
+  8. **Private corpus** — `data/corpus/` and `reports/` are gitignored because the repo is public.
+  9. **Deploy (Vercel + Neon)** — create the Neon database; set every `.env.example` variable in Vercel (with `BETTER_AUTH_URL` = the production URL); add `https://<domain>/api/auth/callback/google` to the Google client; set the build command to `pnpm db:deploy && pnpm build`.
 
-- [ ] **Step 2: Run the full test suite**
+- [ ] **Step 2: Check `.env.example`** lists exactly: `DATABASE_URL`, `AI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DAILY_ENGINE_LIMIT` — and no `AUTH_SECRET` or `EMAIL_*` leftovers.
 
-Run: `pnpm test`
-Expected: all suites pass with no DB and no API key (the Gemini integration test skips itself when `GEMINI_API_KEY` is unset).
+- [ ] **Step 3: Full verification**
 
-- [ ] **Step 3: Production build check**
+```bash
+pnpm test
+pnpm lint
+pnpm build
+pnpm eval
+```
+Expected: tests pass with no DB or key; lint clean; build succeeds with no type errors; eval meets the E9 target (≥ 9/10, no `contraindicated_movement` violation).
 
-Run: `pnpm build`
-Expected: build completes with no type errors.
+- [ ] **Step 4: End-to-end manual smoke (phone viewport)**
 
-- [ ] **Step 4: Manual smoke of the full flow**
+Sign in with Google → fill the profile (an injury with side and severity, equipment, a benchmark) → tailor a pasted workout with a pain stated today → confirm contraindicated movements are gone and cautions are badged → refine ("too easy") → save → see it in history. Then: a manual entry, a two-day "missed days" paste with a 60-min cap, and "no rower today".
 
-Sign in → save profile (including a benchmark) → tailor a pasted workout with an injury constraint → confirm contraindicated movements are avoided → refine with feedback ("too easy") → save → see it in history. Then tailor a manually entered workout and a two-day "missed days" paste.
+- [ ] **Step 5: Update this plan's Status section** to "v1 complete" with the final test count, eval pass rate and model.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "docs: rewrite README and finalize v1 verification"
+git commit -m "docs: README, deployment notes and v1 verification"
 ```
 
 ---
 
-## Self-review notes (coverage against spec)
+## Self-review (coverage against spec revision 2)
 
-- **Engine + domain-grounding** → Phases 2–4 (versioned JSON domain data behind a repository, types, parse/classify/tailor with contraindications + stimulus). ✔
-- **AI service abstraction (Gemini behind interface)** → Task 3.2/3.3; only `gemini-provider.ts` imports the SDK; `getProvider()` factory keyed by `AI_PROVIDER`. ✔
-- **Free-text + manual ingestion** → `WorkoutInput` union (`raw` | `structured`); pipeline branches in Task 4.4; paste UI in Task 6.4, manual structured-entry UI in Task 6.8. ✔
-- **Graceful parse degradation** (spec: "a parse failure degrades gracefully") → Task 4.1 `fallbackWorkout` + verbatim rawText guard. ✔
-- **Athlete profile incl. availability and benchmarks** → Prisma `AthleteProfile`, `AthleteProfileSchema`, profile form (Task 6.2) + benchmarks section (Task 6.7). ✔
-- **Constraints: injury / time / missed days / movement goal / none** → `ConstraintType`, surfaced in `TailorClient`; missed-days multi-day merge in Task 6.9. ✔
-- **Refine loop** (spec pipeline step 6) → engine support in Task 4.5, endpoint + UI in Task 6.6. ✔
-- **Dynamic multi-block workout formats** → `StructuredWorkout` is a session of ordered `blocks[]`, each with its own `format`, `scheme`, `components[]`, and `coachingNotes`; verbatim `rawText` is preserved at session and block level as the source of truth, with structure as a derived extraction (Task 3.1, parse prompt in Task 4.1). Stored in `Json` columns — no per-format tables. ✔
-- **Result: side-by-side + rationale + what-changed + safety disclaimer** → Task 6.4 (block-by-block `WorkoutView`) + layout footer. ✔
-- **Save what you reviewed** → save persists the exact displayed result; it never re-runs the nondeterministic pipeline (Tasks 6.3/6.4). ✔
-- **Auth + Postgres persistence (user data only)** → Phase 1 + Phase 5; no edge middleware (incompatible with database sessions/Prisma); pages and API routes self-guard. ✔
-- **Out of scope (coach portal, OCR, integrations)** → not present. ✔
+| Spec requirement | Task |
+|---|---|
+| Enforced safety: deterministic validation, one retry, fail-closed | E7, E8 |
+| Movement-name resolution (exact, alias, normalized, singular) | D5, E4 |
+| Today's situation activates contraindications; stated pain never ignored | E4 (fallback), E5, E8 |
+| Structured per-block stimulus profile | D4, E1, E4, E7 |
+| Tiered (`avoid`/`caution`), severity-aware contraindications; limitations/conditions | D1, D2 |
+| Laterality (`unilateral`, healthy side only, never axial) | D1, D2 |
+| Low-load stresses; grip/abdominals sites; supine/prone positions | D1, D2 |
+| Strict vs kipping rows; known-gap movements; corpus-driven coverage ≥ 95 % | D3, E10 |
+| Effort and implement-load conversions | D4, E6 |
+| Deterministic candidate generator (substitutes → pattern fallback ranking) | E5 |
+| Combinable constraints (situation, time cap, target movement, equipment today) | E1, E6, U4 |
+| Missed days (`day` on blocks, merge, `sourceBlocks`, `droppedBlocks`) | E1, E4, E6, E7 |
+| Refine loop (situation analysis of feedback, feedback history, profile re-applied) | E8, U3, U4 |
+| Provider abstraction, validation retry, pinned Gemini model | E2, E3 |
+| Two LLM calls per run (parse+classify merged), progress stream, `maxDuration` | E4, E8, U2, U3 |
+| Evaluation harness and coverage report | E9 |
+| Google OAuth via Better Auth; proxy page protection; API 401s | S2, U1, U3 |
+| Prisma migrations; profile document; saved results; quota ledger + 429 | S1, U2, U3 |
+| Save exactly what was reviewed | U3 |
+| Structured profile (sex, scaling level, injuries with side/severity, benchmarks, equipment, goals, availability) | E1, U1 |
+| Phone-first UI; disclaimer; caution badges | S2, U4, U5, U6 |
+| Public repo: corpus and reports gitignored | E9, E10 |
+| Hosting on Vercel + Neon | F1 |
 
 ## Open follow-ups (not blocking v1)
 
-- **Movement-name → library resolution:** `components[].movement` is a canonical name string with no enforced FK to the movement library, so an extracted movement may have no grounding row (no contraindications/substitutes). v1 relies on the parse prompt emitting canonical names; a fuzzy/normalization pass (and surfacing "unrecognized movement") is a follow-up.
-- **Domain data to DB (Phase C):** when coaches need to edit domain data at runtime, move it behind the same `repository.ts` interface into Postgres — nothing else changes.
-- **Refine history:** refines replace the on-screen result; persisting the refine conversation chain is a follow-up.
-- Retry-with-error-feedback when the LLM returns schema-invalid JSON (currently: one shot, then the parse fallback / a 502).
+- **Domain data to DB (Phase C):** when coaches edit domain data at runtime, move it behind `repository.ts` into Postgres — nothing else changes.
+- **Refine history:** only the saved result's feedback history is kept; persisting every attempt is a follow-up.
+- **Quota race:** two simultaneous requests can both pass the count; acceptable at v1 scale (a transaction or advisory lock fixes it).
+- **Benchmark-driven loads:** `percent1RM` × 1RM benchmarks could be computed deterministically instead of by the model once eval shows load errors.
