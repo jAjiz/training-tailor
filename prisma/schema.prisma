@@ -7,76 +7,103 @@ datasource db {
   provider = "postgresql"
 }
 
-// ---- Auth.js (NextAuth) models ----
+// ---- Better Auth core. Field names are fixed by Better Auth, which also generates the ids. ----
 model User {
-  id            String            @id @default(cuid())
+  id            String            @id
+  name          String
   email         String            @unique
-  emailVerified DateTime?
-  name          String?
-  accounts      Account[]
+  emailVerified Boolean           @default(false)
+  image         String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
   sessions      Session[]
+  accounts      Account[]
   profile       AthleteProfile?
   tailored      TailoredWorkout[]
-  createdAt     DateTime          @default(now())
-}
+  usage         LlmUsage[]
 
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
+  @@map("user")
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
 }
 
-model VerificationToken {
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
   identifier String
-  token      String   @unique
-  expires    DateTime
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  @@unique([identifier, token])
+  @@index([identifier])
+  @@map("verification")
 }
 
-// ---- Athlete profile ----
+// ---- Training Tailor ----
 model AthleteProfile {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  injuries     Json     @default("[]")
-  benchmarks   Json     @default("{}")
-  equipment    Json     @default("[]")
-  goals        Json     @default("[]")
-  availability Json     @default("{}")
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data      Json // AthleteProfileSchema (src/lib/engine/types.ts)
+  updatedAt DateTime @updatedAt
 }
 
 model TailoredWorkout {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  originalWorkout Json
-  request     Json
-  tailoredWorkout Json
-  changes     Json
-  rationale   String
-  safetyNote  String?
-  stimulus    Json
-  createdAt   DateTime @default(now())
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  original        Json // StructuredWorkout
+  request         Json // TailorRequest
+  conditions      Json // ConditionRef[]
+  tailored        Json // TailoringResult
+  findings        Json // Finding[]
+  feedbackHistory Json     @default("[]") // string[]
+  model           String
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Quota ledger: one row per engine run.
+model LlmUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // "tailor" | "refine"
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
