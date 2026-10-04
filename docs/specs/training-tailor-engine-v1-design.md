@@ -115,7 +115,11 @@ Engine pipeline (server-side, provider-agnostic)
    the situation is non-empty, the request fails — stated pain is never ignored.
 2. **Resolve.** Each component's movement name is resolved deterministically to a
    library row (exact name → alias → normalized name/alias → singularized), producing
-   `canonical` or `null` ("unrecognized").
+   `canonical` or `null` ("unrecognized"). Resolution is only as honest as the analysis:
+   the analyzer may use a library name only for the **same** movement (spelling,
+   abbreviation, translation); a related variant keeps its own name (a snatch pull is not
+   a hang power snatch), so a gap surfaces as "unrecognized" instead of borrowing another
+   movement's stresses. Mobility drills and stretches are not components.
 3. **Active conditions.** Profile injuries (persisting) are merged with today's detected
    conditions; for the same key, today's side/severity win. Unknown keys are dropped
    and logged.
@@ -330,11 +334,14 @@ more than one distinct `day`.
   stream helper.
 - **Evaluation harness** (`pnpm eval`, needs `GEMINI_API_KEY`): synthetic/public cases in
   `evals/cases/*.json` run through the real pipeline and graded by the deterministic
-  validator plus per-case expectations (`mustAvoid`, `maxTotalMinutes`, `expectFailClosed`).
+  validator plus per-case expectations (`mustAvoid`, `mustDetect`, `maxTotalMinutes`,
+  `expectFailClosed`, and `originalMustContain` / `originalMustNotContain`, which pin how
+  the original was recognized).
   Run before changing prompts, model or domain data.
 - **Coverage** (`pnpm coverage`): runs analysis over the private corpus and reports the
   share of component mentions that resolve to the library and the most frequent
-  unrecognized names. v1 target: **≥ 95 %** resolved.
+  unrecognized names. v1 target: **≥ 95 %** resolved. The percentage alone is not trusted:
+  a coverage pass also reviews what each name resolved to, since a wrong match inflates it.
 
 ## Safety
 

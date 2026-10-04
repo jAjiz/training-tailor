@@ -20,6 +20,10 @@ export const EvalCaseSchema = z.object({
     mustDetect: z.array(z.string()).default([]),
     maxTotalMinutes: z.number().positive().nullable().default(null),
     expectFailClosed: z.boolean().default(false),
+    // Canonical names the analysis of the ORIGINAL must (not) produce: pins recognition, e.g. a
+    // "snatch pull" must not be read as a Hang Power Snatch.
+    originalMustContain: z.array(z.string()).default([]),
+    originalMustNotContain: z.array(z.string()).default([]),
   }).prefault({}),
 });
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
@@ -44,6 +48,9 @@ export function gradeCase(c: EvalCase, outcome: EvalOutcome): { passed: boolean;
   }
   if (c.expect.expectFailClosed) failures.push("expected the engine to fail closed");
   const r = outcome.result;
+  const recognized = new Set(r.original.blocks.flatMap((b) => b.components.map((x) => x.canonical ?? x.movement)));
+  for (const name of c.expect.originalMustContain) if (!recognized.has(name)) failures.push(`original is missing ${name}`);
+  for (const name of c.expect.originalMustNotContain) if (recognized.has(name)) failures.push(`original contains ${name}`);
   for (const f of r.findings.filter((x) => x.severity === "violation")) failures.push(`violation [${f.kind}] ${f.message}`);
   const prescribed = new Set(r.tailored.blocks.flatMap((b) => b.components.map((x) => x.canonical ?? x.movement)));
   for (const name of c.expect.mustAvoid) if (prescribed.has(name)) failures.push(`prescribed forbidden movement ${name}`);

@@ -30,7 +30,10 @@ function result(overrides: Partial<PipelineResult> = {}): PipelineResult {
 describe("eval grading", () => {
   it("fills defaults for profile, request and expectations", () => {
     const c = EvalCaseSchema.parse({ id: "x", description: "x", input: { kind: "paste", rawText: "x" } });
-    expect(c.expect).toEqual({ mustAvoid: [], mustDetect: [], maxTotalMinutes: null, expectFailClosed: false });
+    expect(c.expect).toEqual({
+      mustAvoid: [], mustDetect: [], maxTotalMinutes: null, expectFailClosed: false,
+      originalMustContain: [], originalMustNotContain: [],
+    });
     const { profile, request } = resolveCase(c);
     expect(profile.equipment).toBeNull();
     expect(request.situation).toBe("");
@@ -54,6 +57,17 @@ describe("eval grading", () => {
       "prescribed forbidden movement Thruster",
       "did not detect shoulder_impingement",
       "total 20 min > 10 min",
+    ]);
+  });
+
+  it("checks how the original workout was recognized", () => {
+    const c = EvalCaseSchema.parse({
+      id: "snatch-pull", description: "x", input: { kind: "paste", rawText: "x" },
+      expect: { originalMustContain: ["Thruster", "Snatch Pull"], originalMustNotContain: ["Pull-up"] },
+    });
+    expect(gradeCase(c, { kind: "result", result: result() }).failures).toEqual([
+      "original is missing Snatch Pull",
+      "original contains Pull-up",
     ]);
   });
 

@@ -706,10 +706,71 @@ describe("strict variants and known gaps", () => {
     expect(byName("Ring Row").substitutes).toEqual(["Dumbbell Row"]);
     expect(byName("Dumbbell Row").unilateral).toBe("upper");
     expect(byName("Bent-over Row").equipment).toEqual(["barbell"]);
-    expect(movements.filter((m) => m.patterns[0] === "horizontal_pull")).toHaveLength(3);
+    expect(movements.filter((m) => m.patterns[0] === "horizontal_pull").map((m) => m.name).sort())
+      .toEqual(["Banded Face Pull", "Bent-over Row", "Dumbbell Row", "Ring Row"]);
   });
 
-  it("the catalog has 126 movements", () => {
-    expect(movements).toHaveLength(126);
+  it("the catalog has 135 movements", () => {
+    expect(movements).toHaveLength(135);
+  });
+});
+
+describe("corpus coverage pass", () => {
+  it("olympic pulls stop at triple extension: no catch, no overhead, no deep squat", () => {
+    for (const name of ["Snatch Pull", "Clean Pull"]) {
+      const m = byName(name);
+      expect(m.equipment, name).toEqual(["barbell"]);
+      expect(m.stresses.some((s) => s.site === "lumbar" && s.mechanisms.includes("ballistic")), name).toBe(true);
+      expect(m.stresses.some((s) => s.mechanisms.includes("overhead") || s.mechanisms.includes("deep_flexion")), name).toBe(false);
+    }
+  });
+
+  it("a shoulder impingement keeps the snatch pull and blocks the snatch", () => {
+    const shoulder = injuries.find((c) => c.key === "shoulder_impingement");
+    if (!shoulder) throw new Error("shoulder_impingement missing");
+    expect(matchesContraindication(byName("Snatch Pull"), shoulder)).toBe(false);
+    expect(matchesContraindication(byName("Hang Power Snatch"), shoulder)).toBe(true);
+  });
+
+  it("the snatch balance is a ballistic drop into an overhead squat", () => {
+    const m = byName("Snatch Balance");
+    for (const site of byName("Overhead Squat").stresses.map((x) => x.site)) {
+      expect(m.stresses.some((x) => x.site === site), site).toBe(true);
+    }
+    expect(m.stresses.find((x) => x.site === "shoulder")?.mechanisms).toContain("ballistic");
+  });
+
+  it("the bulgarian split squat is a single-leg lunge that stretches the rear hip", () => {
+    const m = byName("Bulgarian Split Squat");
+    expect(m.patterns[0]).toBe("lunge");
+    expect(m.unilateral).toBe("lower");
+    expect(m.stresses.some((s) => s.site === "hip_flexors" && s.mechanisms.includes("eccentric"))).toBe(true);
+  });
+
+  it("anti-rotation and floor core work load no site, so no stress rule blocks them", () => {
+    for (const name of ["Pallof Press", "Dead Bug", "Glute Bridge"]) {
+      const m = byName(name);
+      expect(m.stresses, name).toEqual([]);
+      for (const c of injuries.filter((i) => i.key !== "pregnancy")) {
+        expect(matchesContraindication(m, c), `${name} / ${c.key}`).toBe(false);
+      }
+    }
+    expect(byName("Dead Bug").positions).toContain("supine");
+    expect(byName("Glute Bridge").positions).toContain("supine");
+  });
+
+  it("pogo jumps are low-load impact", () => {
+    const m = byName("Pogo Jump");
+    expect(m.stresses.every((s) => s.load === "low")).toBe(true);
+    expect(m.stresses.some((s) => s.site === "ankle" && s.mechanisms.includes("impact"))).toBe(true);
+  });
+
+  it("corpus spellings resolve to the new rows", () => {
+    for (const [alias, name] of [
+      ["Face Pull", "Banded Face Pull"], ["Pogo Jumps", "Pogo Jump"], ["RFESS", "Bulgarian Split Squat"],
+      ["Drop Snatch", "Snatch Balance"],
+    ]) {
+      expect(movements.find((m) => m.aliases.includes(alias))?.name, alias).toBe(name);
+    }
   });
 });
