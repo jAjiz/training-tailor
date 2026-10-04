@@ -30,7 +30,7 @@ Revision 1 of this plan delivered Phase 0 (scaffold, Vitest), Phase 1 (Prisma 7 
 
 ## Execution order
 
-`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 … U6` (API + UI) → `F1` (README, verification).
+`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U5 → U6` (API, unrecognized-movement queue, UI) → `F1` (README, verification).
 
 The engine and its evaluation come before auth and UI on purpose: the LLM loop is validated end-to-end (`pnpm eval`) before any screen exists.
 
@@ -48,6 +48,7 @@ scripts/
   lib/domain-json.mjs         # readRows/writeRows/fmt — keeps the data file style
   eval.ts                     # pnpm eval
   coverage.ts                 # pnpm coverage
+  review-movements.ts         # pnpm review:movements (unrecognized-movement queue)
 src/
   proxy.ts                    # Next 16 route protection (pages)
   lib/
@@ -83,6 +84,8 @@ src/
     engine-stream.ts          # engineStreamResponse, readEngineStream, EngineEvent
     api-schemas.ts            # request bodies for the engine/save routes
     tailor-service.ts         # loadProfile
+    unrecognized.ts           # collectUnrecognized, recordUnrecognized, newlyResolved
+    unrecognized-store.ts     # prismaUnrecognizedStore
   app/
     layout.tsx, page.tsx, signin/page.tsx
     profile/page.tsx + ProfileForm.tsx
@@ -5633,6 +5636,297 @@ Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
 ```bash
 git add -A
 git commit -m "feat: streaming tailor and refine endpoints with quota, and save-what-you-reviewed"
+```
+
+---
+
+### Task U3b: Unrecognized-movement queue
+
+The catalog grows from real usage: every movement name the engine meets but cannot resolve is queued (name only, never workout text), and `pnpm review:movements` lists the queue by frequency and closes entries the library has since learned. Adding a movement stays a reviewed data change (one-off migration script + a test, as in Task E10) — the queue never edits `data/`.
+
+**Files:**
+- Create: `src/lib/unrecognized.ts`, `src/lib/unrecognized-store.ts`, `scripts/review-movements.ts`, `tests/lib/unrecognized.test.ts`, `prisma/migrations/<timestamp>_unrecognized_movement/` (generated)
+- Modify: `prisma/schema.prisma` (append a model), `src/app/api/tailor/route.ts`, `src/app/api/tailor/refine/route.ts`, `package.json` (script)
+
+**Interfaces:**
+- Consumes: `normalizeMovementName`, `createMovementResolver`, `MovementResolver` (D5); `getDomainData` (D5); `PipelineResult` (E1); `prisma` (S1); the U3 routes.
+- Produces:
+  - `@/lib/unrecognized`: `type UnrecognizedStatus = "pending" | "resolved" | "ignored"`, `interface UnrecognizedEntry { key: string; example: string }`, `interface UnrecognizedStore { record(entries: UnrecognizedEntry[]): Promise<void> }`, `collectUnrecognized(result: PipelineResult): UnrecognizedEntry[]`, `recordUnrecognized(store, result): Promise<void>` (never throws), `newlyResolved(entries, resolve): { key: string; resolvedTo: string }[]`.
+  - `@/lib/unrecognized-store`: `prismaUnrecognizedStore: UnrecognizedStore`.
+  - Prisma model `UnrecognizedMovement { key @unique, example, count, status, resolvedTo?, firstSeenAt, lastSeenAt }`; command `pnpm review:movements [ignore <key>]`.
+
+- [ ] **Step 1: Write the failing test `tests/lib/unrecognized.test.ts`**
+
+```ts
+import { describe, it, expect, vi } from "vitest";
+import movementsJson from "../../data/movements.json";
+import { MovementSchema } from "@/lib/domain/types";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import type { PipelineResult, WorkoutComponent } from "@/lib/engine/types";
+import { collectUnrecognized, newlyResolved, recordUnrecognized, type UnrecognizedStore } from "@/lib/unrecognized";
+import { fran, identityResult } from "../fixtures/workouts";
+
+const unknown = (base: WorkoutComponent, movement: string): WorkoutComponent => ({ ...base, movement, canonical: null });
+
+function result(extraOriginal: string[] = [], extraTailored: string[] = []): PipelineResult {
+  const original = fran();
+  const tailored = identityResult(fran());
+  const base = original.blocks[0].components[0];
+  original.blocks[0].components.push(...extraOriginal.map((m) => unknown(base, m)));
+  tailored.blocks[0].components.push(...extraTailored.map((m) => unknown(base, m)));
+  return { original, conditions: [], unavailableEquipment: [], tailored, findings: [], feedbackHistory: [], model: "fake" };
+}
+
+function store(fail = false): UnrecognizedStore & { record: ReturnType<typeof vi.fn> } {
+  return { record: vi.fn(async () => { if (fail) throw new Error("db down"); }) };
+}
+
+describe("collectUnrecognized", () => {
+  it("returns nothing when every movement resolved", () => {
+    expect(collectUnrecognized(result())).toEqual([]);
+  });
+
+  it("collects each unresolved name once, from the original and the tailored session", () => {
+    expect(collectUnrecognized(result(["Zercher Carry"], [" zercher carry ", "Sandbag Bear Hug Squat"]))).toEqual([
+      { key: "zerchercarry", example: "Zercher Carry" },
+      { key: "sandbagbearhugsquat", example: "Sandbag Bear Hug Squat" },
+    ]);
+  });
+
+  it("stores a bounded example, never a whole block of text", () => {
+    const [entry] = collectUnrecognized(result(["x".repeat(500)]));
+    expect(entry.example).toHaveLength(80);
+  });
+});
+
+describe("recordUnrecognized", () => {
+  it("records the entries", async () => {
+    const s = store();
+    await recordUnrecognized(s, result(["Zercher Carry"]));
+    expect(s.record).toHaveBeenCalledWith([{ key: "zerchercarry", example: "Zercher Carry" }]);
+  });
+
+  it("does not touch the store when there is nothing to record", async () => {
+    const s = store();
+    await recordUnrecognized(s, result());
+    expect(s.record).not.toHaveBeenCalled();
+  });
+
+  it("never fails the request when the store fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(recordUnrecognized(store(true), result(["Zercher Carry"]))).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
+describe("newlyResolved", () => {
+  it("closes the entries the library now resolves", () => {
+    const resolve = createMovementResolver(movementsJson.map((m) => MovementSchema.parse(m)));
+    expect(newlyResolved([
+      { key: "t2b", example: "T2B" },
+      { key: "zerchercarry", example: "Zercher Carry" },
+    ], resolve)).toEqual([{ key: "t2b", resolvedTo: "Toes-to-Bar" }]);
+  });
+});
+```
+
+Run: `pnpm exec vitest run tests/lib/unrecognized.test.ts` → FAIL (module not found).
+
+- [ ] **Step 2: Implement `src/lib/unrecognized.ts`**
+
+```ts
+import { normalizeMovementName, type MovementResolver } from "@/lib/domain/resolve";
+import type { PipelineResult } from "@/lib/engine/types";
+
+// The queue that grows the catalog: movement names the engine met but could not resolve.
+// Only the name is stored, never the workout text (programming may be private or paid).
+
+export type UnrecognizedStatus = "pending" | "resolved" | "ignored";
+
+export interface UnrecognizedEntry {
+  key: string; // normalizeMovementName(example)
+  example: string; // as written, truncated
+}
+
+export interface UnrecognizedStore {
+  record(entries: UnrecognizedEntry[]): Promise<void>;
+}
+
+const MAX_EXAMPLE = 80;
+
+/** Each unresolved movement name of the original and the tailored session, once per normalized key. */
+export function collectUnrecognized(result: PipelineResult): UnrecognizedEntry[] {
+  const byKey = new Map<string, UnrecognizedEntry>();
+  for (const c of [...result.original.blocks, ...result.tailored.blocks].flatMap((b) => b.components)) {
+    if (c.canonical) continue;
+    const example = c.movement.trim().slice(0, MAX_EXAMPLE);
+    const key = normalizeMovementName(example);
+    if (key && !byKey.has(key)) byKey.set(key, { key, example });
+  }
+  return [...byKey.values()];
+}
+
+/** Records the result's unrecognized names; a store failure is logged, never surfaced to the athlete. */
+export async function recordUnrecognized(store: UnrecognizedStore, result: PipelineResult): Promise<void> {
+  const entries = collectUnrecognized(result);
+  if (entries.length === 0) return;
+  try {
+    await store.record(entries);
+  } catch (e) {
+    console.error("recording unrecognized movements failed", e);
+  }
+}
+
+/** Queue entries the current library resolves (a new row or alias was added since they were seen). */
+export function newlyResolved(
+  entries: UnrecognizedEntry[], resolve: MovementResolver,
+): { key: string; resolvedTo: string }[] {
+  return entries.flatMap((e) => {
+    const m = resolve(e.example);
+    return m ? [{ key: e.key, resolvedTo: m.name }] : [];
+  });
+}
+```
+
+Run: `pnpm exec vitest run tests/lib/unrecognized.test.ts` → PASS (7 tests).
+
+- [ ] **Step 3: Append the model to `prisma/schema.prisma` and migrate**
+
+```prisma
+// Catalog growth queue: movement names the engine could not resolve (names only, never workout text).
+model UnrecognizedMovement {
+  id          String   @id @default(cuid())
+  key         String   @unique // normalizeMovementName(example)
+  example     String // as first written, max 80 chars
+  count       Int      @default(1)
+  status      String   @default("pending") // "pending" | "resolved" | "ignored"
+  resolvedTo  String? // canonical name once the library resolves it
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([status, count])
+}
+```
+
+Confirm `DIRECT_URL` points at the Neon `dev` branch, then:
+
+```bash
+pnpm exec prisma migrate dev --name unrecognized_movement
+```
+
+Expected: `prisma/migrations/<timestamp>_unrecognized_movement/migration.sql` creates `UnrecognizedMovement` only (no drops).
+
+- [ ] **Step 4: Implement `src/lib/unrecognized-store.ts`**
+
+```ts
+import { prisma } from "@/lib/db";
+import type { UnrecognizedStore } from "@/lib/unrecognized";
+
+export const prismaUnrecognizedStore: UnrecognizedStore = {
+  record: async (entries) => {
+    const now = new Date();
+    await prisma.$transaction(
+      entries.map((e) =>
+        prisma.unrecognizedMovement.upsert({
+          where: { key: e.key },
+          create: { key: e.key, example: e.example },
+          update: { count: { increment: 1 }, lastSeenAt: now },
+        }),
+      ),
+    );
+  },
+};
+```
+
+- [ ] **Step 5: Record from both engine routes**
+
+In `src/app/api/tailor/route.ts` add the imports:
+```ts
+import { recordUnrecognized } from "@/lib/unrecognized";
+import { prismaUnrecognizedStore } from "@/lib/unrecognized-store";
+```
+and replace the `return engineStreamResponse(...)` statement with:
+```ts
+  return engineStreamResponse(async (onProgress) => {
+    const result = await runTailorPipeline(provider, { input: body.data.input, profile, request: body.data.request, domain, onProgress });
+    await recordUnrecognized(prismaUnrecognizedStore, result);
+    return result;
+  });
+```
+
+In `src/app/api/tailor/refine/route.ts` add the same two imports and replace its `return engineStreamResponse(...)` statement with:
+```ts
+  return engineStreamResponse(async (onProgress) => {
+    const result = await runRefinePipeline(provider, {
+      previous: body.data.previous, feedback: body.data.feedback, profile, request: body.data.request, domain, onProgress,
+    });
+    await recordUnrecognized(prismaUnrecognizedStore, result);
+    return result;
+  });
+```
+
+A fail-closed run (`EngineUnsafeError`) records nothing: it throws before returning a result.
+
+- [ ] **Step 6: Create `scripts/review-movements.ts`** and add `"review:movements": "tsx scripts/review-movements.ts"` to `package.json` `scripts`
+
+```ts
+// Reviews the unrecognized-movement queue (needs DATABASE_URL).
+// Usage: pnpm review:movements               — close entries the library now resolves, list the pending ones
+//        pnpm review:movements ignore <key>  — mark a non-movement (drill, cue, typo) as ignored
+// Adding a movement stays a reviewed data change (scripts/migrations + a test), never automatic.
+import "dotenv/config";
+import { prisma } from "@/lib/db";
+import { getDomainData } from "@/lib/domain/repository";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import { newlyResolved } from "@/lib/unrecognized";
+
+async function main() {
+  const [command, key] = process.argv.slice(2);
+  if (command === "ignore") {
+    if (!key) throw new Error("usage: pnpm review:movements ignore <key>");
+    await prisma.unrecognizedMovement.update({ where: { key }, data: { status: "ignored" } });
+    console.log(`ignored ${key}`);
+    return;
+  }
+
+  const { movements } = await getDomainData();
+  const pending = await prisma.unrecognizedMovement.findMany({
+    where: { status: "pending" },
+    orderBy: [{ count: "desc" }, { lastSeenAt: "desc" }],
+  });
+  const closed = newlyResolved(pending, createMovementResolver(movements));
+  for (const c of closed) {
+    await prisma.unrecognizedMovement.update({ where: { key: c.key }, data: { status: "resolved", resolvedTo: c.resolvedTo } });
+    console.log(`resolved  ${c.key} -> ${c.resolvedTo}`);
+  }
+
+  const closedKeys = new Set(closed.map((c) => c.key));
+  const open = pending.filter((p) => !closedKeys.has(p.key));
+  console.log(`\npending: ${open.length}`);
+  for (const p of open) {
+    console.log(`  ${String(p.count).padStart(4)}  ${p.example}  [${p.key}]  last ${p.lastSeenAt.toISOString().slice(0, 10)}`);
+  }
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());
+```
+
+- [ ] **Step 7: Verify**
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean. Then, signed in with `pnpm dev`, tailor a workout containing an unknown movement (e.g. "3 rounds: 10 Zercher Carry steps, 10 Air Squats") and run `pnpm review:movements`.
+Expected: `zerchercarry` is listed as pending with count 1; `pnpm review:movements ignore zerchercarry` marks it ignored.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add -A
+git commit -m "feat: queue unrecognized movements for catalog review"
 ```
 
 ---

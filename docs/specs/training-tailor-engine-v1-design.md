@@ -289,6 +289,9 @@ Domain entities are JSON (above). User data in Postgres:
   droppedBlocks + changes + rationale + safetyNote), `findings`, `feedbackHistory[]`,
   `model`, `createdAt`; indexed by `(userId, createdAt)`.
 - **LlmUsage**: `userId`, `kind` (`tailor | refine`), `createdAt` — the quota ledger.
+- **UnrecognizedMovement**: `key` (normalized name, unique), `example` (as written, ≤ 80
+  chars), `count`, `status` (`pending | resolved | ignored`), `resolvedTo`, `firstSeenAt`,
+  `lastSeenAt` — the catalog-growth queue. Names only, never workout text, and no user id.
 
 ### Workout (structured)
 
@@ -342,6 +345,12 @@ more than one distinct `day`.
   share of component mentions that resolve to the library and the most frequent
   unrecognized names. v1 target: **≥ 95 %** resolved. The percentage alone is not trusted:
   a coverage pass also reviews what each name resolved to, since a wrong match inflates it.
+- **Catalog growth from usage**: every tailor/refine run queues the movement names (of the
+  original and of the tailored session) that resolved to no library row; recording never
+  fails the athlete's request. `pnpm review:movements` lists the pending queue by frequency,
+  closes entries the library has since learned, and marks non-movements as ignored.
+  Movements are **never added automatically**: their stress, position and laterality
+  annotations decide safety, so each addition is a reviewed data change with a test.
 
 ## Safety
 
