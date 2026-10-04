@@ -134,6 +134,13 @@ const tailoringFields = {
 };
 export const TailoringDraftSchema = z.object({ ...tailoringFields, blocks: z.array(TailoredBlockDraftSchema).min(1) });
 export type TailoringDraft = z.infer<typeof TailoringDraftSchema>;
+
+/** The draft schema with "movement" restricted to the given names: the model cannot name a movement code cannot assess. */
+export function tailoringDraftSchemaFor(movementNames: readonly [string, ...string[]]) {
+  const component = ComponentDraftSchema.extend({ movement: z.enum(movementNames) });
+  const block = z.object({ ...blockFields, components: z.array(component), sourceBlocks });
+  return z.object({ ...tailoringFields, blocks: z.array(block).min(1) });
+}
 export const TailoringResultSchema = z.object({ ...tailoringFields, blocks: z.array(TailoredBlockSchema).min(1) });
 export type TailoringResult = z.infer<typeof TailoringResultSchema>;
 

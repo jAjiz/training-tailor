@@ -4,7 +4,7 @@ import type { Contraindication, Conversions, Equipment, Movement } from "@/lib/d
 import type { Candidate, ComponentPlan } from "./plan";
 import { resolveBlocks } from "./resolve-blocks";
 import {
-  TailoringDraftSchema,
+  tailoringDraftSchemaFor,
   type AthleteProfile, type ConditionRef, type Finding, type StructuredWorkout, type TailorRequest, type TailoringResult,
 } from "./types";
 
@@ -27,7 +27,7 @@ const SYSTEM = `You are an expert functional fitness coach. Modify ONE athlete's
 
 Hard rules (code checks the output and rejects violations):
 1. Never prescribe a movement marked AVOID, nor one that needs MISSING equipment. Replace every component marked MUST CHANGE, preferring its candidates in order.
-2. Spell every movement exactly as in the MOVEMENT LIBRARY.
+2. Every movement is a MOVEMENT LIBRARY name, spelled exactly; the output schema accepts nothing else. An UNRECOGNIZED original movement may only be kept as written or replaced by a library movement, never by an invented one.
 3. Each tailored block lists in "sourceBlocks" the 0-based indices of the original blocks it comes from. Every original block appears in some "sourceBlocks" or in "droppedBlocks" with a reason.
 4. With a time cap, the sum of "timeDomainMinutes" over the tailored blocks must not exceed it.
 5. Keep each block's "stimulus" unless a change is unavoidable; then explain it in "changes".
@@ -111,11 +111,19 @@ export function buildTailorPrompt(input: TailorInput): string {
   return parts.join("\n\n");
 }
 
+/** Library names plus the original's unrecognized names (kept as written): any other name could not be assessed. */
+export function allowedMovementNames(original: StructuredWorkout, movements: Movement[]): [string, ...string[]] {
+  const kept = original.blocks.flatMap((b) => b.components.filter((c) => c.canonical === null).map((c) => c.movement));
+  const [first, ...rest] = [...new Set([...movements.map((m) => m.name), ...kept])];
+  if (first === undefined) throw new Error("allowedMovementNames: empty movement library");
+  return [first, ...rest];
+}
+
 export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoringResult> {
   const draft = await provider.generateStructured({
     systemPrompt: SYSTEM,
     prompt: buildTailorPrompt(input),
-    schema: TailoringDraftSchema,
+    schema: tailoringDraftSchemaFor(allowedMovementNames(input.original, input.movements)),
     schemaName: "TailoringResult",
   });
   return { ...draft, blocks: resolveBlocks(draft.blocks, createMovementResolver(input.movements)) };

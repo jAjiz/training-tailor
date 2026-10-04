@@ -136,11 +136,17 @@ Engine pipeline (server-side, provider-agnostic)
    request, the active conditions, the component plan with candidates (fully annotated),
    the names of the whole library, the available equipment, and the effort/load
    conversions. Output: the modified session (each block lists its `sourceBlocks`),
-   `droppedBlocks` with reasons, per-change list, rationale and safety note.
+   `droppedBlocks` with reasons, per-change list, rationale and safety note. The output
+   schema restricts every component's `movement` to an enum of the library names plus the
+   original's unrecognized names (which may be kept as written): the model cannot prescribe
+   a movement the validator cannot assess. Its freedom is in choosing among candidates,
+   loads, reps, scheme and block structure; a missing movement is a catalog gap, surfaced
+   by the unrecognized-movement queue.
 6. **Validate (deterministic).** Findings (`violation` or `warning`):
    - `contraindicated_movement` (violation): a tailored component assessed `avoid`;
    - `equipment_unavailable` (violation): needs equipment the athlete lacks today;
-   - `unrecognized_movement`: violation if newly introduced; warning if it was already in
+   - `unrecognized_movement`: violation if newly introduced (defense in depth: the schema
+     already prevents it); warning if it was already in
      the original (it could not be verified);
    - `caution_movement` (warning): assessed `caution` — shown to the athlete;
    - `time_cap_exceeded` (violation): total block time > cap × 1.1;

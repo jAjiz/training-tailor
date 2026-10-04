@@ -3,7 +3,8 @@ import { FakeProvider } from "@/lib/ai/fake-provider";
 import { getDomainData, type DomainData } from "@/lib/domain/repository";
 import { createMovementResolver } from "@/lib/domain/resolve";
 import { planComponents, goalFamily } from "@/lib/engine/plan";
-import { buildTailorPrompt, tailor, type TailorInput } from "@/lib/engine/tailor";
+import { StructuredOutputError } from "@/lib/ai/provider";
+import { allowedMovementNames, buildTailorPrompt, tailor, type TailorInput } from "@/lib/engine/tailor";
 import { emptyProfile, emptyRequest } from "@/lib/engine/types";
 import { component, fran, identityResult, toTailoringDraft } from "../fixtures/workouts";
 
@@ -74,8 +75,33 @@ describe("buildTailorPrompt", () => {
 describe("tailor", () => {
   it("returns the modification with canonical names resolved by code", async () => {
     const draft = toTailoringDraft(fran());
-    draft.blocks[0].components = [component("KB Goblet Squat", { reps: "21-15-9" }), component("Ring Rows", { reps: "21-15-9" })];
+    draft.blocks[0].components = [component("Kettlebell Goblet Squat", { reps: "21-15-9" }), component("Ring Row", { reps: "21-15-9" })];
     const result = await tailor(new FakeProvider({ TailoringResult: draft }), input());
     expect(result.blocks[0].components.map((c) => c.canonical)).toEqual(["Kettlebell Goblet Squat", "Ring Row"]);
+  });
+
+  it("only lets the model name library movements or keep the original's unrecognized ones", async () => {
+    const original = fran();
+    original.blocks[0].components.push({ ...original.blocks[0].components[0], movement: "Zercher Carry", canonical: null });
+    const names = allowedMovementNames(original, domain.movements);
+    expect(names).toContain("Thruster");
+    expect(names).toContain("Zercher Carry");
+    expect(names).not.toContain("Dumbbell Thruster");
+
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(original) });
+    await tailor(provider, input({ original }));
+    const schema = provider.calls[0].schema;
+    const invented = toTailoringDraft(original);
+    invented.blocks[0].components[0] = component("Dumbbell Thruster", { reps: "21-15-9" });
+    expect(schema.safeParse(invented).success).toBe(false);
+    const alias = toTailoringDraft(original);
+    alias.blocks[0].components[0] = component("KB Goblet Squat", { reps: "21-15-9" });
+    expect(schema.safeParse(alias).success).toBe(false);
+  });
+
+  it("rejects an invented movement instead of returning it", async () => {
+    const draft = toTailoringDraft(fran());
+    draft.blocks[0].components = [component("Dumbbell Thruster", { reps: "21-15-9" })];
+    await expect(tailor(new FakeProvider({ TailoringResult: draft }), input())).rejects.toBeInstanceOf(StructuredOutputError);
   });
 });
