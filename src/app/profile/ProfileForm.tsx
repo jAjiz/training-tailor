@@ -26,6 +26,8 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
   const [status, setStatus] = useState<string | null>(null);
 
   const conditionLabel = (key: string) => catalog.find((c) => c.key === key)?.label ?? key;
+  // Only injuries scale with side and severity; limitations and conditions apply as written.
+  const isInjury = (key: string) => catalog.find((c) => c.key === key)?.kind === "injury";
   const setInjury = (i: number, patch: Partial<ProfileInjury>) =>
     setP({ ...p, injuries: p.injuries.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const setBenchmark = (i: number, patch: Partial<Benchmark>) =>
@@ -78,13 +80,19 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
         {p.injuries.map((inj, i) => (
           <div key={inj.key} className="flex flex-wrap items-center gap-2 rounded border p-2">
             <span className="font-medium">{conditionLabel(inj.key)}</span>
-            <select className={field} value={inj.side ?? ""} onChange={(e) => setInjury(i, { side: e.target.value === "" ? null : Side.parse(e.target.value) })}>
-              <option value="">no side</option>
-              {Side.options.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select className={field} value={inj.severity} onChange={(e) => setInjury(i, { severity: Severity.parse(e.target.value) })}>
-              {Severity.options.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {isInjury(inj.key) ? (
+              <>
+                <select className={field} value={inj.side ?? ""} onChange={(e) => setInjury(i, { side: e.target.value === "" ? null : Side.parse(e.target.value) })}>
+                  <option value="">no side</option>
+                  {Side.options.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select className={field} value={inj.severity} onChange={(e) => setInjury(i, { severity: Severity.parse(e.target.value) })}>
+                  {Severity.options.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </>
+            ) : (
+              <span className="text-sm text-neutral-600">always applies</span>
+            )}
             <input className={`${field} grow`} placeholder="notes" value={inj.notes ?? ""} onChange={(e) => setInjury(i, { notes: e.target.value || null })} />
             <button type="button" className="text-sm underline" onClick={() => setP({ ...p, injuries: p.injuries.filter((_, j) => j !== i) })}>remove</button>
           </div>
@@ -112,7 +120,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
         {p.equipment !== null && (
           <div className="flex flex-wrap gap-2">
             {equipmentOptions.map((e) => (
-              <button key={e} type="button" className={chip(p.equipment!.includes(e))}
+              <button key={e} type="button" className={chip(p.equipment!.includes(e))} aria-pressed={p.equipment!.includes(e)}
                 onClick={() => setP({ ...p, equipment: toggle(p.equipment!, e) })}>{label(e)}</button>
             ))}
           </div>
@@ -163,7 +171,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
         </div>
         <div className="flex flex-wrap gap-2">
           {Weekday.options.map((d) => (
-            <button key={d} type="button" className={chip(p.availability.days.includes(d))}
+            <button key={d} type="button" className={chip(p.availability.days.includes(d))} aria-pressed={p.availability.days.includes(d)}
               onClick={() => setP({ ...p, availability: { ...p.availability, days: toggle(p.availability.days, d) } })}>{d}</button>
           ))}
         </div>
