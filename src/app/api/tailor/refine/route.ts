@@ -9,6 +9,8 @@ import { consumeQuota, dailyLimit } from "@/lib/quota";
 import { prismaQuotaStore } from "@/lib/quota-store";
 import { getUserId } from "@/lib/session";
 import { loadProfile } from "@/lib/tailor-service";
+import { recordUnrecognized } from "@/lib/unrecognized";
+import { prismaUnrecognizedStore } from "@/lib/unrecognized-store";
 
 export const maxDuration = 120;
 
@@ -29,9 +31,11 @@ export async function POST(req: Request) {
   if (!quota.allowed) return jsonError("quota_exceeded", 429);
 
   const [profile, domain] = await Promise.all([loadProfile(userId), getDomainData()]);
-  return engineStreamResponse((onProgress) =>
-    runRefinePipeline(provider, {
+  return engineStreamResponse(async (onProgress) => {
+    const result = await runRefinePipeline(provider, {
       previous: body.data.previous, feedback: body.data.feedback, profile, request: body.data.request, domain, onProgress,
-    }),
-  );
+    });
+    await recordUnrecognized(prismaUnrecognizedStore, result);
+    return result;
+  });
 }

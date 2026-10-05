@@ -14,7 +14,8 @@
     "postinstall": "prisma generate",
     "db:studio": "prisma studio",
     "eval": "tsx scripts/eval.ts",
-    "coverage": "tsx scripts/coverage.ts"
+    "coverage": "tsx scripts/coverage.ts",
+    "review:movements": "tsx scripts/review-movements.ts"
   },
   "dependencies": {
     "@google/genai": "^2.25.0",

@@ -107,3 +107,17 @@ model LlmUsage {
 
   @@index([userId, createdAt])
 }
+
+// Catalog growth queue: movement names the engine could not resolve (names only, never workout text).
+model UnrecognizedMovement {
+  id          String   @id @default(cuid())
+  key         String   @unique // normalizeMovementName(example)
+  example     String // as first written, max 80 chars
+  count       Int      @default(1)
+  status      String   @default("pending") // "pending" | "resolved" | "ignored"
+  resolvedTo  String? // canonical name once the library resolves it
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([status, count])
+}
