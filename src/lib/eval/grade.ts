@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { normalizeMovementName } from "@/lib/domain/resolve";
+import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
+import { MovementPattern, type Movement } from "@/lib/domain/types";
 import type { WorkoutInput } from "@/lib/engine/pipeline";
 import {
   AthleteProfileSchema, ManualWorkoutSchema, TailorRequestSchema, emptyProfile, emptyRequest,
@@ -25,6 +26,8 @@ export const EvalCaseSchema = z.object({
     // "snatch pull" must not be read as a Hang Power Snatch.
     originalMustContain: z.array(z.string()).default([]),
     originalMustNotContain: z.array(z.string()).default([]),
+    // Patterns some tailored movement must still train: a Thruster with a bad shoulder keeps "squat".
+    mustKeepPatterns: z.array(MovementPattern).default([]),
   }).prefault({}),
 });
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
@@ -41,7 +44,9 @@ export function resolveCase(c: EvalCase): { input: WorkoutInput; profile: Athlet
   };
 }
 
-export function gradeCase(c: EvalCase, outcome: EvalOutcome): { passed: boolean; failures: string[] } {
+export function gradeCase(
+  c: EvalCase, outcome: EvalOutcome, movements: Movement[] = [],
+): { passed: boolean; failures: string[] } {
   const failures: string[] = [];
   if (outcome.kind === "error") {
     if (!(c.expect.expectFailClosed && outcome.error === "engine_unsafe")) failures.push(`engine error: ${outcome.error}`);
@@ -55,6 +60,9 @@ export function gradeCase(c: EvalCase, outcome: EvalOutcome): { passed: boolean;
   for (const f of r.findings.filter((x) => x.severity === "violation")) failures.push(`violation [${f.kind}] ${f.message}`);
   const prescribed = new Set(r.tailored.blocks.flatMap((b) => b.components.map((x) => x.canonical ?? x.movement)));
   for (const name of c.expect.mustAvoid) if (prescribed.has(name)) failures.push(`prescribed forbidden movement ${name}`);
+  const resolve = createMovementResolver(movements);
+  const patterns = new Set([...prescribed].flatMap((name) => resolve(name)?.patterns ?? []));
+  for (const p of c.expect.mustKeepPatterns) if (!patterns.has(p)) failures.push(`no tailored movement keeps the ${p} pattern`);
   const detected = new Set(r.conditions.map((x) => x.key));
   for (const key of c.expect.mustDetect) if (!detected.has(key)) failures.push(`did not detect ${key}`);
   if (c.expect.maxTotalMinutes !== null) {

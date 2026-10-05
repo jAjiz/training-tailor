@@ -135,10 +135,15 @@ Engine pipeline (server-side, provider-agnostic)
    (`ok | caution | avoid` with reasons, see *Assessment*), the equipment it needs that
    is missing today, and — when it must change or is cautioned — ranked **candidate
    substitutes**: the movement's `substitutes[]` first (in order, excluding `avoid` and
-   missing equipment, `ok` before `caution`), falling back to movements sharing its
-   primary pattern only when the list yields nothing, ranked by shared annotations
-   (patterns ×10, shared site+mechanism pairs ×2, same skill +1), top 5. A movement goal
-   adds the target movement's family (itself + its substitutes, filtered the same way).
+   missing equipment, `ok` before `caution`, top 5), then, for **every pattern of the
+   original that no surviving substitute covers**, movements sharing that pattern, ranked
+   by shared annotations (patterns ×10, shared site+mechanism pairs ×2, same skill +1):
+   top 5 for the primary pattern when no substitute survives, otherwise top 3 per
+   uncovered pattern. A combined movement whose press is blocked (a Thruster with a bad
+   shoulder) thus still gets squats, so its stimulus survives. Each reason in the plan
+   carries its own verdict (`= avoid` / `= caution`): severity is already applied, so a
+   mild condition does not read as a ban. A movement goal adds the target movement's
+   family (itself + its substitutes, filtered the same way).
 5. **Tailor (one LLM call).** The prompt carries the original session with per-block
    stimulus, the athlete (sex, scaling level, benchmarks, goals, time budget), today's
    request, the active conditions, the component plan with candidates (fully annotated),
@@ -147,7 +152,10 @@ Engine pipeline (server-side, provider-agnostic)
    `droppedBlocks` with reasons, per-change list, rationale and safety note. The output
    schema restricts every component's `movement` to an enum of the library names plus the
    original's unrecognized names (which may be kept as written): the model cannot prescribe
-   a movement the validator cannot assess. Its freedom is in choosing among candidates,
+   a movement the validator cannot assess. Each change's `modified` is restricted to the
+   same names or `"(removed)"`, so the change summary the athlete reads cannot name a
+   movement that does not exist. The prompt asks a combined movement to keep every part
+   that is still allowed (never drop a whole pattern while an `ok` candidate exists). Its freedom is in choosing among candidates,
    loads, reps, scheme and block structure; a missing movement is a catalog gap, surfaced
    by the unrecognized-movement queue.
 6. **Validate (deterministic).** Findings (`violation` or `warning`):
@@ -160,7 +168,9 @@ Engine pipeline (server-side, provider-agnostic)
    - `time_cap_exceeded` (violation): total block time > cap × 1.1;
    - `stimulus_drift`: block-level quality changed (violation), energy system changed or
      load intensity raised (warning); only for 1:1 block mappings;
-   - `unaccounted_block` (violation): an original block neither mapped nor dropped.
+   - `unaccounted_block` (violation): an original block neither mapped nor dropped;
+   - `change_mismatch` (violation): a change's `modified` names a movement its block (or,
+     with no block index, the session) does not prescribe.
 
    Any violation triggers **one** tailor retry with the findings in the prompt. If a
    `contraindicated_movement` violation survives the retry, the engine **fails closed**
@@ -352,8 +362,9 @@ more than one distinct `day`.
 - **Evaluation harness** (`pnpm eval`, needs `GEMINI_API_KEY`): synthetic/public cases in
   `evals/cases/*.json` run through the real pipeline and graded by the deterministic
   validator plus per-case expectations (`mustAvoid`, `mustDetect`, `maxTotalMinutes`,
-  `expectFailClosed`, and `originalMustContain` / `originalMustNotContain`, which pin how
-  the original was recognized).
+  `expectFailClosed`, `originalMustContain` / `originalMustNotContain`, which pin how
+  the original was recognized, and `mustKeepPatterns`, the movement patterns some tailored
+  movement must still train).
   Run before changing prompts, model or domain data.
 - **Coverage** (`pnpm coverage`): runs analysis over the private corpus and reports the
   share of component mentions that resolve to the library and the most frequent

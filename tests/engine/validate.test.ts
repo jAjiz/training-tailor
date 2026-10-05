@@ -43,6 +43,24 @@ describe("validateTailoring", () => {
     expect(f.find((x) => x.movement === "Dead Hang")).toMatchObject({ kind: "caution_movement", severity: "warning" });
   });
 
+  it("rejects a change summary that names a movement the block does not prescribe", () => {
+    const r = swap(identity(), "Air Squat", "Air Squat");
+    r.changes = [{ blockIndex: 0, original: "Thruster", modified: "Dumbbell Bench Press", reason: "x" }];
+    expect(run({ result: r })).toContainEqual(expect.objectContaining({
+      kind: "change_mismatch", severity: "violation", blockIndex: 0, movement: "Dumbbell Bench Press",
+    }));
+  });
+
+  it("accepts change summaries that match the prescription or record a removal", () => {
+    const r = swap(identity(), "Air Squat", "Air Squat");
+    r.changes = [
+      { blockIndex: 0, original: "Thruster", modified: "Air Squat", reason: "x" },
+      { blockIndex: null, original: "Thruster", modified: "air squats", reason: "x" },
+      { blockIndex: 0, original: "Pull-up", modified: "(removed)", reason: "x" },
+    ];
+    expect(run({ result: r }).filter((f) => f.kind === "change_mismatch")).toEqual([]);
+  });
+
   it("flags missing equipment", () => {
     const f = run({ equipment: ["pullup_bar"] });
     expect(f).toContainEqual(expect.objectContaining({ kind: "equipment_unavailable", movement: "Thruster", severity: "violation" }));

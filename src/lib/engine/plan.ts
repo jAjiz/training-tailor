@@ -1,6 +1,6 @@
 import { assessMovement, type ActiveCondition, type AssessmentReason, type Verdict } from "@/lib/domain/assess";
 import type { MovementResolver } from "@/lib/domain/resolve";
-import { Equipment, type Movement } from "@/lib/domain/types";
+import { Equipment, type Movement, type MovementPattern } from "@/lib/domain/types";
 import type { StructuredWorkout } from "./types";
 
 export interface PlanContext {
@@ -62,29 +62,40 @@ const VERDICT_RANK = { ok: 0, caution: 1 } as const;
 const byRank = (a: Candidate, b: Candidate) =>
   VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] || b.score - a.score || a.name.localeCompare(b.name);
 
-/** substitutes[] first (in order); the primary-pattern fallback only when none survives. */
-export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5): Candidate[] {
-  const listed: Candidate[] = [];
-  original.substitutes.forEach((name, i) => {
-    const m = ctx.resolve(name);
-    const verdict = m ? usable(m, ctx) : null;
-    if (m && verdict) listed.push({ name: m.name, verdict, source: "substitute", score: 1000 - i });
-  });
-  if (listed.length > 0) return listed.sort(byRank).slice(0, limit);
-
-  const primary = original.patterns[0];
-  const fallback: Candidate[] = [];
+function patternCandidates(original: Movement, pattern: MovementPattern, ctx: PlanContext): Candidate[] {
+  const out: Candidate[] = [];
   for (const m of ctx.movements) {
-    if (m.name === original.name || !m.patterns.includes(primary)) continue;
+    if (m.name === original.name || !m.patterns.includes(pattern)) continue;
     const verdict = usable(m, ctx);
     if (!verdict) continue;
     const score =
       10 * m.patterns.filter((p) => original.patterns.includes(p)).length +
       2 * sharedStressPairs(original, m) +
       (m.skill === original.skill ? 1 : 0);
-    fallback.push({ name: m.name, verdict, source: "pattern", score });
+    out.push({ name: m.name, verdict, source: "pattern", score });
   }
-  return fallback.sort(byRank).slice(0, limit);
+  return out.sort(byRank);
+}
+
+/**
+ * substitutes[] first (in order), then pattern candidates for every pattern of the original that no
+ * surviving substitute covers: a Thruster whose press is blocked still gets squats, so the stimulus survives.
+ */
+export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, perPattern = 3): Candidate[] {
+  const listed: { candidate: Candidate; movement: Movement }[] = [];
+  original.substitutes.forEach((name, i) => {
+    const m = ctx.resolve(name);
+    const verdict = m ? usable(m, ctx) : null;
+    if (m && verdict) listed.push({ candidate: { name: m.name, verdict, source: "substitute", score: 1000 - i }, movement: m });
+  });
+  const out = listed.map((l) => l.candidate).sort(byRank).slice(0, limit);
+
+  const covered = new Set(listed.flatMap((l) => l.movement.patterns));
+  for (const pattern of original.patterns.filter((p) => !covered.has(p))) {
+    const fresh = patternCandidates(original, pattern, ctx).filter((c) => !out.some((o) => o.name === c.name));
+    out.push(...fresh.slice(0, listed.length === 0 && pattern === original.patterns[0] ? limit : perPattern));
+  }
+  return out;
 }
 
 export function planComponents(workout: StructuredWorkout, ctx: PlanContext): ComponentPlan[] {

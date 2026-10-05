@@ -26,13 +26,15 @@ export interface TailorInput {
 const SYSTEM = `You are an expert functional fitness coach. Modify ONE athlete's training session for today so it fits their situation WHILE PRESERVING EACH BLOCK'S STIMULUS (quality, energy system, load intensity, time domain). Return JSON only.
 
 Hard rules (code checks the output and rejects violations):
-1. Never prescribe a movement marked AVOID, nor one that needs MISSING equipment. Replace every component marked MUST CHANGE, preferring its candidates in order.
+1. Never prescribe a movement marked AVOID, nor one that needs MISSING equipment. Replace every component marked MUST CHANGE, preferring its candidates in order. The plan already weighs each condition's severity: a reason marked "= caution" limits load or range, it does not ban that stress, and a candidate marked (ok) is safe as is.
 2. Every movement is a MOVEMENT LIBRARY name, spelled exactly; the output schema accepts nothing else. An UNRECOGNIZED original movement may only be kept as written or replaced by a library movement, never by an invented one.
 3. Each tailored block lists in "sourceBlocks" the 0-based indices of the original blocks it comes from. Every original block appears in some "sourceBlocks" or in "droppedBlocks" with a reason.
 4. With a time cap, the sum of "timeDomainMinutes" over the tailored blocks must not exceed it.
 5. Keep each block's "stimulus" unless a change is unavoidable; then explain it in "changes".
+6. "changes" lists movement swaps only: "modified" is the library name you actually prescribe in that block, exactly as in its components, or "(removed)" when the movement is dropped without a replacement. Time, format or block changes go in "rationale" or "droppedBlocks".
 
 Coaching rules:
+- A movement that combines patterns (Thruster = squat + vertical_push, Wall Ball, Clean & Jerk) keeps every part that is still allowed: when only one part is blocked, replace it with a candidate that keeps the remaining pattern (a Thruster with a bad shoulder becomes a squat) instead of switching to an unrelated pattern. Never drop a whole pattern while a same-pattern candidate marked ok exists; a MILD condition alone rarely justifies it.
 - CAUTION movements may stay at reduced load or range: say so in the component "notes" and in "safetyNote". "healthy side only" means single-limb work on the uninjured side.
 - Scale loads to the athlete's benchmarks, sex and scaling level; when the programming lists tiers (Rx+/Rx/Int, M/F) pick the athlete's. Fill "loadKg" or "percent1RM" whenever you set a load.
 - Use the EFFORT CONVERSIONS when swapping monostructural or rope work, and the implement load range when replacing a barbell with dumbbells or kettlebells.
@@ -54,7 +56,8 @@ function planLine(p: ComponentPlan): string {
   if (p.verdict === "unknown") return `${head} → UNRECOGNIZED (not in the library: judge it against the active conditions yourself)`;
   const parts = [`${head} → ${p.verdict.toUpperCase()}`];
   if (p.reasons.length > 0) {
-    parts.push(`(${p.reasons.map((r) => `${r.conditionKey}: ${r.detail}${r.healthySideOnly ? ", healthy side only" : ""}`).join("; ")})`);
+    // Each reason carries its own verdict: severity is already applied, so a "caution" reason is not a ban.
+    parts.push(`(${p.reasons.map((r) => `${r.conditionKey}: ${r.detail} = ${r.verdict}${r.healthySideOnly ? ", healthy side only" : ""}`).join("; ")})`);
   }
   if (p.missingEquipment.length > 0) parts.push(`missing: ${p.missingEquipment.join(", ")}`);
   if (p.needsChange) parts.push("MUST CHANGE");

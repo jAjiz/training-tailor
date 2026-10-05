@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
 import { EvalCaseSchema, gradeCase, resolveCase } from "@/lib/eval/grade";
 import type { PipelineResult } from "@/lib/engine/types";
 import { fran } from "../fixtures/workouts";
@@ -27,12 +28,15 @@ function result(overrides: Partial<PipelineResult> = {}): PipelineResult {
   };
 }
 
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
 describe("eval grading", () => {
   it("fills defaults for profile, request and expectations", () => {
     const c = EvalCaseSchema.parse({ id: "x", description: "x", input: { kind: "paste", rawText: "x" } });
     expect(c.expect).toEqual({
       mustAvoid: [], mustDetect: [], maxTotalMinutes: null, expectFailClosed: false,
-      originalMustContain: [], originalMustNotContain: [],
+      originalMustContain: [], originalMustNotContain: [], mustKeepPatterns: [],
     });
     const { profile, request } = resolveCase(c);
     expect(profile.equipment).toBeNull();
@@ -79,6 +83,17 @@ describe("eval grading", () => {
       expect: { originalMustContain: ["thruster"], originalMustNotContain: ["Sots Press"] },
     });
     expect(gradeCase(c, { kind: "result", result: r }).failures).toEqual(["original contains Sots Press"]);
+  });
+
+  it("checks that the tailored session keeps the required movement patterns", () => {
+    const c = EvalCaseSchema.parse({
+      id: "keep-squat", description: "x", input: { kind: "paste", rawText: "x" },
+      expect: { mustKeepPatterns: ["squat", "horizontal_pull"] },
+    });
+    // result() prescribes only Ring Row (horizontal_pull): the squat half of the Thruster is gone.
+    expect(gradeCase(c, { kind: "result", result: result() }, domain.movements).failures).toEqual([
+      "no tailored movement keeps the squat pattern",
+    ]);
   });
 
   it("treats an engine error as a failure unless fail-closed was expected", () => {

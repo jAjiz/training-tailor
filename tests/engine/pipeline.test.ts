@@ -110,6 +110,7 @@ describe("runRefinePipeline", () => {
       TailoringResult: (() => {
         const d = safeDraft();
         d.blocks[0].components[0] = component("Dumbbell Goblet Squat", { reps: "15-12-9" });
+        d.changes = [{ blockIndex: 0, original: "Thruster", modified: "Dumbbell Goblet Squat", reason: "No kettlebell today." }];
         return d;
       })(),
     });

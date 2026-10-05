@@ -29,7 +29,7 @@ async function main() {
       outcome = { kind: "error", error: e instanceof EngineUnsafeError ? "engine_unsafe" : "engine_failed" };
     }
     const ms = Date.now() - started;
-    const grade = gradeCase(c, outcome);
+    const grade = gradeCase(c, outcome, domain.movements);
     if (!grade.passed) failed++;
     rows.push({ id: c.id, ms, ...grade, outcome });
     console.log(`${grade.passed ? "PASS" : "FAIL"}  ${c.id}  (${ms} ms)`);

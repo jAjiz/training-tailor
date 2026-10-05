@@ -51,6 +51,21 @@ describe("buildTailorPrompt", () => {
     expect(p).not.toContain("REJECTED");
   });
 
+  it("labels each plan reason with its own verdict, so a mild condition does not read as a ban", () => {
+    const c = (key: string) => domain.contraindications.find((x) => x.key === key)!;
+    const plan = planComponents(fran(), {
+      movements: domain.movements, resolve: createMovementResolver(domain.movements), equipment: ["dumbbell"],
+      active: [
+        { contraindication: c("shoulder_impingement"), side: "right", severity: "moderate" },
+        { contraindication: c("knee_pain"), side: "left", severity: "mild" },
+      ],
+    });
+    const p = buildTailorPrompt(input({ plan, equipment: ["dumbbell"] }));
+    expect(p).toContain("shoulder_impingement: shoulder: overhead/ballistic = avoid");
+    expect(p).toContain("knee_pain: knee: deep_flexion = caution");
+    expect(p).toContain("Air Squat (ok)");
+  });
+
   it("lists the athlete's equipment when it is restricted", () => {
     expect(buildTailorPrompt(input({ equipment: ["dumbbell", "box"] }))).toContain("EQUIPMENT AVAILABLE: dumbbell, box");
   });
@@ -97,6 +112,25 @@ describe("tailor", () => {
     const alias = toTailoringDraft(original);
     alias.blocks[0].components[0] = component("KB Goblet Squat", { reps: "21-15-9" });
     expect(schema.safeParse(alias).success).toBe(false);
+  });
+
+  it("restricts the change summary to allowed names or a removal", async () => {
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(fran()) });
+    await tailor(provider, input());
+    const schema = provider.calls[0].schema;
+    const withChange = (modified: string) => ({
+      ...toTailoringDraft(fran()), changes: [{ blockIndex: 0, original: "Thruster", modified, reason: "x" }],
+    });
+    expect(schema.safeParse(withChange("Air Squat")).success).toBe(true);
+    expect(schema.safeParse(withChange("(removed)")).success).toBe(true);
+    expect(schema.safeParse(withChange("Dumbbell Thruster")).success).toBe(false);
+  });
+
+  it("tells the model to keep the safe part of a combined movement", async () => {
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(fran()) });
+    await tailor(provider, input());
+    expect(provider.calls[0].systemPrompt).toMatch(/combines patterns/);
+    expect(provider.calls[0].systemPrompt).toMatch(/\(removed\)/);
   });
 
   it("rejects an invented movement instead of returning it", async () => {

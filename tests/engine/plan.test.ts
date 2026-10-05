@@ -42,6 +42,30 @@ describe("rankCandidates", () => {
     expect(c.map((x) => x.name)).toEqual(["Run"]);
   });
 
+  it("adds pattern candidates for each pattern no surviving substitute covers", () => {
+    // Shoulder blocks the press half of a Thruster and there is no kettlebell: the squat half must still be offered.
+    const c = rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"], ["knee_pain", "mild"]], ["dumbbell", "jump_rope"]));
+    expect(c.map((x) => x.name)).toContain("Air Squat");
+    for (const x of c.filter((y) => y.source === "pattern")) {
+      expect(movement(x.name).patterns).toContain("squat");
+      expect(movement(x.name).equipment.every((e) => ["dumbbell", "jump_rope"].includes(e)), x.name).toBe(true);
+    }
+  });
+
+  it("keeps a surviving substitute and still covers the pattern it misses", () => {
+    const active: ActiveCondition[] = [
+      { contraindication: domain.contraindications.find((c) => c.key === "shoulder_impingement")!, side: "right", severity: "moderate" },
+    ];
+    const c = rankCandidates(movement("Thruster"), { ...ctx([], ["dumbbell"]), active });
+    expect(c.find((x) => x.name === "Dumbbell Shoulder Press")).toMatchObject({ source: "substitute", verdict: "caution" });
+    expect(c.some((x) => x.source === "pattern" && movement(x.name).patterns.includes("squat"))).toBe(true);
+  });
+
+  it("adds no pattern candidates when the substitutes cover every pattern", () => {
+    const c = rankCandidates(movement("Pull-up"), ctx([], null));
+    expect(c.every((x) => x.source === "substitute")).toBe(true);
+  });
+
   it("falls back to the primary pattern only when every substitute is blocked", () => {
     const c = rankCandidates(movement("Handstand Walk"), ctx([["no_inversion", "moderate"]]));
     expect(c.length).toBeGreaterThan(0);

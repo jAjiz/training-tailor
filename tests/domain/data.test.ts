@@ -710,8 +710,8 @@ describe("strict variants and known gaps", () => {
       .toEqual(["Banded Face Pull", "Bent-over Row", "Dumbbell Row", "Ring Row"]);
   });
 
-  it("the catalog has 137 movements", () => {
-    expect(movements).toHaveLength(137);
+  it("the catalog has 138 movements", () => {
+    expect(movements).toHaveLength(138);
   });
 });
 
@@ -795,5 +795,22 @@ describe("to-overhead movements", () => {
     for (const [alias, name] of [["S2OH", "Shoulder-to-Overhead"], ["STOH", "Shoulder-to-Overhead"], ["G2O", "Ground-to-Overhead"], ["GTO", "Ground-to-Overhead"]]) {
       expect(movements.find((m) => m.aliases.includes(alias))?.name, alias).toBe(name);
     }
+  });
+});
+
+describe("floor press", () => {
+  it("is the dumbbell bench press without a bench", () => {
+    const floor = byName("Dumbbell Floor Press");
+    const bench = byName("Dumbbell Bench Press");
+    expect(floor.equipment).toEqual(["dumbbell"]);
+    expect(floor.patterns).toEqual(bench.patterns);
+    expect(floor.positions).toContain("supine");
+    expect(floor.stresses).toEqual(bench.stresses);
+    expect(movements.find((m) => m.aliases.includes("DB Floor Press"))?.name).toBe("Dumbbell Floor Press");
+  });
+
+  it("is the first fallback when the bench press cannot be done", () => {
+    expect(byName("Dumbbell Bench Press").substitutes[0]).toBe("Dumbbell Floor Press");
+    expect(byName("Bench Press").substitutes).toContain("Dumbbell Floor Press");
   });
 });

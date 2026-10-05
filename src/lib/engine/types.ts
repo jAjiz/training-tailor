@@ -123,6 +123,8 @@ export const ChangeItemSchema = z.object({
   reason: z.string().min(1),
 });
 export type ChangeItem = z.infer<typeof ChangeItemSchema>;
+/** "modified" value of a change that removes a movement without replacing it. */
+export const REMOVED_MOVEMENT = "(removed)";
 
 const tailoringFields = {
   name: z.string().nullable(),
@@ -135,11 +137,15 @@ const tailoringFields = {
 export const TailoringDraftSchema = z.object({ ...tailoringFields, blocks: z.array(TailoredBlockDraftSchema).min(1) });
 export type TailoringDraft = z.infer<typeof TailoringDraftSchema>;
 
-/** The draft schema with "movement" restricted to the given names: the model cannot name a movement code cannot assess. */
+/**
+ * The draft schema with "movement" (and each change's "modified") restricted to the given names: the model cannot
+ * name a movement code cannot assess, nor summarize a change with a name it did not prescribe.
+ */
 export function tailoringDraftSchemaFor(movementNames: readonly [string, ...string[]]) {
   const component = ComponentDraftSchema.extend({ movement: z.enum(movementNames) });
   const block = z.object({ ...blockFields, components: z.array(component), sourceBlocks });
-  return z.object({ ...tailoringFields, blocks: z.array(block).min(1) });
+  const change = ChangeItemSchema.extend({ modified: z.enum([...movementNames, REMOVED_MOVEMENT]) });
+  return z.object({ ...tailoringFields, changes: z.array(change), blocks: z.array(block).min(1) });
 }
 export const TailoringResultSchema = z.object({ ...tailoringFields, blocks: z.array(TailoredBlockSchema).min(1) });
 export type TailoringResult = z.infer<typeof TailoringResultSchema>;
@@ -213,7 +219,7 @@ export function emptyRequest(): TailorRequest {
 // ---- findings and results ----
 export const FindingKind = z.enum([
   "contraindicated_movement", "equipment_unavailable", "unrecognized_movement", "caution_movement",
-  "time_cap_exceeded", "stimulus_drift", "unaccounted_block",
+  "time_cap_exceeded", "stimulus_drift", "unaccounted_block", "change_mismatch",
 ]);
 export type FindingKind = z.infer<typeof FindingKind>;
 

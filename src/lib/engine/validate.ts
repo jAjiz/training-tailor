@@ -2,7 +2,7 @@ import { assessMovement, type ActiveCondition, type AssessmentReason } from "@/l
 import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
 import type { Equipment, Movement } from "@/lib/domain/types";
 import { missingEquipment } from "./plan";
-import type { Finding, LoadIntensity, StructuredWorkout, TailoringResult } from "./types";
+import { REMOVED_MOVEMENT, type Finding, type LoadIntensity, type StructuredWorkout, type TailoringResult } from "./types";
 
 export interface ValidateArgs {
   original: StructuredWorkout;
@@ -97,6 +97,21 @@ export function validateTailoring(a: ValidateArgs): Finding[] {
       });
     }
   });
+
+  // The change summary is what the athlete reads: it must name what the session actually prescribes.
+  const prescribed = (blocks: TailoringResult["blocks"]) =>
+    new Set(blocks.flatMap((b) => b.components.flatMap((c) => [normalizeMovementName(c.movement), ...(c.canonical ? [normalizeMovementName(c.canonical)] : [])])));
+  for (const change of a.result.changes) {
+    if (change.modified === REMOVED_MOVEMENT) continue;
+    const block = change.blockIndex === null ? undefined : a.result.blocks[change.blockIndex];
+    const names = prescribed(block ? [block] : a.result.blocks);
+    const m = resolve(change.modified);
+    if (names.has(normalizeMovementName(change.modified)) || (m && names.has(normalizeMovementName(m.name)))) continue;
+    findings.push({
+      kind: "change_mismatch", severity: "violation", blockIndex: change.blockIndex, movement: change.modified,
+      message: `The change summary names ${change.modified}, which the tailored session does not prescribe.`,
+    });
+  }
 
   const accounted = new Set([
     ...a.result.blocks.flatMap((b) => b.sourceBlocks),

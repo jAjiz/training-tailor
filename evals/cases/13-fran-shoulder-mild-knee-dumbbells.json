@@ -1,0 +1,15 @@
+{
+  "id": "fran-shoulder-mild-knee-dumbbells",
+  "description": "Fran at home with dumbbells, a sore right shoulder today and a mild left knee: the Thruster keeps its squat",
+  "input": { "kind": "paste", "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
+  "profile": {
+    "equipment": ["dumbbell", "jump_rope"],
+    "injuries": [{ "key": "knee_pain", "side": "left", "severity": "mild", "notes": null, "since": null }]
+  },
+  "request": { "situation": "sore right shoulder" },
+  "expect": {
+    "mustDetect": ["shoulder_impingement"],
+    "mustAvoid": ["Thruster", "Pull-up", "Dumbbell Bench Press"],
+    "mustKeepPatterns": ["squat"]
+  }
+}
