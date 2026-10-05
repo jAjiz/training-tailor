@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import movementsJson from "../../data/movements.json";
 import { MovementSchema } from "@/lib/domain/types";
-import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
+import { createMovementResolver, movementWordKey, normalizeMovementName } from "@/lib/domain/resolve";
 
 const movements = movementsJson.map((m) => MovementSchema.parse(m));
 const resolve = createMovementResolver(movements);
@@ -31,6 +31,41 @@ describe("createMovementResolver", () => {
         owner.set(key, m.name);
       }
     }
+  });
+
+  it("no two movements share the same set of words once abbreviations are expanded", () => {
+    const owner = new Map<string, string>();
+    for (const m of movements) {
+      for (const n of [m.name, ...m.aliases]) {
+        const key = movementWordKey(n);
+        const previous = owner.get(key);
+        expect(previous === undefined || previous === m.name, `${n} [${key}] collides with ${previous}`).toBe(true);
+        owner.set(key, m.name);
+      }
+    }
+  });
+
+  it("ignores word order", () => {
+    for (const n of ["Goblet KB Squat", "Goblet Squat KB", "KB Goblet Squat", "squat goblet kettlebell"]) {
+      expect(resolve(n)?.name, n).toBe("Kettlebell Goblet Squat");
+    }
+    expect(resolve("Press Push")?.name).toBe("Push Press");
+    expect(resolve("Ups Pull")?.name).toBe("Pull-up");
+  });
+
+  it("expands common abbreviations before comparing", () => {
+    expect(resolve("Push Press DB")?.name).toBe("Dumbbell Push Press");
+    expect(resolve("BB Row")?.name).toBe("Bent-over Row");
+    expect(resolve("DB OHS")?.name).toBe("Dumbbell Overhead Squat");
+    expect(resolve("Hold HS")?.name).toBe("Handstand Hold");
+    expect(resolve("Strict HS Push-ups")?.name).toBe("Strict Handstand Push-up");
+    expect(resolve("Ring MUs")?.name).toBe("Ring Muscle-up");
+  });
+
+  it("never matches on a subset of the words", () => {
+    expect(resolve("Squat")).toBeNull();
+    expect(resolve("KB")).toBeNull();
+    expect(resolve("Goblet Squat Heavy")).toBeNull();
   });
 
   it("resolves workout shorthand, spelling variants and plurals", () => {

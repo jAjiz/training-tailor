@@ -114,8 +114,13 @@ Engine pipeline (server-side, provider-agnostic)
    (no stimulus) **and** a situation-only analysis still runs; if that also fails while
    the situation is non-empty, the request fails — stated pain is never ignored.
 2. **Resolve.** Each component's movement name is resolved deterministically to a
-   library row (exact name → alias → normalized name/alias → singularized), producing
-   `canonical` or `null` ("unrecognized"). Resolution is only as honest as the analysis:
+   library row (exact name → alias → normalized name/alias → singularized → **word key**),
+   producing `canonical` or `null` ("unrecognized"). The word key makes the last step
+   independent of the LLM's formatting: words in any order, word-level shorthand expanded
+   (KB, DB, BB, HS, HSPU, MU, OHS, RDL, T2B/TTB, C2B/CTB, T2R/TTR, K2E, DU), each word
+   singularized, so "Goblet Squat KB" resolves to Kettlebell Goblet Squat. It never matches
+   a subset of the words, and a test guarantees no two movements share a word key.
+   Resolution is only as honest as the analysis:
    the analyzer may use a library name only for the **same** movement (spelling,
    abbreviation, translation); a related variant keeps its own name (a snatch pull is not
    a hang power snatch), so a gap surfaces as "unrecognized" instead of borrowing another
