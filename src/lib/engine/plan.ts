@@ -13,7 +13,7 @@ export interface PlanContext {
 export interface Candidate {
   name: string;
   verdict: "ok" | "caution";
-  source: "substitute" | "pattern" | "goal";
+  source: "substitute" | "pattern" | "related" | "goal";
   score: number;
 }
 
@@ -62,7 +62,21 @@ const VERDICT_RANK = { ok: 0, caution: 1 } as const;
 const byRank = (a: Candidate, b: Candidate) =>
   VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] || b.score - a.score || a.name.localeCompare(b.name);
 
-function patternCandidates(original: Movement, pattern: MovementPattern, ctx: PlanContext): Candidate[] {
+/** Closest pattern to fall back on when a movement has no usable candidate left (no bar → rows for pull-ups). */
+export const RELATED_PATTERNS: Partial<Record<MovementPattern, MovementPattern[]>> = {
+  vertical_pull: ["horizontal_pull"],
+  horizontal_pull: ["vertical_pull"],
+  vertical_push: ["horizontal_push"],
+  horizontal_push: ["vertical_push"],
+  squat: ["lunge"],
+  lunge: ["squat"],
+  carry: ["hold"],
+  hold: ["carry"],
+};
+
+function patternCandidates(
+  original: Movement, pattern: MovementPattern, ctx: PlanContext, source: "pattern" | "related" = "pattern",
+): Candidate[] {
   const out: Candidate[] = [];
   for (const m of ctx.movements) {
     if (m.name === original.name || !m.patterns.includes(pattern)) continue;
@@ -72,7 +86,7 @@ function patternCandidates(original: Movement, pattern: MovementPattern, ctx: Pl
       10 * m.patterns.filter((p) => original.patterns.includes(p)).length +
       2 * sharedStressPairs(original, m) +
       (m.skill === original.skill ? 1 : 0);
-    out.push({ name: m.name, verdict, source: "pattern", score });
+    out.push({ name: m.name, verdict, source, score });
   }
   return out.sort(byRank);
 }
@@ -80,6 +94,7 @@ function patternCandidates(original: Movement, pattern: MovementPattern, ctx: Pl
 /**
  * substitutes[] first (in order), then pattern candidates for every pattern of the original that no
  * surviving substitute covers: a Thruster whose press is blocked still gets squats, so the stimulus survives.
+ * Only when nothing at all survives do the RELATED_PATTERNS step in.
  */
 export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, perPattern = 3): Candidate[] {
   const listed: { candidate: Candidate; movement: Movement }[] = [];
@@ -95,7 +110,13 @@ export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, 
     const fresh = patternCandidates(original, pattern, ctx).filter((c) => !out.some((o) => o.name === c.name));
     out.push(...fresh.slice(0, listed.length === 0 && pattern === original.patterns[0] ? limit : perPattern));
   }
-  return out;
+  // Nothing of the movement survives: offer the closest pattern rather than leaving the model to improvise.
+  for (const related of original.patterns.flatMap((p) => RELATED_PATTERNS[p] ?? [])) {
+    if (out.length > 0) break;
+    out.push(...patternCandidates(original, related, ctx, "related").slice(0, limit));
+  }
+  // ok before caution across sources (substitutes keep their lead within a verdict by score).
+  return out.sort(byRank);
 }
 
 export function planComponents(workout: StructuredWorkout, ctx: PlanContext): ComponentPlan[] {

@@ -140,7 +140,11 @@ Engine pipeline (server-side, provider-agnostic)
    by shared annotations (patterns ×10, shared site+mechanism pairs ×2, same skill +1):
    top 5 for the primary pattern when no substitute survives, otherwise top 3 per
    uncovered pattern. A combined movement whose press is blocked (a Thruster with a bad
-   shoulder) thus still gets squats, so its stimulus survives. Each reason in the plan
+   shoulder) thus still gets squats, so its stimulus survives. Only when nothing at all
+   survives do **related patterns** step in (vertical ↔ horizontal pull, vertical ↔
+   horizontal push, squat ↔ lunge, carry ↔ hold), marked "related pattern" in the prompt:
+   a Pull-up without a bar or rings becomes a Dumbbell Row instead of an improvised push.
+   The final list is ordered `ok` before `caution` across sources. Each reason in the plan
    carries its own verdict (`= avoid` / `= caution`): severity is already applied, so a
    mild condition does not read as a ban. A movement goal adds the target movement's
    family (itself + its substitutes, filtered the same way).

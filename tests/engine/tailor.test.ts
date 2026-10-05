@@ -66,6 +66,15 @@ describe("buildTailorPrompt", () => {
     expect(p).toContain("Air Squat (ok)");
   });
 
+  it("marks related-pattern candidates so the model knows the pattern changes", () => {
+    const hanging = domain.contraindications.find((x) => x.key === "no_hanging")!;
+    const plan = planComponents(fran(), {
+      movements: domain.movements, resolve: createMovementResolver(domain.movements), equipment: ["dumbbell"],
+      active: [{ contraindication: hanging, side: null, severity: "moderate" }],
+    });
+    expect(buildTailorPrompt(input({ plan, equipment: ["dumbbell"] }))).toContain("Dumbbell Row (ok, related pattern)");
+  });
+
   it("lists the athlete's equipment when it is restricted", () => {
     expect(buildTailorPrompt(input({ equipment: ["dumbbell", "box"] }))).toContain("EQUIPMENT AVAILABLE: dumbbell, box");
   });

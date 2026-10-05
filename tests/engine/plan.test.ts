@@ -58,7 +58,24 @@ describe("rankCandidates", () => {
     ];
     const c = rankCandidates(movement("Thruster"), { ...ctx([], ["dumbbell"]), active });
     expect(c.find((x) => x.name === "Dumbbell Shoulder Press")).toMatchObject({ source: "substitute", verdict: "caution" });
+    // ok before caution across sources: the model is told to prefer candidates in order.
+    expect(c[0]).toMatchObject({ verdict: "ok" });
+    expect(c.findIndex((x) => x.verdict === "caution")).toBeGreaterThan(c.findLastIndex((x) => x.verdict === "ok"));
     expect(c.some((x) => x.source === "pattern" && movement(x.name).patterns.includes("squat"))).toBe(true);
+  });
+
+  it("moves to a related pattern only when nothing of the movement survives", () => {
+    // No bar, no rings: no vertical pull is possible, so the pull becomes a row instead of disappearing.
+    const c = rankCandidates(movement("Pull-up"), ctx([["no_hanging", "moderate"]], ["dumbbell", "jump_rope"]));
+    expect(c.map((x) => x.name)).toEqual(["Dumbbell Row"]);
+    expect(c[0].source).toBe("related");
+  });
+
+  it("does not use a related pattern while any candidate survives", () => {
+    expect(rankCandidates(movement("Pull-up"), ctx([], ["pullup_bar"])).some((x) => x.source === "related")).toBe(false);
+    expect(rankCandidates(movement("Pull-up"), ctx([["no_hanging", "moderate"]])).some((x) => x.source === "related")).toBe(false);
+    // The Thruster keeps its squat; its blocked press is not swapped for a horizontal push.
+    expect(rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"]])).some((x) => x.source === "related")).toBe(false);
   });
 
   it("adds no pattern candidates when the substitutes cover every pattern", () => {
