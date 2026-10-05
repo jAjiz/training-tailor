@@ -124,7 +124,10 @@ Engine pipeline (server-side, provider-agnostic)
    the analyzer may use a library name only for the **same** movement (spelling,
    abbreviation, translation); a related variant keeps its own name (a snatch pull is not
    a hang power snatch), so a gap surfaces as "unrecognized" instead of borrowing another
-   movement's stresses. Mobility drills and stretches are not components.
+   movement's stresses. Mobility drills, stretches and technique drills (the Sots press,
+   anything done with a PVC pipe) are not components. Movements that let the athlete pick
+   the method (shoulder-to-overhead, ground-to-overhead) are their own rows carrying the
+   most restrictive stresses of the methods they allow.
 3. **Active conditions.** Profile injuries (persisting) are merged with today's detected
    conditions; for the same key, today's side/severity win. Unknown keys are dropped
    and logged.

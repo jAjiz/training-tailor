@@ -710,8 +710,8 @@ describe("strict variants and known gaps", () => {
       .toEqual(["Banded Face Pull", "Bent-over Row", "Dumbbell Row", "Ring Row"]);
   });
 
-  it("the catalog has 135 movements", () => {
-    expect(movements).toHaveLength(135);
+  it("the catalog has 137 movements", () => {
+    expect(movements).toHaveLength(137);
   });
 });
 
@@ -770,6 +770,29 @@ describe("corpus coverage pass", () => {
       ["Face Pull", "Banded Face Pull"], ["Pogo Jumps", "Pogo Jump"], ["RFESS", "Bulgarian Split Squat"],
       ["Drop Snatch", "Snatch Balance"],
     ]) {
+      expect(movements.find((m) => m.aliases.includes(alias))?.name, alias).toBe(name);
+    }
+  });
+});
+
+describe("to-overhead movements", () => {
+  const pairs = (names: string[]) =>
+    new Set(names.flatMap((n) => byName(n).stresses.flatMap((s) => s.mechanisms.map((mech) => `${s.site}:${mech}`))));
+
+  it("shoulder-to-overhead carries the most restrictive of press, push press and jerk", () => {
+    const own = pairs(["Shoulder-to-Overhead"]);
+    for (const p of pairs(["Shoulder Press", "Push Press", "Push Jerk", "Split Jerk"])) expect(own.has(p), p).toBe(true);
+    expect(byName("Shoulder-to-Overhead").equipment).toEqual(["barbell"]);
+  });
+
+  it("ground-to-overhead carries the most restrictive of the snatch and the clean & jerk", () => {
+    const own = pairs(["Ground-to-Overhead"]);
+    for (const p of pairs(["Power Snatch", "Squat Snatch", "Clean & Jerk"])) expect(own.has(p), p).toBe(true);
+    expect(byName("Ground-to-Overhead").equipment).toEqual(["barbell"]);
+  });
+
+  it("the usual shorthand resolves to them", () => {
+    for (const [alias, name] of [["S2OH", "Shoulder-to-Overhead"], ["STOH", "Shoulder-to-Overhead"], ["G2O", "Ground-to-Overhead"], ["GTO", "Ground-to-Overhead"]]) {
       expect(movements.find((m) => m.aliases.includes(alias))?.name, alias).toBe(name);
     }
   });

@@ -32,7 +32,7 @@ WORKOUT
 - "rawText" of each block is its exact slice of the input. Never paraphrase.
 - If the text spans several days ("Day 1", "Monday", ...), set "day" (1-based) on every block; otherwise null.
 - "format": amrap | for_time | emom | intervals | strength | skill | partner | rest | other. "scheme": the prescription as written. "timeDomainMinutes": estimated working time.
-- "components": one per movement, including accessory, activation and warm-up movements; never drop one. "movement": the MOVEMENT LIBRARY name only when it is the SAME movement (a spelling, abbreviation or translation of it); a related variant that is not in the library keeps its own name as written (a "snatch pull" is not a Hang Power Snatch, a "Bulgarian split squat" is not a Lunge). Mobility drills and stretches are not movements. "load" as written (e.g. "61/43 kg"); "loadKg" male/female kilograms when explicit (convert lb); "percent1RM" when prescribed as a percentage.
+- "components": one per movement, including accessory, activation and warm-up movements; never drop one. "movement": the MOVEMENT LIBRARY name only when it is the SAME movement (a spelling, abbreviation or translation of it); a related variant that is not in the library keeps its own name as written (a "snatch pull" is not a Hang Power Snatch, a "Bulgarian split squat" is not a Lunge). Mobility drills, stretches and technique drills (the Sots press, anything done with a PVC pipe) are not movements: leave them out. "load" as written (e.g. "61/43 kg"); "loadKg" male/female kilograms when explicit (convert lb); "percent1RM" when prescribed as a percentage.
 - Keep intensity cues, tempo, rest and scaling tiers (Rx+/Rx/Int, M/F) in "coachingNotes".
 - ${STIMULUS_RULES}
 

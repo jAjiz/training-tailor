@@ -71,6 +71,16 @@ describe("eval grading", () => {
     ]);
   });
 
+  it("compares recognition expectations ignoring case and punctuation", () => {
+    const r = result();
+    r.original.blocks[0].components.push({ ...r.original.blocks[0].components[0], movement: "sots press", canonical: null });
+    const c = EvalCaseSchema.parse({
+      id: "sots", description: "x", input: { kind: "paste", rawText: "x" },
+      expect: { originalMustContain: ["thruster"], originalMustNotContain: ["Sots Press"] },
+    });
+    expect(gradeCase(c, { kind: "result", result: r }).failures).toEqual(["original contains Sots Press"]);
+  });
+
   it("treats an engine error as a failure unless fail-closed was expected", () => {
     expect(gradeCase(baseCase, { kind: "error", error: "engine_unsafe" }).failures).toEqual(["engine error: engine_unsafe"]);
     const closed = EvalCaseSchema.parse({ ...baseCase, expect: { expectFailClosed: true } });
