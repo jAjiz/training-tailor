@@ -1,4 +1,5 @@
 import { WorkoutView } from "@/components/WorkoutView";
+import { componentFindings } from "@/lib/findings";
 import { REMOVED_MOVEMENT, type Finding, type PipelineResult, type WorkoutComponent } from "@/lib/engine/types";
 
 const BADGE: Partial<Record<Finding["kind"], { text: string; className: string }>> = {
@@ -11,8 +12,8 @@ const BADGE: Partial<Record<Finding["kind"], { text: string; className: string }
 export function ResultView({ result, conditionLabels }: { result: PipelineResult; conditionLabels: Record<string, string> }) {
   const { tailored } = result;
   const badges = (blockIndex: number, c: WorkoutComponent) =>
-    result.findings
-      .filter((f) => f.blockIndex === blockIndex && f.movement === (c.canonical ?? c.movement) && BADGE[f.kind])
+    componentFindings(result.findings, blockIndex, c.canonical ?? c.movement)
+      .filter((f) => BADGE[f.kind])
       .map((f) => (
         <span key={f.kind} title={f.message} className={`mr-2 rounded px-2 text-xs ${BADGE[f.kind]!.className}`}>
           {BADGE[f.kind]!.text}

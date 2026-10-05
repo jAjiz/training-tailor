@@ -29,3 +29,20 @@ export async function readEngineStream(response: Response, onEvent: (e: EngineEv
   const rest = buffer.trim();
   if (rest) onEvent(JSON.parse(rest) as EngineEvent);
 }
+
+export type EngineOutcome =
+  | { kind: "result"; result: PipelineResult }
+  | { kind: "error"; error: EngineErrorCode };
+
+/** Reads the stream to its end; one that closes with neither a result nor an error (a killed function) is a failure. */
+export async function readEngineOutcome(
+  response: Response, onProgress: (stage: ProgressStage) => void,
+): Promise<EngineOutcome> {
+  let outcome: EngineOutcome = { kind: "error", error: "engine_failed" };
+  await readEngineStream(response, (e) => {
+    if (e.type === "progress") onProgress(e.stage);
+    else if (e.type === "result") outcome = { kind: "result", result: e.result };
+    else outcome = { kind: "error", error: e.error };
+  });
+  return outcome;
+}

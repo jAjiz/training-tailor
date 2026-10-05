@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { SaveBodySchema } from "@/lib/api-schemas";
+import { MAX_RESULT_BODY_CHARS, SaveBodySchema } from "@/lib/api-schemas";
 import { prisma } from "@/lib/db";
-import { jsonError } from "@/lib/http";
+import { jsonError, readJsonBody } from "@/lib/http";
 import { toJson } from "@/lib/json";
 import { getUserId } from "@/lib/session";
 
@@ -9,7 +9,9 @@ import { getUserId } from "@/lib/session";
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return jsonError("unauthorized", 401);
-  const body = SaveBodySchema.safeParse(await req.json().catch(() => null));
+  const raw = await readJsonBody(req, MAX_RESULT_BODY_CHARS);
+  if (!raw.ok) return jsonError(raw.code, raw.status);
+  const body = SaveBodySchema.safeParse(raw.value);
   if (!body.success) return jsonError("invalid_request", 400);
   const { result, request } = body.data;
   const saved = await prisma.tailoredWorkout.create({

@@ -2,9 +2,13 @@ import { EngineUnsafeError, type ProgressStage } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
 import type { EngineEvent } from "@/lib/engine-events";
 
-/** Streams progress stages, then the result or an error code, as NDJSON. Never leaks exception text. */
+/**
+ * Streams progress stages, then the result or an error code, as NDJSON. Never leaks exception text.
+ * afterResult runs once the result is sent (bookkeeping the athlete should not wait for); its failure is only logged.
+ */
 export function engineStreamResponse(
   run: (onProgress: (stage: ProgressStage) => void) => Promise<PipelineResult>,
+  afterResult?: (result: PipelineResult) => Promise<void>,
 ): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -13,6 +17,7 @@ export function engineStreamResponse(
       try {
         const result = await run((stage) => send({ type: "progress", stage }));
         send({ type: "result", result });
+        await afterResult?.(result).catch((e) => console.error("after-result step failed", e));
       } catch (e) {
         if (e instanceof EngineUnsafeError) {
           console.warn("engine failed closed", e.findings);

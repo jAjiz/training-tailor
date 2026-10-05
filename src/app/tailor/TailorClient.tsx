@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Equipment } from "@/lib/domain/types";
 import type { ProgressStage } from "@/lib/engine/pipeline";
 import { ManualWorkoutSchema, type ManualWorkout, type PipelineResult, type TailorRequest } from "@/lib/engine/types";
-import { readEngineStream } from "@/lib/engine-events";
+import { readEngineOutcome } from "@/lib/engine-events";
 import { ManualEntryForm, emptyManualWorkout } from "./ManualEntryForm";
 import { ResultView } from "./ResultView";
 
@@ -24,6 +24,7 @@ const STAGE_TEXT: Record<ProgressStage, string> = {
 const ERROR_TEXT: Record<string, string> = {
   unauthorized: "Your session expired. Sign in again.",
   invalid_request: "Something in the form is not valid.",
+  payload_too_large: "That is too much text. Shorten the workout or start a new one.",
   quota_exceeded: "You reached today's limit. Try again tomorrow.",
   engine_unavailable: "The engine is not configured.",
   engine_failed: "The engine failed. Try again.",
@@ -59,7 +60,8 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
     };
   }
 
-  async function runEngine(url: string, body: unknown) {
+  // The request is stored only with the result it produced, so Save always persists a matching pair.
+  async function runEngine(url: string, body: unknown, req: TailorRequest) {
     setError(null);
     setSaved(false);
     setStage("analyzing");
@@ -70,13 +72,12 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
         setError(ERROR_TEXT[code] ?? ERROR_TEXT.engine_failed);
         return;
       }
-      await readEngineStream(res, (e) => {
-        if (e.type === "progress") setStage(e.stage);
-        else if (e.type === "result") {
-          setResult(e.result);
-          setFeedback("");
-        } else setError(ERROR_TEXT[e.error]);
-      });
+      const outcome = await readEngineOutcome(res, setStage);
+      if (outcome.kind === "result") {
+        setResult(outcome.result);
+        setRequest(req);
+        setFeedback("");
+      } else setError(ERROR_TEXT[outcome.error]);
     } catch {
       setError(ERROR_TEXT.engine_failed);
     } finally {
@@ -86,21 +87,26 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
 
   function submit() {
     const req = buildRequest();
+    let input;
     if (mode === "paste") {
       if (!rawText.trim()) return setError("Paste a workout first.");
-      setRequest(req);
-      void runEngine("/api/tailor", { input: { kind: "paste", rawText }, request: req });
-      return;
+      input = { kind: "paste", rawText };
+    } else {
+      const parsed = ManualWorkoutSchema.safeParse(manual);
+      if (!parsed.success) return setError("Give every movement a name.");
+      input = { kind: "manual", workout: parsed.data };
     }
-    const parsed = ManualWorkoutSchema.safeParse(manual);
-    if (!parsed.success) return setError("Give every movement a name.");
-    setRequest(req);
-    void runEngine("/api/tailor", { input: { kind: "manual", workout: parsed.data }, request: req });
+    // A new workout replaces the old result even if it fails: never leave a stale result to save.
+    setResult(null);
+    setRequest(null);
+    void runEngine("/api/tailor", { input, request: req }, req);
   }
 
   function refine() {
-    if (!result || !request || !feedback.trim()) return;
-    void runEngine("/api/tailor/refine", { previous: result, feedback: feedback.trim(), request });
+    if (!result || !feedback.trim()) return;
+    // Refine with the form as it is now (a time cap or equipment set after the first run counts).
+    const req = buildRequest();
+    void runEngine("/api/tailor/refine", { previous: result, feedback: feedback.trim(), request: req }, req);
   }
 
   async function save() {

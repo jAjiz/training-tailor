@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { engineStreamResponse } from "@/lib/engine-stream";
-import { readEngineStream, type EngineEvent } from "@/lib/engine-events";
+import { readEngineOutcome, readEngineStream, type EngineEvent } from "@/lib/engine-events";
 import { EngineUnsafeError } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
 import { fran, identityResult } from "../fixtures/workouts";
@@ -44,6 +44,41 @@ describe("engine stream", () => {
     const out = await events(res);
     expect(out).toEqual([{ type: "error", error: "engine_failed" }]);
     expect(JSON.stringify(out)).not.toContain("secret");
+    error.mockRestore();
+  });
+});
+
+describe("engine stream outcome", () => {
+  const ndjson = (lines: unknown[]) =>
+    new Response(lines.map((l) => `${JSON.stringify(l)}\n`).join(""), { headers: { "content-type": "application/x-ndjson" } });
+
+  it("returns the result and reports progress on the way", async () => {
+    const stages: string[] = [];
+    const outcome = await readEngineOutcome(ndjson([{ type: "progress", stage: "analyzing" }, { type: "result", result }]), (s) => stages.push(s));
+    expect(stages).toEqual(["analyzing"]);
+    expect(outcome).toEqual({ kind: "result", result });
+  });
+
+  it("returns the engine's error code", async () => {
+    expect(await readEngineOutcome(ndjson([{ type: "error", error: "engine_unsafe" }]), () => {})).toEqual({ kind: "error", error: "engine_unsafe" });
+  });
+
+  it("treats a stream that ends without a result or an error as a failure", async () => {
+    expect(await readEngineOutcome(ndjson([{ type: "progress", stage: "tailoring" }]), () => {})).toEqual({ kind: "error", error: "engine_failed" });
+  });
+});
+
+describe("after-result hook", () => {
+  it("runs after the result is sent and before the stream closes, and its failure is not reported", async () => {
+    const order: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = engineStreamResponse(async () => result, async () => {
+      order.push("after");
+      throw new Error("db down");
+    });
+    const seen = await events(res);
+    expect(seen).toEqual([{ type: "result", result }]);
+    expect(order).toEqual(["after"]);
     error.mockRestore();
   });
 });

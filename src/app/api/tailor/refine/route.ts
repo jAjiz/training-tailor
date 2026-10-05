@@ -1,10 +1,10 @@
 import { getProvider } from "@/lib/ai";
 import type { LlmProvider } from "@/lib/ai/provider";
-import { RefineBodySchema } from "@/lib/api-schemas";
+import { MAX_RESULT_BODY_CHARS, RefineBodySchema } from "@/lib/api-schemas";
 import { getDomainData } from "@/lib/domain/repository";
 import { runRefinePipeline } from "@/lib/engine/pipeline";
 import { engineStreamResponse } from "@/lib/engine-stream";
-import { jsonError } from "@/lib/http";
+import { jsonError, readJsonBody } from "@/lib/http";
 import { consumeQuota, dailyLimit } from "@/lib/quota";
 import { prismaQuotaStore } from "@/lib/quota-store";
 import { getUserId } from "@/lib/session";
@@ -17,7 +17,9 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   const userId = await getUserId();
   if (!userId) return jsonError("unauthorized", 401);
-  const body = RefineBodySchema.safeParse(await req.json().catch(() => null));
+  const raw = await readJsonBody(req, MAX_RESULT_BODY_CHARS);
+  if (!raw.ok) return jsonError(raw.code, raw.status);
+  const body = RefineBodySchema.safeParse(raw.value);
   if (!body.success) return jsonError("invalid_request", 400);
 
   let provider: LlmProvider;
@@ -31,11 +33,10 @@ export async function POST(req: Request) {
   if (!quota.allowed) return jsonError("quota_exceeded", 429);
 
   const [profile, domain] = await Promise.all([loadProfile(userId), getDomainData()]);
-  return engineStreamResponse(async (onProgress) => {
-    const result = await runRefinePipeline(provider, {
+  return engineStreamResponse(
+    (onProgress) => runRefinePipeline(provider, {
       previous: body.data.previous, feedback: body.data.feedback, profile, request: body.data.request, domain, onProgress,
-    });
-    await recordUnrecognized(prismaUnrecognizedStore, result);
-    return result;
-  });
+    }),
+    (result) => recordUnrecognized(prismaUnrecognizedStore, result),
+  );
 }
