@@ -110,13 +110,13 @@ describe("tailor", () => {
     const names = allowedMovementNames(original, domain.movements);
     expect(names).toContain("Thruster");
     expect(names).toContain("Zercher Carry");
-    expect(names).not.toContain("Dumbbell Thruster");
+    expect(names).not.toContain("Sandbag Thruster");
 
     const provider = new FakeProvider({ TailoringResult: toTailoringDraft(original) });
     await tailor(provider, input({ original }));
     const schema = provider.calls[0].schema;
     const invented = toTailoringDraft(original);
-    invented.blocks[0].components[0] = component("Dumbbell Thruster", { reps: "21-15-9" });
+    invented.blocks[0].components[0] = component("Sandbag Thruster", { reps: "21-15-9" });
     expect(schema.safeParse(invented).success).toBe(false);
     const alias = toTailoringDraft(original);
     alias.blocks[0].components[0] = component("KB Goblet Squat", { reps: "21-15-9" });
@@ -132,7 +132,7 @@ describe("tailor", () => {
     });
     expect(schema.safeParse(withChange("Air Squat")).success).toBe(true);
     expect(schema.safeParse(withChange("(removed)")).success).toBe(true);
-    expect(schema.safeParse(withChange("Dumbbell Thruster")).success).toBe(false);
+    expect(schema.safeParse(withChange("Sandbag Thruster")).success).toBe(false);
   });
 
   it("tells the model to keep the safe part of a combined movement", async () => {
@@ -144,7 +144,7 @@ describe("tailor", () => {
 
   it("rejects an invented movement instead of returning it", async () => {
     const draft = toTailoringDraft(fran());
-    draft.blocks[0].components = [component("Dumbbell Thruster", { reps: "21-15-9" })];
+    draft.blocks[0].components = [component("Sandbag Thruster", { reps: "21-15-9" })];
     await expect(tailor(new FakeProvider({ TailoringResult: draft }), input())).rejects.toBeInstanceOf(StructuredOutputError);
   });
 });

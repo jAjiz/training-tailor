@@ -34,7 +34,7 @@ describe("availableEquipment", () => {
 describe("rankCandidates", () => {
   it("keeps listed substitutes that survive, in order", () => {
     const c = rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"]]));
-    expect(c).toEqual([{ name: "Kettlebell Goblet Squat", verdict: "ok", source: "substitute", score: 1000 }]);
+    expect(c).toEqual([{ name: "Kettlebell Goblet Squat", verdict: "ok", source: "substitute", score: 999 }]);
   });
 
   it("filters substitutes by equipment", () => {
@@ -76,6 +76,23 @@ describe("rankCandidates", () => {
     expect(rankCandidates(movement("Pull-up"), ctx([["no_hanging", "moderate"]])).some((x) => x.source === "related")).toBe(false);
     // The Thruster keeps its squat; its blocked press is not swapped for a horizontal push.
     expect(rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"]])).some((x) => x.source === "related")).toBe(false);
+  });
+
+  it("puts the variant that keeps the whole movement first when it is no riskier than the original", () => {
+    // Mild knee: the Thruster is already "caution", so a Dumbbell Thruster (also caution) adds no risk and keeps squat + press.
+    const c = rankCandidates(movement("Thruster"), ctx([["knee_pain", "mild"]], ["dumbbell", "jump_rope"]));
+    expect(c.map((x) => [x.name, x.verdict])).toEqual([["Dumbbell Thruster", "caution"], ["Dumbbell Shoulder Press", "ok"]]);
+  });
+
+  it("keeps ok candidates first when the original had to change for safety", () => {
+    const c = rankCandidates(movement("Thruster"), ctx([["knee_pain", "moderate"]], ["dumbbell", "jump_rope"]));
+    expect(c.map((x) => x.name)).not.toContain("Dumbbell Thruster");
+    expect(c[0].verdict).toBe("ok");
+  });
+
+  it("prefers a full-coverage variant when the original changes only for equipment", () => {
+    const c = rankCandidates(movement("Thruster"), ctx([], ["dumbbell"]));
+    expect(c[0]).toMatchObject({ name: "Dumbbell Thruster", verdict: "ok" });
   });
 
   it("adds no pattern candidates when the substitutes cover every pattern", () => {

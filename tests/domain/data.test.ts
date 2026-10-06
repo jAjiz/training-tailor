@@ -710,8 +710,8 @@ describe("strict variants and known gaps", () => {
       .toEqual(["Banded Face Pull", "Bent-over Row", "Dumbbell Row", "Ring Row"]);
   });
 
-  it("the catalog has 138 movements", () => {
-    expect(movements).toHaveLength(138);
+  it("the catalog has 139 movements", () => {
+    expect(movements).toHaveLength(139);
   });
 });
 
@@ -812,5 +812,21 @@ describe("floor press", () => {
   it("is the first fallback when the bench press cannot be done", () => {
     expect(byName("Dumbbell Bench Press").substitutes[0]).toBe("Dumbbell Floor Press");
     expect(byName("Bench Press").substitutes).toContain("Dumbbell Floor Press");
+  });
+});
+
+describe("dumbbell thruster", () => {
+  it("is the thruster without the barbell's front-rack wrist load", () => {
+    const db = byName("Dumbbell Thruster");
+    const bb = byName("Thruster");
+    expect(db.patterns).toEqual(bb.patterns);
+    expect(db.equipment).toEqual(["dumbbell"]);
+    expect(db.stresses).toEqual(bb.stresses.filter((s) => s.site !== "wrist"));
+    expect(db.unilateral).toBeNull();
+    expect(movements.find((m) => m.aliases.includes("DB Thruster"))?.name).toBe("Dumbbell Thruster");
+  });
+
+  it("is the thruster's first substitute", () => {
+    expect(byName("Thruster").substitutes[0]).toBe("Dumbbell Thruster");
   });
 });

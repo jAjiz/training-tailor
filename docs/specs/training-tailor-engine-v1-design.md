@@ -144,7 +144,13 @@ Engine pipeline (server-side, provider-agnostic)
    survives do **related patterns** step in (vertical ↔ horizontal pull, vertical ↔
    horizontal push, squat ↔ lunge, carry ↔ hold), marked "related pattern" in the prompt:
    a Pull-up without a bar or rings becomes a Dumbbell Row instead of an improvised push.
-   The final list is ordered `ok` before `caution` across sources. Each reason in the plan
+   The final list puts first the candidates **no riskier than the original** (only `ok` when
+   the original must change for safety; `ok` or `caution` when it was already `caution`),
+   then those covering **more of its patterns**, then `ok` before `caution`. A Thruster with
+   no barbell and a mild knee thus leads with Dumbbell Thruster (same movement, same
+   caution) instead of a half-movement such as a press. Implement variants stay separate
+   rows: their stresses, laterality and skill differ (no front-rack wrist load with
+   dumbbells, single-arm options), and loads convert per implement. Each reason in the plan
    carries its own verdict (`= avoid` / `= caution`): severity is already applied, so a
    mild condition does not read as a ban. A movement goal adds the target movement's
    family (itself + its substitutes, filtered the same way).

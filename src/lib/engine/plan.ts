@@ -95,6 +95,10 @@ function patternCandidates(
  * substitutes[] first (in order), then pattern candidates for every pattern of the original that no
  * surviving substitute covers: a Thruster whose press is blocked still gets squats, so the stimulus survives.
  * Only when nothing at all survives do the RELATED_PATTERNS step in.
+ *
+ * Order: candidates no riskier than the original first (only "ok" when the original must change for safety, "ok"
+ * or "caution" when it was already "caution"), then those covering more of its patterns, then ok before caution.
+ * A Dumbbell Thruster thus leads for a Thruster without a barbell instead of a half-movement like a press.
  */
 export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, perPattern = 3): Candidate[] {
   const listed: { candidate: Candidate; movement: Movement }[] = [];
@@ -103,9 +107,10 @@ export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, 
     const verdict = m ? usable(m, ctx) : null;
     if (m && verdict) listed.push({ candidate: { name: m.name, verdict, source: "substitute", score: 1000 - i }, movement: m });
   });
-  const out = listed.map((l) => l.candidate).sort(byRank).slice(0, limit);
+  const kept = listed.sort((a, b) => byRank(a.candidate, b.candidate)).slice(0, limit);
+  const out = kept.map((l) => l.candidate);
 
-  const covered = new Set(listed.flatMap((l) => l.movement.patterns));
+  const covered = new Set(kept.flatMap((l) => l.movement.patterns));
   for (const pattern of original.patterns.filter((p) => !covered.has(p))) {
     const fresh = patternCandidates(original, pattern, ctx).filter((c) => !out.some((o) => o.name === c.name));
     out.push(...fresh.slice(0, listed.length === 0 && pattern === original.patterns[0] ? limit : perPattern));
@@ -115,8 +120,10 @@ export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, 
     if (out.length > 0) break;
     out.push(...patternCandidates(original, related, ctx, "related").slice(0, limit));
   }
-  // ok before caution across sources (substitutes keep their lead within a verdict by score).
-  return out.sort(byRank);
+  const tolerated = assessMovement(original, ctx.active).verdict === "caution" ? VERDICT_RANK.caution : VERDICT_RANK.ok;
+  const riskier = (c: Candidate) => (VERDICT_RANK[c.verdict] > tolerated ? 1 : 0);
+  const coverage = new Map(out.map((c) => [c.name, ctx.resolve(c.name)?.patterns.filter((p) => original.patterns.includes(p)).length ?? 0]));
+  return out.sort((a, b) => riskier(a) - riskier(b) || coverage.get(b.name)! - coverage.get(a.name)! || byRank(a, b));
 }
 
 export function planComponents(workout: StructuredWorkout, ctx: PlanContext): ComponentPlan[] {
