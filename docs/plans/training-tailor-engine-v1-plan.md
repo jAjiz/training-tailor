@@ -30,7 +30,7 @@ Revision 1 of this plan delivered Phase 0 (scaffold, Vitest), Phase 1 (Prisma 7 
 
 ## Execution order
 
-`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U5 → U6` (API, unrecognized-movement queue, UI) → `F1` (README, verification).
+`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U4b → U5 → U6` (API, unrecognized-movement queue, UI, athlete-confirmed conditions) → `F1` (README, verification).
 
 The engine and its evaluation come before auth and UI on purpose: the LLM loop is validated end-to-end (`pnpm eval`) before any screen exists.
 
@@ -6331,6 +6331,908 @@ Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
 ```bash
 git add -A
 git commit -m "feat: tailor page with streamed progress, side-by-side result, refine and save"
+```
+
+---
+
+### Task U4b: Athlete-confirmed conditions (two-phase tailor)
+
+The model only **suggests** today's conditions: which catalog condition, which side and how severe is an interpretation, and severity decides the whole assessment (the same "sore right shoulder" was read as moderate one day and mild the next). Phase 1 (`POST /api/tailor/analyze`, JSON) analyzes the workout and the situation; when it suggests any condition the athlete confirms or corrects it (side, severity, remove, add a missed one) and phase 2 (`POST /api/tailor`, NDJSON) tailors with the confirmed list. With no suggestion phase 2 starts at once. Refine works the same way (`/api/tailor/refine/analyze` → confirm → `/api/tailor/refine`). The client sends the phase-1 analysis back (as refine already sends `previous`): it can only alter the athlete's own session, the stored profile injuries are always re-applied, and the validator enforces whatever is confirmed. Quota is counted per kind (`analyze`, `tailor`, `refine`, each with `DAILY_ENGINE_LIMIT`) so neither phase can be called unbounded.
+
+**Files:**
+- Modify: `src/lib/engine/types.ts` (append), `src/lib/engine/conditions.ts`, `src/lib/engine/pipeline.ts`, `src/lib/quota.ts`, `src/lib/quota-store.ts`, `prisma/schema.prisma` (comment only), `src/lib/api-schemas.ts`, `src/lib/engine-route.ts`, `src/app/api/tailor/route.ts`, `src/app/api/tailor/refine/route.ts`, `src/app/tailor/page.tsx`, `src/app/tailor/TailorClient.tsx`, `src/lib/eval/grade.ts`, `scripts/eval.ts`
+- Create: `src/app/api/tailor/analyze/route.ts`, `src/app/api/tailor/refine/analyze/route.ts`, `src/app/tailor/ConfirmConditions.tsx`
+- Test: `tests/engine/pipeline.test.ts` (rewritten), `tests/lib/quota.test.ts`, `tests/lib/api-schemas.test.ts`, `tests/eval/grade.test.ts`
+
+**Interfaces:**
+- Consumes: `analyzePaste`, `analyzeManual`, `analyzeSituation` (E4); `activateConditions`, `profileConditionRefs` (E5); `tailorAndValidate` internals (E8); `handleEngineRequest` (U3 refactor); `readEngineOutcome` (review fixes); `ResultView` (U4).
+- Produces:
+  - `@/lib/engine/types`: `ConfirmedConditionSchema` / `ConfirmedCondition` (`DetectedCondition` with `evidence: string | null`), `WorkoutAnalysisResultSchema` / `WorkoutAnalysisResult` `{ original, suggested, unavailableEquipment, analyzed }`, `FeedbackAnalysisSchema` / `FeedbackAnalysis` `{ suggested, unavailableEquipment }`.
+  - `@/lib/engine/pipeline`: `analyzeWorkout(provider, { input, situation, domain })`, `analyzeFeedback(provider, feedback, domain)`; `PipelineArgs` is now `{ original, confirmed, unavailableEquipment, profile, request, domain, onProgress? }`; `RefineArgs` adds `confirmed` and `unavailableEquipment`. Neither pipeline calls the analyzer any more; their first stage is `tailoring`.
+  - `@/lib/quota`: `UsageKind = "analyze" | "tailor" | "refine"`; `QuotaStore.countSince(userId, kind, since)`.
+  - `@/lib/api-schemas`: `AnalyzeBodySchema`, `AnalyzeFeedbackBodySchema`; `TailorBodySchema = { analysis: { original, unavailableEquipment }, confirmed, request }`; `RefineBodySchema` adds `confirmed`, `unavailableEquipment`.
+  - `@/lib/engine-route`: `handleAnalyzeRequest(req, { schema, maxBodyChars, run })` → JSON.
+  - `ConfirmConditions({ suggested, catalog, busy, onConfirm, onCancel })`; `TailorClient({ movementNames, equipmentOptions, catalog })`.
+  - Eval cases accept `confirm` (the conditions the athlete would confirm); `mustDetect` grades the suggestions.
+
+- [ ] **Step 1: Write the failing pipeline tests** — replace `tests/engine/pipeline.test.ts` with:
+
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import {
+  EngineUnsafeError, analyzeFeedback, analyzeWorkout, runRefinePipeline, runTailorPipeline,
+  type PipelineArgs, type ProgressStage,
+} from "@/lib/engine/pipeline";
+import { emptyProfile, emptyRequest, type ConfirmedCondition, type TailoringDraft } from "@/lib/engine/types";
+import { FRAN_TEXT, component, fran, franDraft, sprint, toTailoringDraft } from "../fixtures/workouts";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+const shoulderToday: ConfirmedCondition = { key: "shoulder_impingement", side: "right", severity: "moderate", evidence: "me duele el hombro derecho" };
+const pasteAnalysis = (conditions: unknown[] = [shoulderToday]) => ({ workout: franDraft(), conditions, unavailableEquipment: [] });
+
+function safeDraft(): TailoringDraft {
+  const d = toTailoringDraft(fran());
+  d.blocks[0].components = [
+    component("Kettlebell Goblet Squat", { reps: "21-15-9", loadKg: { male: 24, female: 16 } }),
+    component("Ring Row", { reps: "21-15-9" }),
+  ];
+  d.changes = [{ blockIndex: 0, original: "Thruster", modified: "Kettlebell Goblet Squat", reason: "No overhead." }];
+  return d;
+}
+const unsafeDraft = () => toTailoringDraft(fran()); // keeps Thruster and Pull-up
+
+const run = (provider: FakeProvider, stages: ProgressStage[] = [], overrides: Partial<PipelineArgs> = {}) =>
+  runTailorPipeline(provider, {
+    original: fran(),
+    confirmed: [shoulderToday],
+    unavailableEquipment: [],
+    profile: emptyProfile(),
+    request: { ...emptyRequest(), situation: "me duele el hombro derecho" },
+    domain,
+    onProgress: (s) => stages.push(s),
+    ...overrides,
+  });
+
+describe("analyzeWorkout", () => {
+  it("suggests today's conditions without applying them, in one model call", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: pasteAnalysis() });
+    const a = await analyzeWorkout(provider, { input: { kind: "paste", rawText: FRAN_TEXT }, situation: "me duele el hombro derecho", domain });
+    expect(provider.calls).toHaveLength(1);
+    expect(a.suggested).toEqual([shoulderToday]);
+    expect(a.original.blocks[0].components.map((c) => c.canonical)).toEqual(["Thruster", "Pull-up"]);
+    expect(a.analyzed).toBe(true);
+  });
+
+  it("analyzes a manual workout", async () => {
+    const provider = new FakeProvider({ ManualAnalysis: { stimuli: [sprint], conditions: [], unavailableEquipment: [] } });
+    const a = await analyzeWorkout(provider, {
+      input: { kind: "manual", workout: { name: "Fran", blocks: [{
+        title: "Fran", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
+        components: franDraft().blocks[0].components,
+      }] } },
+      situation: "", domain,
+    });
+    expect(a.original.source).toBe("manual");
+    expect(a.original.blocks[0].stimulus).toEqual(sprint);
+    expect(a.suggested).toEqual([]);
+  });
+});
+
+describe("analyzeFeedback", () => {
+  it("suggests the feedback's conditions and missing equipment", async () => {
+    const knee = { key: "knee_pain", side: "left", severity: "mild", evidence: "la rodilla también" };
+    const provider = new FakeProvider({ SituationAnalysis: { conditions: [knee], unavailableEquipment: ["kettlebell"] } });
+    expect(await analyzeFeedback(provider, "la rodilla también, y no hay kettlebell", domain)).toEqual({
+      suggested: [knee], unavailableEquipment: ["kettlebell"],
+    });
+  });
+});
+
+describe("runTailorPipeline", () => {
+  it("tailors and validates against the confirmed conditions in one model call", async () => {
+    const provider = new FakeProvider({ TailoringResult: safeDraft() });
+    const stages: ProgressStage[] = [];
+    const r = await run(provider, stages);
+    expect(stages).toEqual(["tailoring", "validating"]);
+    expect(provider.calls).toHaveLength(1);
+    expect(r.conditions).toEqual([{ ...shoulderToday, source: "today" }]);
+    expect(r.tailored.blocks[0].components.map((c) => c.canonical)).toEqual(["Kettlebell Goblet Squat", "Ring Row"]);
+    expect(r.findings.filter((f) => f.severity === "violation")).toEqual([]);
+    expect(r.feedbackHistory).toEqual([]);
+    expect(r.model).toBe("fake");
+  });
+
+  it("the confirmed severity decides: mild keeps the Thruster with a caution, moderate fails closed", async () => {
+    const mild = await run(new FakeProvider({ TailoringResult: unsafeDraft() }), [], { confirmed: [{ ...shoulderToday, severity: "mild" }] });
+    expect(mild.findings).toContainEqual(expect.objectContaining({ kind: "caution_movement", movement: "Thruster", severity: "warning" }));
+    await expect(run(new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) }))).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+
+  it("applies a condition the athlete added (no evidence)", async () => {
+    const provider = new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) });
+    await expect(run(provider, [], {
+      confirmed: [{ key: "no_hanging", side: null, severity: "moderate", evidence: null }],
+    })).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+
+  it("retries once with the violations and returns the corrected result", async () => {
+    const provider = new FakeProvider({ TailoringResult: sequence(unsafeDraft(), safeDraft()) });
+    const stages: ProgressStage[] = [];
+    const r = await run(provider, stages);
+    expect(stages).toEqual(["tailoring", "validating", "retrying", "validating"]);
+    expect(provider.calls[1].prompt).toContain("REJECTED BY THE SAFETY CHECK");
+    expect(r.tailored.blocks[0].components[0].canonical).toBe("Kettlebell Goblet Squat");
+  });
+
+  it("returns non-safety violations that survive the retry as findings", async () => {
+    const slow = () => {
+      const d = safeDraft();
+      d.blocks[0].timeDomainMinutes = 30;
+      return d;
+    };
+    const r = await run(new FakeProvider({ TailoringResult: sequence(slow(), slow()) }), [], {
+      request: { ...emptyRequest(), situation: "me duele el hombro derecho", timeCapMinutes: 10 },
+    });
+    expect(r.findings).toContainEqual(expect.objectContaining({ kind: "time_cap_exceeded", severity: "violation" }));
+  });
+
+  it("applies profile injuries even with nothing confirmed today", async () => {
+    const profile = { ...emptyProfile(), injuries: [{ key: "no_hanging", side: null, severity: "moderate" as const, notes: "cast", since: null }] };
+    await expect(run(new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) }), [], {
+      confirmed: [], profile, request: emptyRequest(),
+    })).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+});
+
+describe("runRefinePipeline", () => {
+  it("re-tailors the original with the feedback and the newly confirmed conditions", async () => {
+    const first = await run(new FakeProvider({ TailoringResult: safeDraft() }));
+    const provider = new FakeProvider({
+      TailoringResult: (() => {
+        const d = safeDraft();
+        d.blocks[0].components[0] = component("Dumbbell Goblet Squat", { reps: "15-12-9" });
+        d.changes = [{ blockIndex: 0, original: "Thruster", modified: "Dumbbell Goblet Squat", reason: "No kettlebell today." }];
+        return d;
+      })(),
+    });
+    const stages: ProgressStage[] = [];
+    const r = await runRefinePipeline(provider, {
+      previous: first, feedback: "too heavy, and my knee hurts too",
+      confirmed: [{ key: "knee_pain", side: "left", severity: "mild", evidence: "my knee hurts too" }],
+      unavailableEquipment: ["kettlebell"],
+      profile: emptyProfile(), request: emptyRequest(), domain, onProgress: (s) => stages.push(s),
+    });
+    expect(stages).toEqual(["tailoring", "validating"]);
+    expect(provider.calls).toHaveLength(1);
+    expect(r.original).toEqual(first.original);
+    expect(r.conditions.map((c) => c.key)).toEqual(["shoulder_impingement", "knee_pain"]);
+    expect(r.unavailableEquipment).toEqual(["kettlebell"]);
+    expect(r.feedbackHistory).toEqual(["too heavy, and my knee hurts too"]);
+    expect(provider.calls[0].prompt).toContain("PREVIOUS ATTEMPT");
+    expect(provider.calls[0].prompt).toContain("- too heavy, and my knee hurts too");
+  });
+
+  it("re-applies profile injuries even if the client dropped them from the previous result", async () => {
+    const first = await run(new FakeProvider({ TailoringResult: safeDraft() }));
+    const tampered = { ...first, conditions: [] };
+    const profile = { ...emptyProfile(), injuries: [{ key: "hand_tear", side: null, severity: "moderate" as const, notes: null, since: null }] };
+    const r = await runRefinePipeline(new FakeProvider({ TailoringResult: safeDraft() }), {
+      previous: tampered, feedback: "more volume", confirmed: [], unavailableEquipment: [],
+      profile, request: emptyRequest(), domain,
+    });
+    expect(r.conditions.map((c) => c.key)).toEqual(["hand_tear"]);
+  });
+});
+```
+
+Run: `pnpm exec vitest run tests/engine/pipeline.test.ts` → FAIL (`analyzeWorkout` is not exported; `ConfirmedCondition` missing).
+
+- [ ] **Step 2: Append the two-phase types to `src/lib/engine/types.ts`** (after `PipelineResultSchema`)
+
+```ts
+// ---- athlete-confirmed conditions (two-phase tailor) ----
+// The analyzer only suggests today's conditions; the athlete confirms or corrects them before tailoring.
+export const ConfirmedConditionSchema = DetectedConditionSchema.extend({
+  evidence: z.string().nullable(), // null when the athlete added the condition
+});
+export type ConfirmedCondition = z.infer<typeof ConfirmedConditionSchema>;
+
+export const WorkoutAnalysisResultSchema = z.object({
+  original: StructuredWorkoutSchema,
+  suggested: z.array(DetectedConditionSchema),
+  unavailableEquipment: z.array(Equipment),
+  analyzed: z.boolean(), // false = degraded to one raw block
+});
+export type WorkoutAnalysisResult = z.infer<typeof WorkoutAnalysisResultSchema>;
+
+export const FeedbackAnalysisSchema = z.object({
+  suggested: z.array(DetectedConditionSchema),
+  unavailableEquipment: z.array(Equipment),
+});
+export type FeedbackAnalysis = z.infer<typeof FeedbackAnalysisSchema>;
+```
+
+- [ ] **Step 3: Let `activateConditions` take confirmed conditions** — in `src/lib/engine/conditions.ts` replace the type import and the signature:
+
+```ts
+import type { ConditionRef, ConfirmedCondition, ProfileInjury } from "./types";
+```
+```ts
+/** base (profile or a previous result) ⊕ today's confirmed conditions; for the same key today's side/severity win. */
+export function activateConditions(
+  base: ConditionRef[], confirmed: ConfirmedCondition[], catalog: Contraindication[],
+): ActivatedConditions {
+  const merged = new Map<string, ConditionRef>();
+  for (const r of base) merged.set(r.key, r);
+  for (const d of confirmed) {
+    merged.set(d.key, { key: d.key, side: d.side, severity: d.severity, source: "today", evidence: d.evidence });
+  }
+```
+(the rest of the function is unchanged; `DetectedCondition` values still type-check because their `evidence` is a string).
+
+- [ ] **Step 4: Split the pipeline in `src/lib/engine/pipeline.ts`**
+
+Replace the type import block with:
+```ts
+import type {
+  AthleteProfile, ConditionRef, ConfirmedCondition, FeedbackAnalysis, Finding, ManualWorkout, PipelineResult,
+  StructuredWorkout, TailorRequest, TailoringResult, WorkoutAnalysisResult,
+} from "./types";
+```
+Replace `PipelineArgs` and `RefineArgs` with:
+```ts
+export interface AnalyzeArgs {
+  input: WorkoutInput;
+  situation: string;
+  domain: DomainData;
+}
+
+/** Phase 2 input: the phase-1 session plus the conditions the athlete confirmed. */
+export interface PipelineArgs {
+  original: StructuredWorkout;
+  confirmed: ConfirmedCondition[];
+  unavailableEquipment: Equipment[];
+  profile: AthleteProfile;
+  request: TailorRequest;
+  domain: DomainData;
+  onProgress?: (stage: ProgressStage) => void;
+}
+
+export interface RefineArgs {
+  previous: PipelineResult;
+  feedback: string;
+  confirmed: ConfirmedCondition[]; // conditions the feedback added, as the athlete confirmed them
+  unavailableEquipment: Equipment[]; // equipment the feedback says is missing
+  profile: AthleteProfile;
+  request: TailorRequest;
+  domain: DomainData;
+  onProgress?: (stage: ProgressStage) => void;
+}
+```
+Replace `runTailorPipeline` and `runRefinePipeline` with:
+```ts
+/** Phase 1: the session and today's SUGGESTED conditions; nothing is applied until the athlete confirms. */
+export async function analyzeWorkout(provider: LlmProvider, args: AnalyzeArgs): Promise<WorkoutAnalysisResult> {
+  const ctx = analyzeContext(args.domain);
+  const a = args.input.kind === "paste"
+    ? await analyzePaste(provider, args.input.rawText, args.situation, ctx)
+    : await analyzeManual(provider, args.input.workout, args.situation, ctx);
+  return { original: a.workout, suggested: a.conditions, unavailableEquipment: a.unavailableEquipment, analyzed: a.analyzed };
+}
+
+/** Refine phase 1: the conditions and missing equipment the feedback suggests. */
+export async function analyzeFeedback(provider: LlmProvider, feedback: string, domain: DomainData): Promise<FeedbackAnalysis> {
+  const s = await analyzeSituation(provider, feedback, analyzeContext(domain));
+  return { suggested: s.conditions, unavailableEquipment: s.unavailableEquipment };
+}
+
+export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
+  const progress = args.onProgress ?? (() => {});
+  const { active, refs } = activateConditions(
+    profileConditionRefs(args.profile.injuries), args.confirmed, args.domain.contraindications,
+  );
+  const { result, findings } = await tailorAndValidate(provider, {
+    original: args.original, active, refs, unavailable: args.unavailableEquipment,
+    profile: args.profile, request: args.request, domain: args.domain, previousAttempt: null, progress,
+  });
+  return {
+    original: args.original, conditions: refs, unavailableEquipment: args.unavailableEquipment,
+    tailored: result, findings, feedbackHistory: [], model: provider.model,
+  };
+}
+
+export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs): Promise<PipelineResult> {
+  const progress = args.onProgress ?? (() => {});
+  // `previous` comes back from the client: the stored profile injuries are always re-applied.
+  const { active, refs } = activateConditions(
+    [...profileConditionRefs(args.profile.injuries), ...args.previous.conditions],
+    args.confirmed,
+    args.domain.contraindications,
+  );
+  const unavailable = [...new Set([...args.previous.unavailableEquipment, ...args.unavailableEquipment])];
+  const feedbackHistory = [...args.previous.feedbackHistory, args.feedback];
+  const { result, findings } = await tailorAndValidate(provider, {
+    original: args.previous.original, active, refs, unavailable, profile: args.profile, request: args.request,
+    domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
+  });
+  return {
+    original: args.previous.original, conditions: refs, unavailableEquipment: unavailable,
+    tailored: result, findings, feedbackHistory, model: provider.model,
+  };
+}
+```
+`ProgressStage` keeps `"analyzing"`: the client shows it during phase 1.
+
+Run: `pnpm exec vitest run tests/engine` → PASS.
+
+- [ ] **Step 5: Count quota per kind** — failing test first. In `tests/lib/quota.test.ts` change the store's `countSince` and add a test:
+
+```ts
+    async countSince(userId, kind, since) { return rows.filter((r) => r.userId === userId && r.kind === kind && r.at >= since).length; },
+```
+```ts
+  it("limits each kind separately, so one adaptation (analyze + tailor) counts once against each", async () => {
+    const store = memoryStore();
+    expect((await consumeQuota(store, "u1", "analyze", 1)).allowed).toBe(true);
+    expect((await consumeQuota(store, "u1", "tailor", 1)).allowed).toBe(true);
+    expect((await consumeQuota(store, "u1", "analyze", 1)).allowed).toBe(false);
+  });
+```
+and in the first test replace the second call (`"refine"`) with `"tailor"` so it still exercises one kind up to its limit:
+```ts
+    expect(await consumeQuota(store, "u1", "tailor", 2)).toEqual({ allowed: true, used: 2, limit: 2 });
+```
+Run: `pnpm exec vitest run tests/lib/quota.test.ts` → FAIL (type error / count). Then in `src/lib/quota.ts`:
+```ts
+export type UsageKind = "analyze" | "tailor" | "refine";
+
+export interface QuotaStore {
+  countSince(userId: string, kind: UsageKind, since: Date): Promise<number>;
+  record(userId: string, kind: UsageKind): Promise<void>;
+}
+```
+```ts
+/** Counts runs of this kind in the last 24 h; records this one only when it is allowed. */
+export async function consumeQuota(
+  store: QuotaStore, userId: string, kind: UsageKind, limit: number, now: Date = new Date(),
+): Promise<{ allowed: boolean; used: number; limit: number }> {
+  const used = await store.countSince(userId, kind, new Date(now.getTime() - DAY_MS));
+```
+In `src/lib/quota-store.ts`:
+```ts
+  countSince: (userId, kind, since) => prisma.llmUsage.count({ where: { userId, kind, createdAt: { gte: since } } }),
+```
+In `prisma/schema.prisma` update the comment only (no migration): `kind      String // "analyze" | "tailor" | "refine"`.
+
+Run: `pnpm exec vitest run tests/lib/quota.test.ts` → PASS.
+
+- [ ] **Step 6: API bodies** — failing tests first. Replace `tests/lib/api-schemas.test.ts` with:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { AnalyzeBodySchema, AnalyzeFeedbackBodySchema, RefineBodySchema, SaveBodySchema, TailorBodySchema } from "@/lib/api-schemas";
+import { emptyRequest, type PipelineResult } from "@/lib/engine/types";
+import { fran, identityResult } from "../fixtures/workouts";
+
+const result: PipelineResult = {
+  original: fran(), conditions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  findings: [], feedbackHistory: [], model: "fake",
+};
+const shoulder = { key: "shoulder_impingement", side: "right", severity: "mild", evidence: "sore" };
+
+describe("API bodies", () => {
+  it("accepts a paste and a manual workout to analyze", () => {
+    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "Fran" }, request: emptyRequest() }).success).toBe(true);
+    expect(AnalyzeBodySchema.safeParse({
+      input: { kind: "manual", workout: { name: null, blocks: [{ title: null, format: "amrap", scheme: null, timeDomainMinutes: 10, coachingNotes: null, components: [] }] } },
+      request: emptyRequest(),
+    }).success).toBe(true);
+  });
+
+  it("rejects an empty or oversized paste", () => {
+    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "" }, request: emptyRequest() }).success).toBe(false);
+    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "x".repeat(20001) }, request: emptyRequest() }).success).toBe(false);
+  });
+
+  it("tailors an analyzed session with the confirmed conditions, including athlete-added ones", () => {
+    const body = (confirmed: unknown[]) => ({ analysis: { original: fran(), unavailableEquipment: [] }, confirmed, request: emptyRequest() });
+    expect(TailorBodySchema.safeParse(body([shoulder, { key: "no_hanging", side: null, severity: "moderate", evidence: null }])).success).toBe(true);
+    expect(TailorBodySchema.safeParse(body([{ ...shoulder, severity: "unbearable" }])).success).toBe(false);
+    expect(TailorBodySchema.safeParse(body(Array.from({ length: 21 }, () => shoulder))).success).toBe(false);
+  });
+
+  it("requires feedback to analyze or refine", () => {
+    expect(AnalyzeFeedbackBodySchema.safeParse({ feedback: "  " }).success).toBe(false);
+    expect(AnalyzeFeedbackBodySchema.safeParse({ feedback: "too easy" }).success).toBe(true);
+    const refine = (feedback: string) => ({ previous: result, feedback, confirmed: [], unavailableEquipment: [], request: emptyRequest() });
+    expect(RefineBodySchema.safeParse(refine("")).success).toBe(false);
+    expect(RefineBodySchema.safeParse(refine("too easy")).success).toBe(true);
+  });
+
+  it("saves a full pipeline result", () => {
+    expect(SaveBodySchema.safeParse({ result, request: emptyRequest() }).success).toBe(true);
+    expect(SaveBodySchema.safeParse({ result: { ...result, model: "" }, request: emptyRequest() }).success).toBe(false);
+  });
+});
+```
+Run → FAIL. Then in `src/lib/api-schemas.ts` replace the imports and the body schemas (keep the size constants and `WorkoutInputSchema`):
+```ts
+import { z } from "zod";
+import { Equipment } from "@/lib/domain/types";
+import {
+  ConfirmedConditionSchema, ManualWorkoutSchema, PipelineResultSchema, TailorRequestSchema, WorkoutAnalysisResultSchema,
+} from "@/lib/engine/types";
+```
+```ts
+const feedback = z.string().trim().min(1).max(2000);
+const confirmed = z.array(ConfirmedConditionSchema).max(20);
+
+export const AnalyzeBodySchema = z.object({ input: WorkoutInputSchema, request: TailorRequestSchema });
+export const AnalyzeFeedbackBodySchema = z.object({ feedback });
+export const TailorBodySchema = z.object({
+  analysis: WorkoutAnalysisResultSchema.pick({ original: true, unavailableEquipment: true }),
+  confirmed,
+  request: TailorRequestSchema,
+});
+export const RefineBodySchema = z.object({
+  previous: PipelineResultSchema,
+  feedback,
+  confirmed,
+  unavailableEquipment: z.array(Equipment),
+  request: TailorRequestSchema,
+});
+export const SaveBodySchema = z.object({ result: PipelineResultSchema, request: TailorRequestSchema });
+```
+Run → PASS.
+
+- [ ] **Step 7: Routes** — in `src/lib/engine-route.ts` split the preamble so both phases share it, and add the JSON analyze handler. Replace everything from `interface EngineRoute<T>` to the end of the file with:
+
+```ts
+interface RouteCheck<T> {
+  schema: z.ZodType<T>;
+  maxBodyChars: number;
+  kind: UsageKind;
+}
+
+type Prepared<T> = { ok: true; userId: string; body: T; provider: LlmProvider } | { ok: false; response: Response };
+
+/** Session, bounded body, validation, provider and quota: shared by every engine endpoint. */
+async function prepare<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<T>> {
+  const userId = await getUserId();
+  if (!userId) return { ok: false, response: jsonError("unauthorized", 401) };
+  const raw = await readJsonBody(req, check.maxBodyChars);
+  if (!raw.ok) return { ok: false, response: jsonError(raw.code, raw.status) };
+  const body = check.schema.safeParse(raw.value);
+  if (!body.success) return { ok: false, response: jsonError("invalid_request", 400) };
+
+  let provider: LlmProvider;
+  try {
+    provider = getProvider();
+  } catch (e) {
+    console.error("engine unavailable", e);
+    return { ok: false, response: jsonError("engine_unavailable", 503) };
+  }
+  const quota = await consumeQuota(prismaQuotaStore, userId, check.kind, dailyLimit());
+  if (!quota.allowed) return { ok: false, response: jsonError("quota_exceeded", 429) };
+  return { ok: true, userId, body: body.data, provider };
+}
+
+interface EngineRoute<T> extends RouteCheck<T> {
+  run: (body: T, ctx: EngineContext) => Promise<PipelineResult>;
+}
+
+/** Phase 2 (tailor, refine): the NDJSON stream; unrecognized movements are queued after the result is sent. */
+export async function handleEngineRequest<T>(req: Request, route: EngineRoute<T>): Promise<Response> {
+  const p = await prepare(req, route);
+  if (!p.ok) return p.response;
+  const [profile, domain] = await Promise.all([loadProfile(p.userId), getDomainData()]);
+  return engineStreamResponse(
+    (onProgress) => route.run(p.body, { provider: p.provider, profile, domain, onProgress }),
+    (result) => recordUnrecognized(prismaUnrecognizedStore, result),
+  );
+}
+
+interface AnalyzeRoute<T, R> {
+  schema: z.ZodType<T>;
+  maxBodyChars: number;
+  run: (body: T, ctx: { provider: LlmProvider; domain: DomainData }) => Promise<R>;
+}
+
+/** Phase 1 (analyze): one model call, plain JSON; counted as "analyze". Never leaks exception text. */
+export async function handleAnalyzeRequest<T, R>(req: Request, route: AnalyzeRoute<T, R>): Promise<Response> {
+  const p = await prepare(req, { schema: route.schema, maxBodyChars: route.maxBodyChars, kind: "analyze" });
+  if (!p.ok) return p.response;
+  try {
+    return NextResponse.json(await route.run(p.body, { provider: p.provider, domain: await getDomainData() }));
+  } catch (e) {
+    console.error("analysis failed", e);
+    return jsonError("engine_failed", 502);
+  }
+}
+```
+and add `import { NextResponse } from "next/server";` to its imports. Update its doc comment to "The shared shape of the engine endpoints".
+
+Create `src/app/api/tailor/analyze/route.ts`:
+```ts
+import { AnalyzeBodySchema, MAX_TAILOR_BODY_CHARS } from "@/lib/api-schemas";
+import { analyzeWorkout } from "@/lib/engine/pipeline";
+import { handleAnalyzeRequest } from "@/lib/engine-route";
+
+export const maxDuration = 60;
+
+export function POST(req: Request) {
+  return handleAnalyzeRequest(req, {
+    schema: AnalyzeBodySchema,
+    maxBodyChars: MAX_TAILOR_BODY_CHARS,
+    run: (body, { provider, domain }) =>
+      analyzeWorkout(provider, { input: body.input, situation: body.request.situation, domain }),
+  });
+}
+```
+Create `src/app/api/tailor/refine/analyze/route.ts`:
+```ts
+import { AnalyzeFeedbackBodySchema, MAX_TAILOR_BODY_CHARS } from "@/lib/api-schemas";
+import { analyzeFeedback } from "@/lib/engine/pipeline";
+import { handleAnalyzeRequest } from "@/lib/engine-route";
+
+export const maxDuration = 60;
+
+export function POST(req: Request) {
+  return handleAnalyzeRequest(req, {
+    schema: AnalyzeFeedbackBodySchema,
+    maxBodyChars: MAX_TAILOR_BODY_CHARS,
+    run: (body, { provider, domain }) => analyzeFeedback(provider, body.feedback, domain),
+  });
+}
+```
+Replace `src/app/api/tailor/route.ts` (the body now carries the analyzed session, so it gets the larger cap):
+```ts
+import { MAX_RESULT_BODY_CHARS, TailorBodySchema } from "@/lib/api-schemas";
+import { runTailorPipeline } from "@/lib/engine/pipeline";
+import { handleEngineRequest } from "@/lib/engine-route";
+
+export const maxDuration = 120;
+
+export function POST(req: Request) {
+  return handleEngineRequest(req, {
+    schema: TailorBodySchema,
+    maxBodyChars: MAX_RESULT_BODY_CHARS,
+    kind: "tailor",
+    run: (body, { provider, ...ctx }) => runTailorPipeline(provider, {
+      original: body.analysis.original, unavailableEquipment: body.analysis.unavailableEquipment,
+      confirmed: body.confirmed, request: body.request, ...ctx,
+    }),
+  });
+}
+```
+In `src/app/api/tailor/refine/route.ts` replace the `run` with:
+```ts
+    run: (body, { provider, ...ctx }) => runRefinePipeline(provider, {
+      previous: body.previous, feedback: body.feedback, confirmed: body.confirmed,
+      unavailableEquipment: body.unavailableEquipment, request: body.request, ...ctx,
+    }),
+```
+Run: `pnpm exec tsc --noEmit` → the only errors left are in `scripts/eval.ts`, `src/lib/eval/grade.ts` and `src/app/tailor/*` (next steps).
+
+- [ ] **Step 8: Create `src/app/tailor/ConfirmConditions.tsx`**
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { Severity, Side } from "@/lib/domain/types";
+import type { ConfirmedCondition } from "@/lib/engine/types";
+
+export interface CatalogEntry {
+  key: string;
+  label: string;
+  kind: string; // "injury" | "limitation" | "condition"
+}
+
+interface Props {
+  suggested: ConfirmedCondition[];
+  catalog: CatalogEntry[];
+  busy: boolean;
+  onConfirm: (confirmed: ConfirmedCondition[]) => void;
+  onCancel: () => void;
+}
+
+const SEVERITY_TEXT: Record<Severity, string> = {
+  mild: "Mild: a niggle, you can train almost normally",
+  moderate: "Moderate: pain that limits some movements",
+  acute: "Acute: a recent injury, sharp pain, or told to rest",
+};
+
+const field = "rounded border px-2 py-1 text-sm";
+
+/** The athlete confirms what the analyzer read: severity decides what is allowed, so it is never applied unseen. */
+export function ConfirmConditions({ suggested, catalog, busy, onConfirm, onCancel }: Props) {
+  const [items, setItems] = useState<ConfirmedCondition[]>(suggested);
+  const [adding, setAdding] = useState("");
+  const entry = (key: string) => catalog.find((c) => c.key === key);
+  const update = (i: number, patch: Partial<ConfirmedCondition>) =>
+    setItems(items.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+
+  return (
+    <section className="flex flex-col gap-3 rounded border border-amber-300 bg-amber-50 p-3" aria-labelledby="confirm-heading">
+      <h2 id="confirm-heading" className="font-semibold">Is this right?</h2>
+      <p className="text-sm">We read this from what you wrote. Check the side and how bad it is: it decides what you can do today.</p>
+
+      {items.map((c, i) => (
+        <div key={c.key} className="flex flex-col gap-2 rounded border bg-white p-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium">{entry(c.key)?.label ?? c.key}</span>
+            <button type="button" className="text-sm underline" onClick={() => setItems(items.filter((_, j) => j !== i))}>remove</button>
+          </div>
+          {c.evidence && <p className="text-xs text-neutral-600">&ldquo;{c.evidence}&rdquo;</p>}
+          {entry(c.key)?.kind === "injury" ? (
+            <>
+              <label className="flex items-center gap-2 text-sm">Side
+                <select className={field} value={c.side ?? ""} onChange={(e) => update(i, { side: e.target.value === "" ? null : Side.parse(e.target.value) })}>
+                  <option value="">not specific</option>
+                  {Side.options.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+              <fieldset className="flex flex-col gap-1 text-sm">
+                <legend className="sr-only">How bad is it?</legend>
+                {Severity.options.map((s) => (
+                  <label key={s} className="flex items-center gap-2">
+                    <input type="radio" name={`severity-${c.key}`} checked={c.severity === s} onChange={() => update(i, { severity: s })} />
+                    {SEVERITY_TEXT[s]}
+                  </label>
+                ))}
+              </fieldset>
+            </>
+          ) : (
+            <span className="text-sm text-neutral-600">always applies</span>
+          )}
+        </div>
+      ))}
+
+      <div className="flex flex-wrap gap-2">
+        <select className={field} value={adding} onChange={(e) => setAdding(e.target.value)}>
+          <option value="">add something we missed…</option>
+          {catalog.filter((c) => !items.some((x) => x.key === c.key)).map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+        <button type="button" className="rounded border px-3 py-1 text-sm" disabled={!adding} onClick={() => {
+          setItems([...items, { key: adding, side: null, severity: "moderate", evidence: null }]);
+          setAdding("");
+        }}>Add</button>
+      </div>
+
+      <div className="flex gap-2">
+        <button type="button" className="rounded bg-black px-4 py-1 text-sm text-white disabled:opacity-50" disabled={busy} onClick={() => onConfirm(items)}>
+          Continue
+        </button>
+        <button type="button" className="rounded border px-3 py-1 text-sm" onClick={onCancel}>Back</button>
+      </div>
+    </section>
+  );
+}
+```
+
+- [ ] **Step 9: Two-phase `TailorClient`**
+
+In `src/app/tailor/page.tsx` pass the catalog instead of the labels:
+```tsx
+      <TailorClient
+        movementNames={domain.movements.map((m) => m.name)}
+        equipmentOptions={[...Equipment.options]}
+        catalog={domain.contraindications.map((c) => ({ key: c.key, label: c.label, kind: c.kind }))}
+      />
+```
+In `src/app/tailor/TailorClient.tsx`:
+
+Imports and props:
+```tsx
+import { useState } from "react";
+import type { Equipment } from "@/lib/domain/types";
+import type { ProgressStage } from "@/lib/engine/pipeline";
+import {
+  ManualWorkoutSchema,
+  type ConfirmedCondition, type FeedbackAnalysis, type ManualWorkout, type PipelineResult, type TailorRequest,
+  type WorkoutAnalysisResult,
+} from "@/lib/engine/types";
+import { readEngineOutcome } from "@/lib/engine-events";
+import { ConfirmConditions, type CatalogEntry } from "./ConfirmConditions";
+import { ManualEntryForm, emptyManualWorkout } from "./ManualEntryForm";
+import { ResultView } from "./ResultView";
+
+interface Props {
+  movementNames: string[];
+  equipmentOptions: Equipment[];
+  catalog: CatalogEntry[];
+}
+
+// What phase 2 needs once the athlete has confirmed today's conditions.
+type Pending =
+  | { kind: "tailor"; analysis: WorkoutAnalysisResult; request: TailorRequest; suggested: ConfirmedCondition[] }
+  | { kind: "refine"; previous: PipelineResult; feedback: string; unavailableEquipment: Equipment[]; request: TailorRequest; suggested: ConfirmedCondition[] };
+```
+In the component, replace the signature line and add state:
+```tsx
+export function TailorClient({ movementNames, equipmentOptions, catalog }: Props) {
+  const conditionLabels = Object.fromEntries(catalog.map((c) => [c.key, c.label]));
+```
+```tsx
+  const [pending, setPending] = useState<Pending | null>(null);
+```
+Replace `runEngine`, `submit` and `refine` with:
+```tsx
+  /** Phase-1 call: JSON or a shown error code. */
+  async function postJson<T>(url: string, body: unknown): Promise<T | null> {
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) return (await res.json()) as T;
+      const { error: code } = await res.json().catch(() => ({ error: "engine_failed" }));
+      setError(ERROR_TEXT[code] ?? ERROR_TEXT.engine_failed);
+    } catch {
+      setError(ERROR_TEXT.engine_failed);
+    }
+    return null;
+  }
+
+  // The request is stored only with the result it produced, so Save always persists a matching pair.
+  async function runEngine(url: string, body: unknown, req: TailorRequest) {
+    setError(null);
+    setSaved(false);
+    setStage("tailoring");
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const { error: code } = await res.json().catch(() => ({ error: "engine_failed" }));
+        setError(ERROR_TEXT[code] ?? ERROR_TEXT.engine_failed);
+        return;
+      }
+      const outcome = await readEngineOutcome(res, setStage);
+      if (outcome.kind === "result") {
+        setResult(outcome.result);
+        setRequest(req);
+        setFeedback("");
+      } else setError(ERROR_TEXT[outcome.error]);
+    } catch {
+      setError(ERROR_TEXT.engine_failed);
+    } finally {
+      setStage(null);
+    }
+  }
+
+  /** Phase 2 with the conditions the athlete confirmed (none when nothing was suggested). */
+  async function proceed(p: Pending, confirmed: ConfirmedCondition[]) {
+    setPending(null);
+    if (p.kind === "tailor") {
+      const { original, unavailableEquipment } = p.analysis;
+      await runEngine("/api/tailor", { analysis: { original, unavailableEquipment }, confirmed, request: p.request }, p.request);
+    } else {
+      await runEngine("/api/tailor/refine", {
+        previous: p.previous, feedback: p.feedback, confirmed, unavailableEquipment: p.unavailableEquipment, request: p.request,
+      }, p.request);
+    }
+  }
+
+  /** Confirmation only when the analyzer suggested a condition; otherwise phase 2 starts at once. */
+  async function confirmOrProceed(p: Pending) {
+    if (p.suggested.length > 0) {
+      setStage(null);
+      setPending(p);
+    } else await proceed(p, []);
+  }
+
+  async function submit() {
+    const req = buildRequest();
+    let input;
+    if (mode === "paste") {
+      if (!rawText.trim()) return setError("Paste a workout first.");
+      input = { kind: "paste", rawText };
+    } else {
+      const parsed = ManualWorkoutSchema.safeParse(manual);
+      if (!parsed.success) return setError("Give every movement a name.");
+      input = { kind: "manual", workout: parsed.data };
+    }
+    // A new workout replaces the old result even if it fails: never leave a stale result to save.
+    setResult(null);
+    setRequest(null);
+    setPending(null);
+    setError(null);
+    setStage("analyzing");
+    const analysis = await postJson<WorkoutAnalysisResult>("/api/tailor/analyze", { input, request: req });
+    if (!analysis) return setStage(null);
+    await confirmOrProceed({ kind: "tailor", analysis, request: req, suggested: analysis.suggested });
+  }
+
+  async function refine() {
+    if (!result || !feedback.trim()) return;
+    // Refine with the form as it is now (a time cap or equipment set after the first run counts).
+    const req = buildRequest();
+    const text = feedback.trim();
+    setError(null);
+    setStage("analyzing");
+    const a = await postJson<FeedbackAnalysis>("/api/tailor/refine/analyze", { feedback: text });
+    if (!a) return setStage(null);
+    await confirmOrProceed({
+      kind: "refine", previous: result, feedback: text, unavailableEquipment: a.unavailableEquipment, request: req, suggested: a.suggested,
+    });
+  }
+```
+Change the two buttons' handlers to `onClick={() => void submit()}` and `onClick={() => void refine()}`, and render the confirmation right after the error line:
+```tsx
+      {pending && (
+        <ConfirmConditions key={pending.kind + pending.suggested.map((s) => s.key).join(",")}
+          suggested={pending.suggested} catalog={catalog} busy={busy}
+          onConfirm={(confirmed) => void proceed(pending, confirmed)} onCancel={() => setPending(null)} />
+      )}
+```
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint` → only the eval errors remain.
+
+- [ ] **Step 10: Eval plays the athlete** — failing test first. Append to `tests/eval/grade.test.ts` inside `describe("eval grading")`:
+
+```ts
+  it("grades detection on the suggestions and accepts the conditions a case confirms", () => {
+    const c = EvalCaseSchema.parse({
+      id: "confirm", description: "x", input: { kind: "paste", rawText: "x" },
+      confirm: [{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }],
+      expect: { mustDetect: ["shoulder_impingement"] },
+    });
+    expect(resolveCase(c).confirm).toEqual([{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }]);
+    expect(gradeCase(c, { kind: "result", result: result(), suggested: [] }).failures).toEqual(["did not detect shoulder_impingement"]);
+    expect(gradeCase(c, { kind: "result", result: result(), suggested: ["shoulder_impingement"] }).passed).toBe(true);
+  });
+```
+and in the defaults test add `expect(resolveCase(c).confirm).toBeNull();`.
+Run → FAIL. Then in `src/lib/eval/grade.ts`:
+- import `ConfirmedConditionSchema` and `type ConfirmedCondition` from `@/lib/engine/types`;
+- add to `EvalCaseSchema` (after `request`):
+```ts
+  // The conditions the athlete would confirm; null = accept the analyzer's suggestions as read.
+  confirm: z.array(ConfirmedConditionSchema).nullable().default(null),
+```
+- `EvalOutcome`'s result variant becomes `{ kind: "result"; result: PipelineResult; suggested?: string[] }` (the suggested condition keys);
+- `resolveCase` returns `confirm: c.confirm` as well (`confirm: ConfirmedCondition[] | null` in its return type);
+- in `gradeCase` replace the `detected` line with:
+```ts
+  // Detection is the analyzer's job: graded on its suggestions, whatever the athlete confirmed.
+  const detected = new Set(outcome.suggested ?? r.conditions.map((x) => x.key));
+```
+In `scripts/eval.ts` import `analyzeWorkout` and replace the `try` body with:
+```ts
+      const { input, profile, request, confirm } = resolveCase(c);
+      const analysis = await analyzeWorkout(provider, { input, situation: request.situation, domain });
+      const result = await runTailorPipeline(provider, {
+        original: analysis.original, confirmed: confirm ?? analysis.suggested,
+        unavailableEquipment: analysis.unavailableEquipment, profile, request, domain,
+      });
+      outcome = { kind: "result", result, suggested: analysis.suggested.map((s) => s.key) };
+```
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
+
+- [ ] **Step 11: Eval regression and severity pinning**
+
+Run `pnpm eval` → 14/14 as before (the harness confirms the suggestions as read, so behavior is unchanged). Then pin the severity of the two shoulder cases so they grade the tailor, not the analyzer's reading: add to `evals/cases/01-fran-shoulder-today.json` and `evals/cases/13-fran-shoulder-mild-knee-dumbbells.json`
+```json
+  "confirm": [{ "key": "shoulder_impingement", "side": "right", "severity": "moderate", "evidence": null }],
+```
+and rerun both → PASS.
+
+- [ ] **Step 12: Manual check** (signed in, `pnpm dev`, 375 px)
+
+1. Paste Fran, situation "sore right shoulder", Tailor → "Is this right?" shows Shoulder impingement with the evidence, side right and a pre-selected severity. Pick **Moderate**, Continue → no Thruster, no overhead press.
+2. Same paste, pick **Mild** → a caution badge on any overhead work.
+3. Remove the condition and Continue → the result lists no shoulder condition.
+4. Add "Unable to hang from a bar or rings" from the select → shows "always applies"; the result has no pull-ups.
+5. Empty situation → no confirmation step; the result appears directly.
+6. Refine "my left knee hurts too" → a confirmation for knee pain; Continue → the result keeps the shoulder and adds the knee.
+7. `LlmUsage` gained one `analyze` and one `tailor` (or `refine`) row per run.
+
+- [ ] **Step 13: Commit**
+
+```bash
+git add -A
+git commit -m "feat: athlete-confirmed conditions — analyze, confirm, then tailor"
 ```
 
 ---

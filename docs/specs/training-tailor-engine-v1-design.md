@@ -62,7 +62,7 @@ same engine.
 | Domain data | **Versioned JSON in the repo** (`data/`), Zod-validated at load, accessed only through `src/lib/domain/repository.ts`. Moves to the DB in Phase C behind the same interface. |
 | Ingestion (v1) | Free-text paste (LLM analysis) + structured manual entry. |
 | Hosting | **Vercel** (Fluid compute; engine routes declare `maxDuration = 120`) + **Neon** Postgres. |
-| Cost control | Per-user daily quota on engine calls (`DAILY_ENGINE_LIMIT`, default 30), enforced server-side. |
+| Cost control | Per-user daily quota on engine calls (`DAILY_ENGINE_LIMIT`, default 30, counted per kind: analyze, tailor, refine), enforced server-side. |
 | Repo visibility | The GitHub repo is **public**: real (often paid) programming used for coverage/evaluation lives in a **gitignored** `data/corpus/`; committed eval cases are synthetic or public benchmarks. |
 
 ## Architecture
@@ -71,19 +71,23 @@ same engine.
 Browser (phone)
   │  paste / manual entry + today's situation
   ▼
-Next.js route handler (auth check, quota, NDJSON progress stream)
+Next.js route handlers (auth check, quota)
+  POST /api/tailor/analyze   → JSON analysis + suggested conditions
+  (athlete confirms or corrects today's conditions)
+  POST /api/tailor           → NDJSON progress stream → result
   ▼
 tailor-service ── repository (domain JSON) ── profile (Postgres)
   ▼
 Engine pipeline (server-side, provider-agnostic)
-  1. analyze      LLM  raw text + situation → blocks (+stimulus per block) + detected conditions
+  1. analyze      LLM  raw text + situation → blocks (+stimulus per block) + suggested conditions
   2. resolve      code movement names → canonical library rows
-  3. conditions   code profile injuries ⊕ today's detected conditions → active conditions
+     ── pause: the athlete confirms condition, side and severity (phase 2 starts here) ──
+  3. conditions   code profile injuries ⊕ today's CONFIRMED conditions → active conditions
   4. plan         code assess every movement (ok / caution / avoid, equipment) + candidate substitutes
   5. tailor       LLM  modified session, grounded by the plan, conversions, benchmarks
   6. validate     code contraindications, equipment, time cap, stimulus drift, block accounting
        └─ violations → one retry with the violations fed back → still unsafe → fail closed
-  7. refine       athlete feedback → (analyze feedback situation) → tailor → validate
+  7. refine       feedback → analyze feedback (LLM) → confirm new conditions → tailor → validate
 ```
 
 - **AI abstraction:** `LlmProvider.generateStructured(schema)`; a decorator retries once
@@ -91,8 +95,20 @@ Engine pipeline (server-side, provider-agnostic)
   Only `gemini-provider.ts` imports the SDK.
 - **Engine** depends only on `LlmProvider` and plain domain data — never on Prisma, Next,
   or a concrete SDK — so it runs identically in tests, in the eval script and in routes.
-- **Progress:** engine routes stream NDJSON events (`progress` stages, then `result` or
-  `error`); the UI shows the current stage. Typical cost is 2 LLM calls (3 with a retry).
+- **Two phases (athlete-confirmed conditions).** The model only *suggests* today's
+  conditions: which catalog condition, which side and how severe is an interpretation, and
+  severity decides the whole assessment (the same "sore right shoulder" read as moderate
+  one day and mild the next). Phase 1 (`/api/tailor/analyze`, JSON) analyzes the workout
+  and the situation; when it suggests any condition, the athlete confirms or corrects it
+  (change side or severity, remove it, add a missed one from the catalog) before phase 2
+  (`/api/tailor`, NDJSON stream) tailors with the confirmed list. With no suggested
+  condition, phase 2 starts at once. Profile injuries already carry their severity and are
+  not asked again. The client sends the phase-1 analysis back to phase 2 (as refine already
+  sends the previous result): it can only alter the athlete's own session, the stored
+  profile injuries are always re-applied, and the validator enforces whatever is confirmed.
+- **Progress:** phase 2 streams NDJSON events (`progress` stages, then `result` or
+  `error`); the UI shows "analyzing" during phase 1 and the streamed stage after. Typical
+  cost is 2 LLM calls (3 with a retry), as before.
 
 ## Engine pipeline (core)
 
@@ -102,9 +118,10 @@ Engine pipeline (server-side, provider-agnostic)
    - the session split into ordered **blocks** (format, scheme, time domain, components,
      coaching notes, optional `day` for multi-day pastes) with a **stimulus profile per
      block**;
-   - **detected conditions** from the situation text: catalog keys with side, severity
+   - **suggested conditions** from the situation text: catalog keys with side, severity
      and the quoted evidence (e.g. "me duele el hombro derecho" →
-     `shoulder_impingement`, right, moderate);
+     `shoulder_impingement`, right, moderate). They are suggestions the athlete confirms,
+     never applied as read;
    - **equipment unavailable today** mentioned in the situation ("no rower today").
 
    Manual entry skips the split: the same call only returns per-block stimulus,
@@ -128,9 +145,9 @@ Engine pipeline (server-side, provider-agnostic)
    anything done with a PVC pipe) are not components. Movements that let the athlete pick
    the method (shoulder-to-overhead, ground-to-overhead) are their own rows carrying the
    most restrictive stresses of the methods they allow.
-3. **Active conditions.** Profile injuries (persisting) are merged with today's detected
-   conditions; for the same key, today's side/severity win. Unknown keys are dropped
-   and logged.
+3. **Active conditions.** Profile injuries (persisting) are merged with today's
+   **confirmed** conditions; for the same key, today's side/severity win. Unknown keys are
+   dropped and logged.
 4. **Plan (deterministic).** For every resolved component: an **assessment**
    (`ok | caution | avoid` with reasons, see *Assessment*), the equipment it needs that
    is missing today, and — when it must change or is cautioned — ranked **candidate
@@ -186,9 +203,10 @@ Engine pipeline (server-side, provider-agnostic)
    `contraindicated_movement` violation survives the retry, the engine **fails closed**
    (`engine_unsafe`); other surviving violations are returned as findings.
 7. **Refine.** The athlete reacts ("still hurts", "too easy", "no rower today"): a
-   situation-only analysis of the feedback may add conditions or remove equipment, then
-   tailor + validate re-run against the **original** session with the rejected attempt
-   and the feedback history in the prompt. No re-parse.
+   situation-only analysis of the feedback (`/api/tailor/refine/analyze`) may suggest new
+   conditions — confirmed by the athlete exactly as in phase 1 — or remove equipment, then
+   tailor + validate re-run (`/api/tailor/refine`) against the **original** session with
+   the rejected attempt and the feedback history in the prompt. No re-parse.
 
 ## Domain-grounding assets
 
@@ -322,7 +340,9 @@ Domain entities are JSON (above). User data in Postgres:
 - **TailoredWorkout**: `original`, `request`, `conditions`, `tailored` (session +
   droppedBlocks + changes + rationale + safetyNote), `findings`, `feedbackHistory[]`,
   `model`, `createdAt`; indexed by `(userId, createdAt)`.
-- **LlmUsage**: `userId`, `kind` (`tailor | refine`), `createdAt` — the quota ledger.
+- **LlmUsage**: `userId`, `kind` (`analyze | tailor | refine`), `createdAt` — the quota
+  ledger. Each kind has its own daily limit, so one adaptation (analyze + tailor) counts
+  once against each and neither endpoint can be called unbounded.
 - **UnrecognizedMovement**: `key` (normalized name, unique), `example` (as written, ≤ 80
   chars), `count`, `status` (`pending | resolved | ignored`), `resolvedTo`, `firstSeenAt`,
   `lastSeenAt` — the catalog-growth queue. Names only, never workout text, and no user id.
@@ -359,10 +379,15 @@ more than one distinct `day`.
    pick + side + severity + notes), equipment, benchmarks, goals, availability.
 3. **Tailor:** paste (or enter manually) + describe today's situation, optionally a time
    cap, a target movement, today's equipment.
-4. **Progress** shows the engine stage (analyzing → tailoring → validating).
-5. **Result:** original vs tailored side by side per block, caution badges, unverified
+4. **Confirm today's conditions** when the analysis suggests any: one card per condition
+   (label, side, severity in plain words — mild: a niggle, you can train almost normally;
+   moderate: pain that limits some movements; acute: a recent injury, sharp pain, or told
+   to rest), pre-filled with the suggestion; remove it or add a missed one. Limitations
+   (not injuries) always apply and show no severity.
+5. **Progress** shows the engine stage (analyzing → tailoring → validating).
+6. **Result:** original vs tailored side by side per block, caution badges, unverified
    movements, what changed and why, dropped blocks, rationale, safety note + disclaimer.
-6. **Refine** with feedback, or **save** exactly what was reviewed (no re-run) to history.
+7. **Refine** with feedback (new conditions are confirmed the same way), or **save** exactly what was reviewed (no re-run) to history.
 
 ## Quality strategy
 
@@ -371,7 +396,10 @@ more than one distinct `day`.
   stream helper.
 - **Evaluation harness** (`pnpm eval`, needs `GEMINI_API_KEY`): synthetic/public cases in
   `evals/cases/*.json` run through the real pipeline and graded by the deterministic
-  validator plus per-case expectations (`mustAvoid`, `mustDetect`, `maxTotalMinutes`,
+  validator plus per-case expectations. The harness plays the athlete: it confirms the
+  suggested conditions as read, unless a case pins `confirm` (the conditions the athlete
+  would confirm), which grades the tailor without the analyzer's severity noise; `mustDetect`
+  always grades the suggestions. Expectations: (`mustAvoid`, `mustDetect`, `maxTotalMinutes`,
   `expectFailClosed`, `originalMustContain` / `originalMustNotContain`, which pin how
   the original was recognized, and `mustKeepPatterns`, the movement patterns some tailored
   movement must still train).
