@@ -7,9 +7,10 @@ import { analyzeManual, analyzePaste, analyzeSituation, type AnalyzeContext } fr
 import { activateConditions, profileConditionRefs } from "./conditions";
 import { availableEquipment, goalFamily, planComponents } from "./plan";
 import { tailor, type TailorInput } from "./tailor";
-import type {
-  AthleteProfile, ConditionRef, ConfirmedCondition, FeedbackAnalysis, Finding, ManualWorkout, PipelineResult,
-  StructuredWorkout, TailorRequest, TailoringResult, WorkoutAnalysisResult,
+import {
+  REMOVED_MOVEMENT,
+  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding, type ManualWorkout,
+  type PipelineResult, type StructuredWorkout, type TailorRequest, type TailoringResult, type WorkoutAnalysisResult,
 } from "./types";
 import { isViolation, validateTailoring } from "./validate";
 
@@ -68,6 +69,33 @@ const analyzeContext = (d: DomainData): AnalyzeContext => ({
   movements: d.movements, contraindications: d.contraindications, taxonomy: d.taxonomy,
 });
 
+const NO_EQUIPMENT_REASON = "No alternative with today's equipment.";
+
+/**
+ * Last resort after the retry: a movement that still needs missing equipment is removed, not handed to the
+ * athlete, and its change says why. Findings name movements by their canonical library name.
+ */
+function removeUnavailable(result: TailoringResult, findings: Finding[]): TailoringResult {
+  const gone = findings.filter((f) => f.kind === "equipment_unavailable" && f.blockIndex !== null && f.movement !== null);
+  const isGone = (blockIndex: number | null, name: string) =>
+    gone.find((f) => f.movement === name && (blockIndex === null || f.blockIndex === blockIndex));
+  const explained = new Set<Finding>();
+  const changes = result.changes.map((c) => {
+    const f = isGone(c.blockIndex, c.modified);
+    if (!f) return c;
+    explained.add(f);
+    return { ...c, modified: REMOVED_MOVEMENT, reason: NO_EQUIPMENT_REASON };
+  });
+  for (const f of gone) {
+    if (!explained.has(f)) changes.push({ blockIndex: f.blockIndex, original: f.movement!, modified: REMOVED_MOVEMENT, reason: NO_EQUIPMENT_REASON });
+  }
+  return {
+    ...result,
+    blocks: result.blocks.map((b, i) => ({ ...b, components: b.components.filter((c) => !c.canonical || !isGone(i, c.canonical)) })),
+    changes,
+  };
+}
+
 async function tailorAndValidate(
   provider: LlmProvider, s: TailorStage,
 ): Promise<{ result: TailoringResult; findings: Finding[] }> {
@@ -93,6 +121,10 @@ async function tailorAndValidate(
     s.progress("retrying");
     result = await tailor(provider, { ...input, violations: findings.filter(isViolation) });
     s.progress("validating");
+    findings = validate(result);
+  }
+  if (findings.some((f) => f.kind === "equipment_unavailable" && isViolation(f))) {
+    result = removeUnavailable(result, findings);
     findings = validate(result);
   }
   if (findings.some((f) => f.kind === "contraindicated_movement" && isViolation(f))) {

@@ -120,6 +120,25 @@ describe("runTailorPipeline", () => {
     expect(r.findings).toContainEqual(expect.objectContaining({ kind: "time_cap_exceeded", severity: "violation" }));
   });
 
+  it("removes a movement that still needs missing equipment after the retry, and says why", async () => {
+    // No dumbbells today, yet the model insists on a dumbbell row through the retry.
+    const insists = () => {
+      const d = toTailoringDraft(fran());
+      d.blocks[0].components = [component("Thruster", { reps: "21-15-9" }), component("Dumbbell Row", { reps: "21-15-9" })];
+      d.changes = [{ blockIndex: 0, original: "Pull-up", modified: "Dumbbell Row", reason: "No hanging." }];
+      return d;
+    };
+    const r = await run(new FakeProvider({ TailoringResult: sequence(insists(), insists()) }), [], {
+      confirmed: [{ key: "no_hanging", side: null, severity: "moderate", evidence: null }],
+      request: { ...emptyRequest(), equipmentToday: ["barbell", "pullup_bar"] },
+    });
+    expect(r.tailored.blocks[0].components.map((c) => c.canonical)).toEqual(["Thruster"]);
+    expect(r.tailored.changes).toEqual([
+      { blockIndex: 0, original: "Pull-up", modified: "(removed)", reason: expect.stringMatching(/no alternative.*equipment/i) },
+    ]);
+    expect(r.findings.filter((f) => f.kind === "equipment_unavailable")).toEqual([]);
+  });
+
   it("applies profile injuries even with nothing confirmed today", async () => {
     const profile = { ...emptyProfile(), injuries: [{ key: "no_hanging", side: null, severity: "moderate" as const, notes: "cast", since: null }] };
     await expect(run(new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) }), [], {

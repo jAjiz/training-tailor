@@ -75,6 +75,16 @@ describe("buildTailorPrompt", () => {
     expect(buildTailorPrompt(input({ plan, equipment: ["dumbbell"] }))).toContain("Dumbbell Row (ok, related pattern)");
   });
 
+  it("tells the model to remove a movement that has no candidate", () => {
+    const hanging = domain.contraindications.find((x) => x.key === "no_hanging")!;
+    const plan = planComponents(fran(), {
+      movements: domain.movements, resolve: createMovementResolver(domain.movements), equipment: ["pullup_bar"],
+      active: [{ contraindication: hanging, side: null, severity: "moderate" }],
+    });
+    const p = buildTailorPrompt(input({ plan, equipment: ["pullup_bar"] }));
+    expect(p).toMatch(/\[b0\.c1\] Pull-up → AVOID.*MUST CHANGE; no candidate: remove it/);
+  });
+
   it("lists the athlete's equipment when it is restricted", () => {
     expect(buildTailorPrompt(input({ equipment: ["dumbbell", "box"] }))).toContain("EQUIPMENT AVAILABLE: dumbbell, box");
   });
