@@ -4,14 +4,14 @@ import { getDomainData } from "@/lib/domain/repository";
 import { AthleteProfileSchema } from "@/lib/engine/types";
 import { jsonError } from "@/lib/http";
 import { toJson } from "@/lib/json";
-import { normalizeProfile, sanitizeProfile } from "@/lib/profile";
+import { sanitizeProfile } from "@/lib/profile";
 import { getUserId } from "@/lib/session";
+import { loadProfile } from "@/lib/tailor-service";
 
 export async function GET() {
   const userId = await getUserId();
   if (!userId) return jsonError("unauthorized", 401);
-  const row = await prisma.athleteProfile.findUnique({ where: { userId } });
-  return NextResponse.json({ profile: normalizeProfile(row?.data) });
+  return NextResponse.json({ profile: await loadProfile(userId) });
 }
 
 export async function PUT(req: Request) {
