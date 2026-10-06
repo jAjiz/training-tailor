@@ -102,7 +102,7 @@ model LlmUsage {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kind      String // "tailor" | "refine"
+  kind      String // "analyze" | "tailor" | "refine"
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])

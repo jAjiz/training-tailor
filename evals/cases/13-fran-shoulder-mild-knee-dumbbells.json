@@ -7,6 +7,7 @@
     "injuries": [{ "key": "knee_pain", "side": "left", "severity": "mild", "notes": null, "since": null }]
   },
   "request": { "situation": "sore right shoulder" },
+  "confirm": [{ "key": "shoulder_impingement", "side": "right", "severity": "moderate", "evidence": null }],
   "expect": {
     "mustDetect": ["shoulder_impingement"],
     "mustAvoid": ["Thruster", "Pull-up", "Dumbbell Bench Press"],

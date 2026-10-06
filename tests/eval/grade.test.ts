@@ -41,6 +41,7 @@ describe("eval grading", () => {
     const { profile, request } = resolveCase(c);
     expect(profile.equipment).toBeNull();
     expect(request.situation).toBe("");
+    expect(resolveCase(c).confirm).toBeNull();
   });
 
   it("passes a clean result that meets every expectation", () => {
@@ -101,5 +102,16 @@ describe("eval grading", () => {
     const closed = EvalCaseSchema.parse({ ...baseCase, expect: { expectFailClosed: true } });
     expect(gradeCase(closed, { kind: "error", error: "engine_unsafe" }).passed).toBe(true);
     expect(gradeCase(closed, { kind: "result", result: result() }).failures).toEqual(["expected the engine to fail closed"]);
+  });
+
+  it("grades detection on the suggestions and accepts the conditions a case confirms", () => {
+    const c = EvalCaseSchema.parse({
+      id: "confirm", description: "x", input: { kind: "paste", rawText: "x" },
+      confirm: [{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }],
+      expect: { mustDetect: ["shoulder_impingement"] },
+    });
+    expect(resolveCase(c).confirm).toEqual([{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }]);
+    expect(gradeCase(c, { kind: "result", result: result(), suggested: [] }).failures).toEqual(["did not detect shoulder_impingement"]);
+    expect(gradeCase(c, { kind: "result", result: result(), suggested: ["shoulder_impingement"] }).passed).toBe(true);
   });
 });

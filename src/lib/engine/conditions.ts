@@ -1,6 +1,6 @@
 import type { ActiveCondition } from "@/lib/domain/assess";
 import type { Contraindication } from "@/lib/domain/types";
-import type { ConditionRef, DetectedCondition, ProfileInjury } from "./types";
+import type { ConditionRef, ConfirmedCondition, ProfileInjury } from "./types";
 
 export interface ActivatedConditions {
   active: ActiveCondition[]; // index-aligned with refs
@@ -11,13 +11,13 @@ export function profileConditionRefs(injuries: ProfileInjury[]): ConditionRef[] 
   return injuries.map((i) => ({ key: i.key, side: i.side, severity: i.severity, source: "profile", evidence: i.notes }));
 }
 
-/** base (profile or a previous result) ⊕ today's detections; for the same key today's side/severity win. */
+/** base (profile or a previous result) ⊕ today's confirmed conditions; for the same key today's side/severity win. */
 export function activateConditions(
-  base: ConditionRef[], detected: DetectedCondition[], catalog: Contraindication[],
+  base: ConditionRef[], confirmed: ConfirmedCondition[], catalog: Contraindication[],
 ): ActivatedConditions {
   const merged = new Map<string, ConditionRef>();
   for (const r of base) merged.set(r.key, r);
-  for (const d of detected) {
+  for (const d of confirmed) {
     merged.set(d.key, { key: d.key, side: d.side, severity: d.severity, source: "today", evidence: d.evidence });
   }
   const byKey = new Map(catalog.map((c) => [c.key, c]));

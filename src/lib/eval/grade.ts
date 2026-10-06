@@ -3,8 +3,8 @@ import { createMovementResolver, normalizeMovementName } from "@/lib/domain/reso
 import { MovementPattern, type Movement } from "@/lib/domain/types";
 import type { WorkoutInput } from "@/lib/engine/pipeline";
 import {
-  AthleteProfileSchema, ManualWorkoutSchema, TailorRequestSchema, emptyProfile, emptyRequest,
-  type AthleteProfile, type PipelineResult, type TailorRequest,
+  AthleteProfileSchema, ConfirmedConditionSchema, ManualWorkoutSchema, TailorRequestSchema, emptyProfile, emptyRequest,
+  type AthleteProfile, type ConfirmedCondition, type PipelineResult, type TailorRequest,
 } from "@/lib/engine/types";
 
 export const EvalCaseSchema = z.object({
@@ -16,6 +16,8 @@ export const EvalCaseSchema = z.object({
   ]),
   profile: AthleteProfileSchema.partial().default({}),
   request: TailorRequestSchema.partial().default({}),
+  // The conditions the athlete would confirm; null = accept the analyzer's suggestions as read.
+  confirm: z.array(ConfirmedConditionSchema).nullable().default(null),
   // prefault (not default): the fallback object is parsed, so the inner defaults apply.
   expect: z.object({
     mustAvoid: z.array(z.string()).default([]),
@@ -33,12 +35,15 @@ export const EvalCaseSchema = z.object({
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
 
 export type EvalOutcome =
-  | { kind: "result"; result: PipelineResult }
+  | { kind: "result"; result: PipelineResult; suggested?: string[] } // suggested: the analyzer's condition keys
   | { kind: "error"; error: "engine_unsafe" | "engine_failed" };
 
-export function resolveCase(c: EvalCase): { input: WorkoutInput; profile: AthleteProfile; request: TailorRequest } {
+export function resolveCase(c: EvalCase): {
+  input: WorkoutInput; profile: AthleteProfile; request: TailorRequest; confirm: ConfirmedCondition[] | null;
+} {
   return {
     input: c.input,
+    confirm: c.confirm,
     profile: { ...emptyProfile(), ...c.profile },
     request: { ...emptyRequest(), ...c.request },
   };
@@ -63,7 +68,8 @@ export function gradeCase(
   const resolve = createMovementResolver(movements);
   const patterns = new Set([...prescribed].flatMap((name) => resolve(name)?.patterns ?? []));
   for (const p of c.expect.mustKeepPatterns) if (!patterns.has(p)) failures.push(`no tailored movement keeps the ${p} pattern`);
-  const detected = new Set(r.conditions.map((x) => x.key));
+  // Detection is the analyzer's job: graded on its suggestions, whatever the athlete confirmed.
+  const detected = new Set(outcome.suggested ?? r.conditions.map((x) => x.key));
   for (const key of c.expect.mustDetect) if (!detected.has(key)) failures.push(`did not detect ${key}`);
   if (c.expect.maxTotalMinutes !== null) {
     const total = r.tailored.blocks.reduce((sum, b) => sum + (b.timeDomainMinutes ?? 0), 0);

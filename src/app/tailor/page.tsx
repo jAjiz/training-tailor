@@ -13,7 +13,7 @@ export default async function TailorPage() {
       <TailorClient
         movementNames={domain.movements.map((m) => m.name)}
         equipmentOptions={[...Equipment.options]}
-        conditionLabels={Object.fromEntries(domain.contraindications.map((c) => [c.key, c.label]))}
+        catalog={domain.contraindications.map((c) => ({ key: c.key, label: c.label, kind: c.kind }))}
       />
     </section>
   );

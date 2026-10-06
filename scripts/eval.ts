@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getProvider } from "@/lib/ai";
 import { getDomainData } from "@/lib/domain/repository";
-import { EngineUnsafeError, runTailorPipeline } from "@/lib/engine/pipeline";
+import { EngineUnsafeError, analyzeWorkout, runTailorPipeline } from "@/lib/engine/pipeline";
 import { EvalCaseSchema, gradeCase, resolveCase, type EvalOutcome } from "@/lib/eval/grade";
 
 async function main() {
@@ -23,7 +23,13 @@ async function main() {
     const started = Date.now();
     let outcome: EvalOutcome;
     try {
-      outcome = { kind: "result", result: await runTailorPipeline(provider, { ...resolveCase(c), domain }) };
+      const { input, profile, request, confirm } = resolveCase(c);
+      const analysis = await analyzeWorkout(provider, { input, situation: request.situation, domain });
+      const result = await runTailorPipeline(provider, {
+        original: analysis.original, confirmed: confirm ?? analysis.suggested,
+        unavailableEquipment: analysis.unavailableEquipment, profile, request, domain,
+      });
+      outcome = { kind: "result", result, suggested: analysis.suggested.map((s) => s.key) };
     } catch (e) {
       if (!(e instanceof EngineUnsafeError)) console.error(e);
       outcome = { kind: "error", error: e instanceof EngineUnsafeError ? "engine_unsafe" : "engine_failed" };

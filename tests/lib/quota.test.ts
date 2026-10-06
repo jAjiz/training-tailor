@@ -5,7 +5,7 @@ function memoryStore(): QuotaStore & { rows: { userId: string; kind: UsageKind; 
   const rows: { userId: string; kind: UsageKind; at: Date }[] = [];
   return {
     rows,
-    async countSince(userId, since) { return rows.filter((r) => r.userId === userId && r.at >= since).length; },
+    async countSince(userId, kind, since) { return rows.filter((r) => r.userId === userId && r.kind === kind && r.at >= since).length; },
     async record(userId, kind) { rows.push({ userId, kind, at: new Date() }); },
   };
 }
@@ -14,7 +14,7 @@ describe("consumeQuota", () => {
   it("records usage until the limit and then refuses", async () => {
     const store = memoryStore();
     expect(await consumeQuota(store, "u1", "tailor", 2)).toEqual({ allowed: true, used: 1, limit: 2 });
-    expect(await consumeQuota(store, "u1", "refine", 2)).toEqual({ allowed: true, used: 2, limit: 2 });
+    expect(await consumeQuota(store, "u1", "tailor", 2)).toEqual({ allowed: true, used: 2, limit: 2 });
     expect(await consumeQuota(store, "u1", "tailor", 2)).toEqual({ allowed: false, used: 2, limit: 2 });
     expect(await consumeQuota(store, "u2", "tailor", 2)).toMatchObject({ allowed: true });
     expect(store.rows).toHaveLength(3);
@@ -24,6 +24,13 @@ describe("consumeQuota", () => {
     const store = memoryStore();
     store.rows.push({ userId: "u1", kind: "tailor", at: new Date(Date.now() - 25 * 3600 * 1000) });
     expect((await consumeQuota(store, "u1", "tailor", 1)).allowed).toBe(true);
+  });
+
+  it("limits each kind separately, so one adaptation (analyze + tailor) counts once against each", async () => {
+    const store = memoryStore();
+    expect((await consumeQuota(store, "u1", "analyze", 1)).allowed).toBe(true);
+    expect((await consumeQuota(store, "u1", "tailor", 1)).allowed).toBe(true);
+    expect((await consumeQuota(store, "u1", "analyze", 1)).allowed).toBe(false);
   });
 });
 

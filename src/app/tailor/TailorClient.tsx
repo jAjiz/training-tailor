@@ -3,16 +3,26 @@
 import { useState } from "react";
 import type { Equipment } from "@/lib/domain/types";
 import type { ProgressStage } from "@/lib/engine/pipeline";
-import { ManualWorkoutSchema, type ManualWorkout, type PipelineResult, type TailorRequest } from "@/lib/engine/types";
+import {
+  ManualWorkoutSchema,
+  type ConfirmedCondition, type FeedbackAnalysis, type ManualWorkout, type PipelineResult, type TailorRequest,
+  type WorkoutAnalysisResult,
+} from "@/lib/engine/types";
 import { readEngineOutcome } from "@/lib/engine-events";
+import { ConfirmConditions, type CatalogEntry } from "./ConfirmConditions";
 import { ManualEntryForm, emptyManualWorkout } from "./ManualEntryForm";
 import { ResultView } from "./ResultView";
 
 interface Props {
   movementNames: string[];
   equipmentOptions: Equipment[];
-  conditionLabels: Record<string, string>;
+  catalog: CatalogEntry[];
 }
+
+// What phase 2 needs once the athlete has confirmed today's conditions.
+type Pending =
+  | { kind: "tailor"; analysis: WorkoutAnalysisResult; request: TailorRequest; suggested: ConfirmedCondition[] }
+  | { kind: "refine"; previous: PipelineResult; feedback: string; unavailableEquipment: Equipment[]; request: TailorRequest; suggested: ConfirmedCondition[] };
 
 const STAGE_TEXT: Record<ProgressStage, string> = {
   analyzing: "Reading the workout and your situation…",
@@ -34,7 +44,8 @@ const ERROR_TEXT: Record<string, string> = {
 const field = "rounded border px-2 py-1 text-sm";
 const chip = (on: boolean) => `rounded border px-3 py-1 text-sm ${on ? "bg-black text-white" : ""}`;
 
-export function TailorClient({ movementNames, equipmentOptions, conditionLabels }: Props) {
+export function TailorClient({ movementNames, equipmentOptions, catalog }: Props) {
+  const conditionLabels = Object.fromEntries(catalog.map((c) => [c.key, c.label]));
   const [mode, setMode] = useState<"paste" | "manual">("paste");
   const [rawText, setRawText] = useState("");
   const [manual, setManual] = useState<ManualWorkout>(emptyManualWorkout());
@@ -49,6 +60,7 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
   const [request, setRequest] = useState<TailorRequest | null>(null);
   const [feedback, setFeedback] = useState("");
   const [saved, setSaved] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
   const busy = stage !== null;
 
   function buildRequest(): TailorRequest {
@@ -60,11 +72,24 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
     };
   }
 
+  /** Phase-1 call: JSON or a shown error code. */
+  async function postJson<T>(url: string, body: unknown): Promise<T | null> {
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) return (await res.json()) as T;
+      const { error: code } = await res.json().catch(() => ({ error: "engine_failed" }));
+      setError(ERROR_TEXT[code] ?? ERROR_TEXT.engine_failed);
+    } catch {
+      setError(ERROR_TEXT.engine_failed);
+    }
+    return null;
+  }
+
   // The request is stored only with the result it produced, so Save always persists a matching pair.
   async function runEngine(url: string, body: unknown, req: TailorRequest) {
     setError(null);
     setSaved(false);
-    setStage("analyzing");
+    setStage("tailoring");
     try {
       const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) {
@@ -85,7 +110,28 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
     }
   }
 
-  function submit() {
+  /** Phase 2 with the conditions the athlete confirmed (none when nothing was suggested). */
+  async function proceed(p: Pending, confirmed: ConfirmedCondition[]) {
+    setPending(null);
+    if (p.kind === "tailor") {
+      const { original, unavailableEquipment } = p.analysis;
+      await runEngine("/api/tailor", { analysis: { original, unavailableEquipment }, confirmed, request: p.request }, p.request);
+    } else {
+      await runEngine("/api/tailor/refine", {
+        previous: p.previous, feedback: p.feedback, confirmed, unavailableEquipment: p.unavailableEquipment, request: p.request,
+      }, p.request);
+    }
+  }
+
+  /** Confirmation only when the analyzer suggested a condition; otherwise phase 2 starts at once. */
+  async function confirmOrProceed(p: Pending) {
+    if (p.suggested.length > 0) {
+      setStage(null);
+      setPending(p);
+    } else await proceed(p, []);
+  }
+
+  async function submit() {
     const req = buildRequest();
     let input;
     if (mode === "paste") {
@@ -99,14 +145,26 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
     // A new workout replaces the old result even if it fails: never leave a stale result to save.
     setResult(null);
     setRequest(null);
-    void runEngine("/api/tailor", { input, request: req }, req);
+    setPending(null);
+    setError(null);
+    setStage("analyzing");
+    const analysis = await postJson<WorkoutAnalysisResult>("/api/tailor/analyze", { input, request: req });
+    if (!analysis) return setStage(null);
+    await confirmOrProceed({ kind: "tailor", analysis, request: req, suggested: analysis.suggested });
   }
 
-  function refine() {
+  async function refine() {
     if (!result || !feedback.trim()) return;
     // Refine with the form as it is now (a time cap or equipment set after the first run counts).
     const req = buildRequest();
-    void runEngine("/api/tailor/refine", { previous: result, feedback: feedback.trim(), request: req }, req);
+    const text = feedback.trim();
+    setError(null);
+    setStage("analyzing");
+    const a = await postJson<FeedbackAnalysis>("/api/tailor/refine/analyze", { feedback: text });
+    if (!a) return setStage(null);
+    await confirmOrProceed({
+      kind: "refine", previous: result, feedback: text, unavailableEquipment: a.unavailableEquipment, request: req, suggested: a.suggested,
+    });
   }
 
   async function save() {
@@ -163,12 +221,17 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
         )}
       </section>
 
-      <button type="button" className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-50" disabled={busy} onClick={submit}>
+      <button type="button" className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-50" disabled={busy} onClick={() => void submit()}>
         Tailor my workout
       </button>
 
       {busy && <p className="text-sm text-neutral-600" aria-live="polite">{STAGE_TEXT[stage!]}</p>}
       {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
+      {pending && (
+        <ConfirmConditions key={pending.kind + pending.suggested.map((s) => s.key).join(",")}
+          suggested={pending.suggested} catalog={catalog} busy={busy}
+          onConfirm={(confirmed) => void proceed(pending, confirmed)} onCancel={() => setPending(null)} />
+      )}
 
       {result && (
         <>
@@ -178,7 +241,7 @@ export function TailorClient({ movementNames, equipmentOptions, conditionLabels 
             <textarea className={`${field} min-h-16`} value={feedback} onChange={(e) => setFeedback(e.target.value)}
               placeholder="e.g. still hurts, too easy, no rower" />
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={chip(false)} disabled={busy || !feedback.trim()} onClick={refine}>Refine</button>
+              <button type="button" className={chip(false)} disabled={busy || !feedback.trim()} onClick={() => void refine()}>Refine</button>
               <button type="button" className="rounded bg-black px-4 py-1 text-sm text-white disabled:opacity-50" disabled={busy || saved} onClick={save}>
                 {saved ? "Saved" : "Save to history"}
               </button>

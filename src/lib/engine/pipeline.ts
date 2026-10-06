@@ -8,7 +8,8 @@ import { activateConditions, profileConditionRefs } from "./conditions";
 import { availableEquipment, goalFamily, planComponents } from "./plan";
 import { tailor, type TailorInput } from "./tailor";
 import type {
-  AthleteProfile, ConditionRef, Finding, ManualWorkout, PipelineResult, StructuredWorkout, TailorRequest, TailoringResult,
+  AthleteProfile, ConditionRef, ConfirmedCondition, FeedbackAnalysis, Finding, ManualWorkout, PipelineResult,
+  StructuredWorkout, TailorRequest, TailoringResult, WorkoutAnalysisResult,
 } from "./types";
 import { isViolation, validateTailoring } from "./validate";
 
@@ -23,8 +24,17 @@ export class EngineUnsafeError extends Error {
   }
 }
 
-export interface PipelineArgs {
+export interface AnalyzeArgs {
   input: WorkoutInput;
+  situation: string;
+  domain: DomainData;
+}
+
+/** Phase 2 input: the phase-1 session plus the conditions the athlete confirmed. */
+export interface PipelineArgs {
+  original: StructuredWorkout;
+  confirmed: ConfirmedCondition[];
+  unavailableEquipment: Equipment[];
   profile: AthleteProfile;
   request: TailorRequest;
   domain: DomainData;
@@ -34,6 +44,8 @@ export interface PipelineArgs {
 export interface RefineArgs {
   previous: PipelineResult;
   feedback: string;
+  confirmed: ConfirmedCondition[]; // conditions the feedback added, as the athlete confirmed them
+  unavailableEquipment: Equipment[]; // equipment the feedback says is missing
   profile: AthleteProfile;
   request: TailorRequest;
   domain: DomainData;
@@ -89,37 +101,45 @@ async function tailorAndValidate(
   return { result, findings };
 }
 
+/** Phase 1: the session and today's SUGGESTED conditions; nothing is applied until the athlete confirms. */
+export async function analyzeWorkout(provider: LlmProvider, args: AnalyzeArgs): Promise<WorkoutAnalysisResult> {
+  const ctx = analyzeContext(args.domain);
+  const a = args.input.kind === "paste"
+    ? await analyzePaste(provider, args.input.rawText, args.situation, ctx)
+    : await analyzeManual(provider, args.input.workout, args.situation, ctx);
+  return { original: a.workout, suggested: a.conditions, unavailableEquipment: a.unavailableEquipment, analyzed: a.analyzed };
+}
+
+/** Refine phase 1: the conditions and missing equipment the feedback suggests. */
+export async function analyzeFeedback(provider: LlmProvider, feedback: string, domain: DomainData): Promise<FeedbackAnalysis> {
+  const s = await analyzeSituation(provider, feedback, analyzeContext(domain));
+  return { suggested: s.conditions, unavailableEquipment: s.unavailableEquipment };
+}
+
 export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
   const progress = args.onProgress ?? (() => {});
-  progress("analyzing");
-  const ctx = analyzeContext(args.domain);
-  const analysis = args.input.kind === "paste"
-    ? await analyzePaste(provider, args.input.rawText, args.request.situation, ctx)
-    : await analyzeManual(provider, args.input.workout, args.request.situation, ctx);
   const { active, refs } = activateConditions(
-    profileConditionRefs(args.profile.injuries), analysis.conditions, args.domain.contraindications,
+    profileConditionRefs(args.profile.injuries), args.confirmed, args.domain.contraindications,
   );
   const { result, findings } = await tailorAndValidate(provider, {
-    original: analysis.workout, active, refs, unavailable: analysis.unavailableEquipment,
+    original: args.original, active, refs, unavailable: args.unavailableEquipment,
     profile: args.profile, request: args.request, domain: args.domain, previousAttempt: null, progress,
   });
   return {
-    original: analysis.workout, conditions: refs, unavailableEquipment: analysis.unavailableEquipment,
+    original: args.original, conditions: refs, unavailableEquipment: args.unavailableEquipment,
     tailored: result, findings, feedbackHistory: [], model: provider.model,
   };
 }
 
 export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs): Promise<PipelineResult> {
   const progress = args.onProgress ?? (() => {});
-  progress("analyzing");
-  const situation = await analyzeSituation(provider, args.feedback, analyzeContext(args.domain));
   // `previous` comes back from the client: the stored profile injuries are always re-applied.
   const { active, refs } = activateConditions(
     [...profileConditionRefs(args.profile.injuries), ...args.previous.conditions],
-    situation.conditions,
+    args.confirmed,
     args.domain.contraindications,
   );
-  const unavailable = [...new Set([...args.previous.unavailableEquipment, ...situation.unavailableEquipment])];
+  const unavailable = [...new Set([...args.previous.unavailableEquipment, ...args.unavailableEquipment])];
   const feedbackHistory = [...args.previous.feedbackHistory, args.feedback];
   const { result, findings } = await tailorAndValidate(provider, {
     original: args.previous.original, active, refs, unavailable, profile: args.profile, request: args.request,

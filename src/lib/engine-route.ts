@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import type { z } from "zod";
 import { getProvider } from "@/lib/ai";
 import type { LlmProvider } from "@/lib/ai/provider";
@@ -20,38 +21,64 @@ export interface EngineContext {
   onProgress: (stage: ProgressStage) => void;
 }
 
-interface EngineRoute<T> {
+interface RouteCheck<T> {
   schema: z.ZodType<T>;
   maxBodyChars: number;
   kind: UsageKind;
-  run: (body: T, ctx: EngineContext) => Promise<PipelineResult>;
 }
 
-/**
- * The shared shape of the engine endpoints: session, bounded body, provider, quota, then the NDJSON stream.
- * Unrecognized movements are queued after the result is sent.
- */
-export async function handleEngineRequest<T>(req: Request, route: EngineRoute<T>): Promise<Response> {
+type Prepared<T> = { ok: true; userId: string; body: T; provider: LlmProvider } | { ok: false; response: Response };
+
+/** Session, bounded body, validation, provider and quota: shared by every engine endpoint. */
+async function prepare<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<T>> {
   const userId = await getUserId();
-  if (!userId) return jsonError("unauthorized", 401);
-  const raw = await readJsonBody(req, route.maxBodyChars);
-  if (!raw.ok) return jsonError(raw.code, raw.status);
-  const body = route.schema.safeParse(raw.value);
-  if (!body.success) return jsonError("invalid_request", 400);
+  if (!userId) return { ok: false, response: jsonError("unauthorized", 401) };
+  const raw = await readJsonBody(req, check.maxBodyChars);
+  if (!raw.ok) return { ok: false, response: jsonError(raw.code, raw.status) };
+  const body = check.schema.safeParse(raw.value);
+  if (!body.success) return { ok: false, response: jsonError("invalid_request", 400) };
 
   let provider: LlmProvider;
   try {
     provider = getProvider();
   } catch (e) {
     console.error("engine unavailable", e);
-    return jsonError("engine_unavailable", 503);
+    return { ok: false, response: jsonError("engine_unavailable", 503) };
   }
-  const quota = await consumeQuota(prismaQuotaStore, userId, route.kind, dailyLimit());
-  if (!quota.allowed) return jsonError("quota_exceeded", 429);
+  const quota = await consumeQuota(prismaQuotaStore, userId, check.kind, dailyLimit());
+  if (!quota.allowed) return { ok: false, response: jsonError("quota_exceeded", 429) };
+  return { ok: true, userId, body: body.data, provider };
+}
 
-  const [profile, domain] = await Promise.all([loadProfile(userId), getDomainData()]);
+interface EngineRoute<T> extends RouteCheck<T> {
+  run: (body: T, ctx: EngineContext) => Promise<PipelineResult>;
+}
+
+/** Phase 2 (tailor, refine): the NDJSON stream; unrecognized movements are queued after the result is sent. */
+export async function handleEngineRequest<T>(req: Request, route: EngineRoute<T>): Promise<Response> {
+  const p = await prepare(req, route);
+  if (!p.ok) return p.response;
+  const [profile, domain] = await Promise.all([loadProfile(p.userId), getDomainData()]);
   return engineStreamResponse(
-    (onProgress) => route.run(body.data, { provider, profile, domain, onProgress }),
+    (onProgress) => route.run(p.body, { provider: p.provider, profile, domain, onProgress }),
     (result) => recordUnrecognized(prismaUnrecognizedStore, result),
   );
+}
+
+interface AnalyzeRoute<T, R> {
+  schema: z.ZodType<T>;
+  maxBodyChars: number;
+  run: (body: T, ctx: { provider: LlmProvider; domain: DomainData }) => Promise<R>;
+}
+
+/** Phase 1 (analyze): one model call, plain JSON; counted as "analyze". Never leaks exception text. */
+export async function handleAnalyzeRequest<T, R>(req: Request, route: AnalyzeRoute<T, R>): Promise<Response> {
+  const p = await prepare(req, { schema: route.schema, maxBodyChars: route.maxBodyChars, kind: "analyze" });
+  if (!p.ok) return p.response;
+  try {
+    return NextResponse.json(await route.run(p.body, { provider: p.provider, domain: await getDomainData() }));
+  } catch (e) {
+    console.error("analysis failed", e);
+    return jsonError("engine_failed", 502);
+  }
 }

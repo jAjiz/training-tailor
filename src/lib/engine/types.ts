@@ -251,3 +251,24 @@ export const PipelineResultSchema = z.object({
   model: z.string().min(1),
 });
 export type PipelineResult = z.infer<typeof PipelineResultSchema>;
+
+// ---- athlete-confirmed conditions (two-phase tailor) ----
+// The analyzer only suggests today's conditions; the athlete confirms or corrects them before tailoring.
+export const ConfirmedConditionSchema = DetectedConditionSchema.extend({
+  evidence: z.string().nullable(), // null when the athlete added the condition
+});
+export type ConfirmedCondition = z.infer<typeof ConfirmedConditionSchema>;
+
+export const WorkoutAnalysisResultSchema = z.object({
+  original: StructuredWorkoutSchema,
+  suggested: z.array(DetectedConditionSchema),
+  unavailableEquipment: z.array(Equipment),
+  analyzed: z.boolean(), // false = degraded to one raw block
+});
+export type WorkoutAnalysisResult = z.infer<typeof WorkoutAnalysisResultSchema>;
+
+export const FeedbackAnalysisSchema = z.object({
+  suggested: z.array(DetectedConditionSchema),
+  unavailableEquipment: z.array(Equipment),
+});
+export type FeedbackAnalysis = z.infer<typeof FeedbackAnalysisSchema>;

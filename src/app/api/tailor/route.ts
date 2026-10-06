@@ -1,4 +1,4 @@
-import { MAX_TAILOR_BODY_CHARS, TailorBodySchema } from "@/lib/api-schemas";
+import { MAX_RESULT_BODY_CHARS, TailorBodySchema } from "@/lib/api-schemas";
 import { runTailorPipeline } from "@/lib/engine/pipeline";
 import { handleEngineRequest } from "@/lib/engine-route";
 
@@ -7,9 +7,11 @@ export const maxDuration = 120;
 export function POST(req: Request) {
   return handleEngineRequest(req, {
     schema: TailorBodySchema,
-    maxBodyChars: MAX_TAILOR_BODY_CHARS,
+    maxBodyChars: MAX_RESULT_BODY_CHARS,
     kind: "tailor",
-    run: (body, { provider, ...ctx }) =>
-      runTailorPipeline(provider, { input: body.input, request: body.request, ...ctx }),
+    run: (body, { provider, ...ctx }) => runTailorPipeline(provider, {
+      original: body.analysis.original, unavailableEquipment: body.analysis.unavailableEquipment,
+      confirmed: body.confirmed, request: body.request, ...ctx,
+    }),
   });
 }
