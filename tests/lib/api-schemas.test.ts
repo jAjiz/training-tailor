@@ -28,6 +28,10 @@ describe("API bodies", () => {
     expect(TailorBodySchema.safeParse(body([shoulder, { key: "no_hanging", side: null, severity: "moderate", evidence: null }])).success).toBe(true);
     expect(TailorBodySchema.safeParse(body([{ ...shoulder, severity: "unbearable" }])).success).toBe(false);
     expect(TailorBodySchema.safeParse(body(Array.from({ length: 21 }, () => shoulder))).success).toBe(false);
+    // Suggestions the athlete removed; optional, so an older client still validates.
+    expect(TailorBodySchema.parse(body([])).dismissed).toEqual([]);
+    expect(TailorBodySchema.safeParse({ ...body([]), dismissed: [{ key: "shoulder_impingement", evidence: "sore" }] }).success).toBe(true);
+    expect(TailorBodySchema.safeParse({ ...body([]), dismissed: ["shoulder_impingement"] }).success).toBe(false);
   });
 
   it("requires feedback to analyze or refine", () => {

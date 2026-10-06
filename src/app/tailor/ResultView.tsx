@@ -1,5 +1,6 @@
 import { WorkoutView } from "@/components/WorkoutView";
 import { componentFindings } from "@/lib/findings";
+import type { CatalogEntry } from "./ConfirmConditions";
 import { REMOVED_MOVEMENT, type Finding, type PipelineResult, type WorkoutComponent } from "@/lib/engine/types";
 
 const BADGE: Partial<Record<Finding["kind"], { text: string; className: string }>> = {
@@ -9,8 +10,9 @@ const BADGE: Partial<Record<Finding["kind"], { text: string; className: string }
   contraindicated_movement: { text: "contraindicated", className: "bg-red-100 text-red-900" },
 };
 
-export function ResultView({ result, conditionLabels }: { result: PipelineResult; conditionLabels: Record<string, string> }) {
+export function ResultView({ result, catalog }: { result: PipelineResult; catalog: CatalogEntry[] }) {
   const { tailored } = result;
+  const entry = (key: string) => catalog.find((x) => x.key === key);
   const badges = (blockIndex: number, c: WorkoutComponent) =>
     componentFindings(result.findings, blockIndex, c.canonical ?? c.movement)
       .filter((f) => BADGE[f.kind])
@@ -26,7 +28,9 @@ export function ResultView({ result, conditionLabels }: { result: PipelineResult
         <div className="flex flex-wrap gap-2 text-xs">
           {result.conditions.map((c) => (
             <span key={c.key} className="rounded border px-2 py-1">
-              {conditionLabels[c.key] ?? c.key}{c.side ? ` (${c.side})` : ""} · {c.severity}
+              {entry(c.key)?.label ?? c.key}{c.side ? ` (${c.side})` : ""}
+              {/* Severity only grades injuries; a limitation or condition always applies in full. */}
+              {entry(c.key)?.kind === "injury" ? ` · ${c.severity}` : ""}
               {c.source === "today" ? " · today" : ""}
             </span>
           ))}

@@ -21,6 +21,7 @@ export interface TailorInput {
   conversions: Conversions;
   previousAttempt: { result: TailoringResult; feedbackHistory: string[] } | null;
   violations: Finding[];
+  dismissed: string[]; // suggested condition keys the athlete ruled out
 }
 
 const SYSTEM = `You are an expert functional fitness coach. Modify ONE athlete's training session for today so it fits their situation WHILE PRESERVING EACH BLOCK'S STIMULUS (quality, energy system, load intensity, time domain). Return JSON only.
@@ -34,6 +35,7 @@ Hard rules (code checks the output and rejects violations):
 6. "changes" lists movement swaps only: "modified" is the library name you actually prescribe in that block, exactly as in its components, or "(removed)" when the movement is dropped without a replacement. Time, format or block changes go in "rationale" or "droppedBlocks".
 
 Coaching rules:
+- ACTIVE CONDITIONS are the only conditions that apply: the athlete confirmed them. The situation text may mention pain or limits the athlete then ruled out or corrected; ignore those, and never mention them in "notes", "rationale" or "safetyNote".
 - A movement that combines patterns (Thruster = squat + vertical_push, Wall Ball, Clean & Jerk) keeps every part that is still allowed: when only one part is blocked, replace it with a candidate that keeps the remaining pattern (a Thruster with a bad shoulder becomes a squat) instead of switching to an unrelated pattern. Never drop a whole pattern while a same-pattern candidate marked ok exists; a MILD condition alone rarely justifies it. A candidate marked "related pattern" is the closest pattern when none of the original's is possible today (a row for a pull-up without a bar): prefer it over an unrelated pattern.
 - CAUTION movements may stay at reduced load or range: say so in the component "notes" and in "safetyNote". "healthy side only" means single-limb work on the uninjured side.
 - Scale loads to the athlete's benchmarks, sex and scaling level; when the programming lists tiers (Rx+/Rx/Int, M/F) pick the athlete's. Fill "loadKg" or "percent1RM" whenever you set a load.
@@ -89,6 +91,10 @@ export function buildTailorPrompt(input: TailorInput): string {
       const c = catalog.get(r.key);
       return `- ${r.key} (${c?.label ?? r.key}) side=${r.side ?? "n/a"} severity=${r.severity} source=${r.source}${r.evidence ? `: "${r.evidence}"` : ""}${c?.notes ? ` — ${c.notes}` : ""}`;
     }).join("\n") || "none"}`,
+    ...(input.dismissed.length > 0 ? [
+      `RULED OUT BY THE ATHLETE:\n${input.dismissed.map((k) => `- ${k} (${catalog.get(k)?.label ?? k})`).join("\n")}\n` +
+      "(The situation text mentions these, but the athlete confirmed they do not apply today: do not adapt for them and never mention them.)",
+    ] : []),
     `EQUIPMENT AVAILABLE: ${input.equipment === null ? "a full box (assume everything)" : input.equipment.join(", ") || "none (bodyweight only)"}`,
     `COMPONENT PLAN:\n${input.plan.map(planLine).join("\n") || "(no components extracted: work from the block rawText)"}`,
     `GOAL FAMILY: ${input.goal.map((c) => `${c.name} (${c.verdict})`).join(", ") || "none"}`,

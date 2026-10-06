@@ -30,6 +30,7 @@ function input(overrides: Partial<TailorInput> = {}): TailorInput {
     conversions: domain.conversions,
     previousAttempt: null,
     violations: [],
+    dismissed: [],
     ...overrides,
   };
 }
@@ -83,6 +84,13 @@ describe("buildTailorPrompt", () => {
     });
     const p = buildTailorPrompt(input({ plan, equipment: ["pullup_bar"] }));
     expect(p).toMatch(/\[b0\.c1\] Pull-up → AVOID.*MUST CHANGE; no candidate: remove it/);
+  });
+
+  it("names the conditions the athlete ruled out, only when there are any", () => {
+    expect(buildTailorPrompt(input())).not.toContain("RULED OUT");
+    const p = buildTailorPrompt(input({ dismissed: ["shoulder_impingement"] }));
+    expect(p).toContain("RULED OUT BY THE ATHLETE");
+    expect(p).toContain("- shoulder_impingement (Shoulder impingement)");
   });
 
   it("lists the athlete's equipment when it is restricted", () => {
@@ -143,6 +151,12 @@ describe("tailor", () => {
     expect(schema.safeParse(withChange("Air Squat")).success).toBe(true);
     expect(schema.safeParse(withChange("(removed)")).success).toBe(true);
     expect(schema.safeParse(withChange("Sandbag Thruster")).success).toBe(false);
+  });
+
+  it("tells the model that only the confirmed conditions apply, whatever the situation text says", async () => {
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(fran()) });
+    await tailor(provider, input());
+    expect(provider.calls[0].systemPrompt).toMatch(/ACTIVE CONDITIONS are the only conditions/);
   });
 
   it("tells the model to keep the safe part of a combined movement", async () => {

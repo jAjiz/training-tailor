@@ -9,7 +9,8 @@ import { availableEquipment, goalFamily, planComponents } from "./plan";
 import { tailor, type TailorInput } from "./tailor";
 import {
   REMOVED_MOVEMENT,
-  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding, type ManualWorkout,
+  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type DismissedCondition, type FeedbackAnalysis,
+  type Finding, type ManualWorkout,
   type PipelineResult, type StructuredWorkout, type TailorRequest, type TailoringResult, type WorkoutAnalysisResult,
 } from "./types";
 import { isViolation, validateTailoring } from "./validate";
@@ -35,6 +36,7 @@ export interface AnalyzeArgs {
 export interface PipelineArgs {
   original: StructuredWorkout;
   confirmed: ConfirmedCondition[];
+  dismissed?: DismissedCondition[]; // suggestions the athlete ruled out
   unavailableEquipment: Equipment[];
   profile: AthleteProfile;
   request: TailorRequest;
@@ -46,6 +48,7 @@ export interface RefineArgs {
   previous: PipelineResult;
   feedback: string;
   confirmed: ConfirmedCondition[]; // conditions the feedback added, as the athlete confirmed them
+  dismissed?: DismissedCondition[]; // conditions the feedback suggested that the athlete ruled out
   unavailableEquipment: Equipment[]; // equipment the feedback says is missing
   profile: AthleteProfile;
   request: TailorRequest;
@@ -62,7 +65,35 @@ interface TailorStage {
   request: TailorRequest;
   domain: DomainData;
   previousAttempt: TailorInput["previousAttempt"];
+  dismissed: DismissedCondition[];
   progress: (stage: ProgressStage) => void;
+}
+
+const cutPhrase = (text: string, phrase: string) =>
+  text.replace(new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
+
+/**
+ * Keeps what the athlete ruled out away from the tailor: naming it, even as "ruled out", draws the model to it.
+ * Its words are cut from the situation and the latest feedback; only when the analyzer paraphrased them (nothing
+ * to cut) is it named as ruled out. A profile injury still applies even if today's same suggestion was dismissed.
+ */
+function hideDismissed(s: TailorStage): Pick<TailorInput, "request" | "previousAttempt" | "dismissed"> {
+  let situation = s.request.situation;
+  const history = s.previousAttempt?.feedbackHistory ?? [];
+  let latest = history.at(-1) ?? "";
+  const ruledOut: string[] = [];
+  for (const d of s.dismissed) {
+    if (s.refs.some((r) => r.key === d.key)) continue;
+    const phrase = d.evidence?.trim();
+    const [cutSituation, cutLatest] = phrase ? [cutPhrase(situation, phrase), cutPhrase(latest, phrase)] : [situation, latest];
+    if (cutSituation === situation && cutLatest === latest) ruledOut.push(d.key);
+    [situation, latest] = [cutSituation, cutLatest];
+  }
+  return {
+    request: { ...s.request, situation },
+    previousAttempt: s.previousAttempt && { ...s.previousAttempt, feedbackHistory: [...history.slice(0, -1), latest] },
+    dismissed: ruledOut,
+  };
 }
 
 const analyzeContext = (d: DomainData): AnalyzeContext => ({
@@ -103,10 +134,10 @@ async function tailorAndValidate(
   const equipment = availableEquipment(s.profile.equipment, s.request.equipmentToday, s.unavailable);
   const planContext = { movements: domain.movements, resolve: createMovementResolver(domain.movements), active: s.active, equipment };
   const input: TailorInput = {
-    original: s.original, profile: s.profile, request: s.request, conditions: s.refs,
+    original: s.original, profile: s.profile, conditions: s.refs,
     contraindications: domain.contraindications, plan: planComponents(s.original, planContext),
     goal: goalFamily(s.request.targetMovement, planContext), equipment, movements: domain.movements,
-    conversions: domain.conversions, previousAttempt: s.previousAttempt, violations: [],
+    conversions: domain.conversions, violations: [], ...hideDismissed(s),
   };
   const validate = (result: TailoringResult) => validateTailoring({
     original: s.original, result, movements: domain.movements, active: s.active, equipment,
@@ -156,6 +187,7 @@ export async function runTailorPipeline(provider: LlmProvider, args: PipelineArg
   const { result, findings } = await tailorAndValidate(provider, {
     original: args.original, active, refs, unavailable: args.unavailableEquipment,
     profile: args.profile, request: args.request, domain: args.domain, previousAttempt: null, progress,
+    dismissed: args.dismissed ?? [],
   });
   return {
     original: args.original, conditions: refs, unavailableEquipment: args.unavailableEquipment,
@@ -176,6 +208,7 @@ export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs)
   const { result, findings } = await tailorAndValidate(provider, {
     original: args.previous.original, active, refs, unavailable, profile: args.profile, request: args.request,
     domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
+    dismissed: args.dismissed ?? [],
   });
   return {
     original: args.previous.original, conditions: refs, unavailableEquipment: unavailable,

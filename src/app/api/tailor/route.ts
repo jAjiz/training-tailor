@@ -11,7 +11,7 @@ export function POST(req: Request) {
     kind: "tailor",
     run: (body, { provider, ...ctx }) => runTailorPipeline(provider, {
       original: body.analysis.original, unavailableEquipment: body.analysis.unavailableEquipment,
-      confirmed: body.confirmed, request: body.request, ...ctx,
+      confirmed: body.confirmed, dismissed: body.dismissed, request: body.request, ...ctx,
     }),
   });
 }

@@ -272,3 +272,10 @@ export const FeedbackAnalysisSchema = z.object({
   unavailableEquipment: z.array(Equipment),
 });
 export type FeedbackAnalysis = z.infer<typeof FeedbackAnalysisSchema>;
+
+// A suggestion the athlete removed: its words are kept out of what the tailor reads.
+export const DismissedConditionSchema = z.object({
+  key: z.string().min(1).max(64),
+  evidence: z.string().max(2000).nullable(),
+});
+export type DismissedCondition = z.infer<typeof DismissedConditionSchema>;

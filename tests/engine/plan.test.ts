@@ -90,6 +90,13 @@ describe("rankCandidates", () => {
     expect(c[0].verdict).toBe("ok");
   });
 
+  it("compares risk condition by condition: a caution the original already had does not demote a full variant", () => {
+    // The wrist rules out the barbell Thruster; the Dumbbell Thruster spares the wrist and is "caution" only for
+    // the mild knee, exactly like the original, so it still leads over a half-movement press.
+    const c = rankCandidates(movement("Thruster"), ctx([["wrist_pain", "moderate"], ["knee_pain", "mild"]], ["dumbbell", "jump_rope"]));
+    expect(c[0]).toMatchObject({ name: "Dumbbell Thruster", verdict: "caution" });
+  });
+
   it("prefers a full-coverage variant when the original changes only for equipment", () => {
     const c = rankCandidates(movement("Thruster"), ctx([], ["dumbbell"]));
     expect(c[0]).toMatchObject({ name: "Dumbbell Thruster", verdict: "ok" });

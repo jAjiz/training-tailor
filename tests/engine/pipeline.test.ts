@@ -92,6 +92,34 @@ describe("runTailorPipeline", () => {
     await expect(run(new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) }))).rejects.toBeInstanceOf(EngineUnsafeError);
   });
 
+  it("cuts a ruled-out condition's words from the situation, so the tailor never reads them", async () => {
+    const provider = new FakeProvider({ TailoringResult: safeDraft() });
+    await run(provider, [], {
+      confirmed: [], dismissed: [{ key: "shoulder_impingement", evidence: "me duele el hombro derecho" }],
+      request: { ...emptyRequest(), situation: "Cansado, me duele el hombro derecho." },
+    });
+    expect(provider.calls[0].prompt).not.toMatch(/hombro|shoulder/);
+    expect(provider.calls[0].prompt).toContain("Cansado");
+  });
+
+  it("names a ruled-out condition when the analyzer paraphrased the athlete's words", async () => {
+    const provider = new FakeProvider({ TailoringResult: safeDraft() });
+    await run(provider, [], { confirmed: [], dismissed: [{ key: "shoulder_impingement", evidence: "right shoulder pain" }] });
+    expect(provider.calls[0].prompt).toMatch(/RULED OUT BY THE ATHLETE:\n- shoulder_impingement/);
+  });
+
+  it("cuts ruled-out words from the refine feedback sent to the tailor, but keeps the athlete's history intact", async () => {
+    const first = await run(new FakeProvider({ TailoringResult: safeDraft() }));
+    const provider = new FakeProvider({ TailoringResult: safeDraft() });
+    const r = await runRefinePipeline(provider, {
+      previous: first, feedback: "too easy, and my knee hurts", confirmed: [],
+      dismissed: [{ key: "knee_pain", evidence: "my knee hurts" }], unavailableEquipment: [],
+      profile: emptyProfile(), request: emptyRequest(), domain,
+    });
+    expect(provider.calls[0].prompt).not.toContain("knee hurts");
+    expect(r.feedbackHistory).toEqual(["too easy, and my knee hurts"]);
+  });
+
   it("applies a condition the athlete added (no evidence)", async () => {
     const provider = new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) });
     await expect(run(provider, [], {

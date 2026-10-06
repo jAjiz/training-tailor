@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Equipment } from "@/lib/domain/types";
 import {
-  ConfirmedConditionSchema, ManualWorkoutSchema, PipelineResultSchema, TailorRequestSchema, WorkoutAnalysisResultSchema,
+  ConfirmedConditionSchema, DismissedConditionSchema, ManualWorkoutSchema, PipelineResultSchema, TailorRequestSchema, WorkoutAnalysisResultSchema,
 } from "@/lib/engine/types";
 
 // Raw body caps, checked before parsing: tailor carries an analyzed workout, refine and save a whole PipelineResult,
@@ -16,18 +16,21 @@ export const WorkoutInputSchema = z.discriminatedUnion("kind", [
 
 const feedback = z.string().trim().min(1).max(2000);
 const confirmed = z.array(ConfirmedConditionSchema).max(20);
+const dismissed = z.array(DismissedConditionSchema).max(20).default([]); // suggestions the athlete removed
 
 export const AnalyzeBodySchema = z.object({ input: WorkoutInputSchema, request: TailorRequestSchema });
 export const AnalyzeFeedbackBodySchema = z.object({ feedback });
 export const TailorBodySchema = z.object({
   analysis: WorkoutAnalysisResultSchema.pick({ original: true, unavailableEquipment: true }),
   confirmed,
+  dismissed,
   request: TailorRequestSchema,
 });
 export const RefineBodySchema = z.object({
   previous: PipelineResultSchema,
   feedback,
   confirmed,
+  dismissed,
   unavailableEquipment: z.array(Equipment),
   request: TailorRequestSchema,
 });

@@ -10,7 +10,7 @@ export function POST(req: Request) {
     maxBodyChars: MAX_RESULT_BODY_CHARS,
     kind: "refine",
     run: (body, { provider, ...ctx }) => runRefinePipeline(provider, {
-      previous: body.previous, feedback: body.feedback, confirmed: body.confirmed,
+      previous: body.previous, feedback: body.feedback, confirmed: body.confirmed, dismissed: body.dismissed,
       unavailableEquipment: body.unavailableEquipment, request: body.request, ...ctx,
     }),
   });

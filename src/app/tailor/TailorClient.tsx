@@ -45,7 +45,6 @@ const field = "rounded border px-2 py-1 text-sm";
 const chip = (on: boolean) => `rounded border px-3 py-1 text-sm ${on ? "bg-black text-white" : ""}`;
 
 export function TailorClient({ movementNames, equipmentOptions, catalog }: Props) {
-  const conditionLabels = Object.fromEntries(catalog.map((c) => [c.key, c.label]));
   const [mode, setMode] = useState<"paste" | "manual">("paste");
   const [rawText, setRawText] = useState("");
   const [manual, setManual] = useState<ManualWorkout>(emptyManualWorkout());
@@ -113,12 +112,15 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
   /** Phase 2 with the conditions the athlete confirmed (none when nothing was suggested). */
   async function proceed(p: Pending, confirmed: ConfirmedCondition[]) {
     setPending(null);
+    const dismissed = p.suggested
+      .filter((s) => !confirmed.some((c) => c.key === s.key))
+      .map(({ key, evidence }) => ({ key, evidence }));
     if (p.kind === "tailor") {
       const { original, unavailableEquipment } = p.analysis;
-      await runEngine("/api/tailor", { analysis: { original, unavailableEquipment }, confirmed, request: p.request }, p.request);
+      await runEngine("/api/tailor", { analysis: { original, unavailableEquipment }, confirmed, dismissed, request: p.request }, p.request);
     } else {
       await runEngine("/api/tailor/refine", {
-        previous: p.previous, feedback: p.feedback, confirmed, unavailableEquipment: p.unavailableEquipment, request: p.request,
+        previous: p.previous, feedback: p.feedback, confirmed, dismissed, unavailableEquipment: p.unavailableEquipment, request: p.request,
       }, p.request);
     }
   }
@@ -235,7 +237,7 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
 
       {result && (
         <>
-          <ResultView result={result} conditionLabels={conditionLabels} />
+          <ResultView result={result} catalog={catalog} />
           <section className="flex flex-col gap-2">
             <h2 className="font-semibold">Not quite right?</h2>
             <textarea className={`${field} min-h-16`} value={feedback} onChange={(e) => setFeedback(e.target.value)}

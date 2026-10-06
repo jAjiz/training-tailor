@@ -96,9 +96,10 @@ function patternCandidates(
  * surviving substitute covers: a Thruster whose press is blocked still gets squats, so the stimulus survives.
  * Only when nothing at all survives do the RELATED_PATTERNS step in.
  *
- * Order: candidates no riskier than the original first (only "ok" when the original must change for safety, "ok"
- * or "caution" when it was already "caution"), then those covering more of its patterns, then ok before caution.
- * A Dumbbell Thruster thus leads for a Thruster without a barbell instead of a half-movement like a press.
+ * Order: candidates no riskier than the original first, then those covering more of its patterns, then ok before
+ * caution. Risk is compared condition by condition: under a condition the original was "caution" for, a caution
+ * candidate adds nothing; under one it was "avoid" (or "ok") for, only "ok" is no riskier. A Dumbbell Thruster
+ * thus leads for a Thruster without a barbell, or with a bad wrist and a mild knee, instead of a half-movement press.
  */
 export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, perPattern = 3): Candidate[] {
   const listed: { candidate: Candidate; movement: Movement }[] = [];
@@ -120,10 +121,18 @@ export function rankCandidates(original: Movement, ctx: PlanContext, limit = 5, 
     if (out.length > 0) break;
     out.push(...patternCandidates(original, related, ctx, "related").slice(0, limit));
   }
-  const tolerated = assessMovement(original, ctx.active).verdict === "caution" ? VERDICT_RANK.caution : VERDICT_RANK.ok;
-  const riskier = (c: Candidate) => (VERDICT_RANK[c.verdict] > tolerated ? 1 : 0);
+  const tolerated = ctx.active.map((a) =>
+    assessMovement(original, [a]).verdict === "caution" ? VERDICT_RANK.caution : VERDICT_RANK.ok);
+  const riskier = new Map(out.map((c) => {
+    const m = ctx.resolve(c.name)!;
+    const worse = ctx.active.some((a, i) => {
+      const v = assessMovement(m, [a]).verdict;
+      return v === "avoid" || VERDICT_RANK[v] > tolerated[i];
+    });
+    return [c.name, worse ? 1 : 0];
+  }));
   const coverage = new Map(out.map((c) => [c.name, ctx.resolve(c.name)?.patterns.filter((p) => original.patterns.includes(p)).length ?? 0]));
-  return out.sort((a, b) => riskier(a) - riskier(b) || coverage.get(b.name)! - coverage.get(a.name)! || byRank(a, b));
+  return out.sort((a, b) => riskier.get(a.name)! - riskier.get(b.name)! || coverage.get(b.name)! - coverage.get(a.name)! || byRank(a, b));
 }
 
 export function planComponents(workout: StructuredWorkout, ctx: PlanContext): ComponentPlan[] {
