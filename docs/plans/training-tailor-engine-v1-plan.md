@@ -7237,6 +7237,51 @@ git commit -m "feat: athlete-confirmed conditions — analyze, confirm, then tai
 
 ---
 
+### Task U4c: Restrictions in the athlete's own scope (replaces U4b's confirmation)
+
+U4b mapped "me duele el hombro, no puedo hacer snatch" to `shoulder_impingement` (acute) and the athlete had to confirm it; the catalog entry then also banned toes-to-bar, which the athlete never mentioned. Today's pain and limits become **restrictions** that ban exactly what the athlete named; the athlete is asked only when the scope is genuinely unknown (a painful site with nothing named) or the best replacement loads the painful site the same way. See the spec amendment U4c (*Two phases*, *Clarify*, *Active conditions*).
+
+Behaviour (the user's three cases, session `3 Power Snatch / 5 Bar-facing Burpee / 7 Toes-to-Bar`):
+1. "me duele el hombro, no puedo hacer snatch" → snatch variants banned, Power Clean (best candidate, no shoulder load) prescribed, Toes-to-Bar kept; no question. Were the best candidate a Push Press (shoulder overhead + ballistic, shared with the snatch), the athlete would pick the replacement, the first candidate sharing nothing preselected.
+2. "no puedo hacer snatch" → same ban, best candidate by stimulus, no question; refine corrects it.
+3. "me duele el hombro" → question: "Arms overhead or explosive — Power Snatch" / "Hanging from a bar or kipping — Toes-to-Bar" / everything that loads it / something else / I can do everything.
+
+**Files:**
+- Modify: `src/lib/engine/types.ts`, `src/lib/engine/analyze.ts`, `src/lib/engine/conditions.ts`, `src/lib/engine/pipeline.ts`, `src/lib/engine/tailor.ts`, `src/lib/api-schemas.ts`, `src/lib/engine-route.ts`, the four engine routes, `src/app/api/tailor/save/route.ts`, `prisma/schema.prisma` (+ migration `restrictions`), `src/app/tailor/TailorClient.tsx`, `src/app/tailor/ResultView.tsx`, `data/movements.json` (Power Snatch substitutes), `src/lib/eval/grade.ts`, `scripts/eval.ts`, `evals/cases/*.json`
+- Create: `src/lib/engine/clarify.ts`, `src/app/tailor/ClarifyStep.tsx`, `evals/cases/15-snatch-shoulder-keeps-toes-to-bar.json`
+- Delete: `src/app/tailor/ConfirmConditions.tsx` (its `CatalogEntry` type moves to `ResultView.tsx`)
+- Test: `tests/engine/clarify.test.ts` (new), `tests/engine/conditions.test.ts`, `tests/engine/analyze.test.ts`, `tests/engine/pipeline.test.ts`, `tests/engine/tailor.test.ts`, `tests/lib/api-schemas.test.ts`, `tests/eval/grade.test.ts`, `tests/domain/data.test.ts`
+
+**Interfaces:**
+- `@/lib/engine/types`:
+  - `RestrictionDraftSchema` (analyzer output) `{ site: Site | null, side: Side | null, movements: string[], mechanisms: StressMechanism[], positions: Position[], evidence: string }`; `RestrictionSchema` = draft + `replacements: ReplacementChoice[]` (default `[]`); `ReplacementChoiceSchema` `{ blockIndex, componentIndex, replacement }`.
+  - `SituationAnalysisSchema` gains `restrictions: RestrictionDraft[]`; its `conditions` only ever hold `kind: condition` keys (others dropped in `clean`).
+  - `ClarifyQuestion` = `{ kind: "site", restriction, site, side, evidence, options: { label, mechanisms, movements }[] }` | `{ kind: "replacement", restriction, blockIndex, componentIndex, movement, site, options: { name, shared: StressMechanism[] }[], preselected }`.
+  - `WorkoutAnalysisResult` `{ original, suggested, restrictions: Restriction[], questions, unavailableEquipment, analyzed }`; `FeedbackAnalysis` `{ suggested, restrictions, questions, unavailableEquipment }`.
+  - `PipelineResultSchema` gains `restrictions: Restriction[]` (default `[]`, so older saved results parse).
+- `@/lib/engine/conditions`: `restrictionConditions(restrictions, offset = 0): ActiveCondition[]` — one synthetic `limitation` `today_<offset+i>` per restriction that bans something; `hasScope(r)`.
+- `@/lib/engine/clarify`: `siteOptions(original, site, resolve)`, `buildQuestions({ original, restrictions, base: ActiveCondition[], equipment, movements })`, `applyAnswers(restrictions, answers)`; `ClarifyAnswer` = `{ kind: "site", restriction, mechanisms: StressMechanism[] | "all" | "none" }` | `{ kind: "replacement", restriction, blockIndex, componentIndex, replacement }`. `MECHANISM_TEXT: Record<StressMechanism, string>`.
+- `@/lib/engine/pipeline`: `analyzeWorkout(provider, { input, request, profile, domain })`, `analyzeFeedback(provider, { feedback, session, request, profile, domain })` where `session = { original, conditions, restrictions, unavailableEquipment }`; `PipelineArgs` and `RefineArgs` gain `restrictions: Restriction[]`; the plan forces each replacement as that component's only candidate.
+- `@/lib/api-schemas`: `AnalyzeFeedbackBodySchema = { feedback, session, request }`; Tailor/Refine bodies gain `restrictions` (max 20).
+- `handleAnalyzeRequest` passes `profile` to `run`.
+- `ClarifyStep({ questions, busy, onAnswer(answers), onFreeText(restriction, text), onCancel })`.
+- Eval: `expect.mustRestrict: Site[]`, `expect.mustKeep: string[]`; the harness answers site questions "all" and takes preselected replacements.
+
+- [ ] **Step 1: Failing tests for restriction activation** (`tests/engine/conditions.test.ts`): a restriction `{ movements: ["Power Snatch"] }` makes Power Snatch `avoid` and Toes-to-Bar `ok`; `{ site: "shoulder", mechanisms: ["overhead"] }` bans Push Press, not Pull-up; `{ site: null, mechanisms: ["overhead"] }` bans overhead at any site; `{ positions: ["hanging"] }` bans Toes-to-Bar; a site-only restriction activates nothing; keys are `today_<offset+i>`; side `right` gives the unilateral healthy-side exemption.
+- [ ] **Step 2: Implement** `restrictionConditions` / `hasScope` in `conditions.ts`; run the tests.
+- [ ] **Step 3: Failing tests for clarify** (`tests/engine/clarify.test.ts`, snatch / burpee / toes-to-bar session): `siteOptions(shoulder)` → two options, Power Snatch `[overhead, ballistic]` and Toes-to-Bar `[traction, kipping]`, burpee absent; no option when nothing loads the site; `buildQuestions` asks a site question for a site-only restriction, none for `{ site: shoulder, movements: [Power Snatch] }` with Power Clean first, and a replacement question (preselecting the first candidate that shares nothing) when the best candidate shares a shoulder mechanism (Dumbbell Snatch when the barbell is missing); no replacement question when the restriction has no site; `applyAnswers` maps `all` to every mechanism, `none` to context only, a mechanism list to the restriction, and a replacement to `restriction.replacements`.
+- [ ] **Step 4: Implement** `clarify.ts` (pure; client-safe imports only) and the types; run the tests.
+- [ ] **Step 5: Analyzer** — failing tests in `tests/engine/analyze.test.ts`: restrictions are parsed and their movement names resolved to canonical (unknown dropped), conditions other than `kind: condition` are dropped, the situation-only call carries the movement library. Then update `SITUATION_RULES`: restrictions (site/side/movements/mechanisms/positions/evidence; never add what was not named; pain alone → empty lists; "snatch" lists every library snatch variant), conditions only from the non-pain catalog; `analyzeSituation` sends the library names.
+- [ ] **Step 6: Pipeline and tailor prompt** — failing tests: the phase-1 functions return questions; `runTailorPipeline` with `{ movements: ["Power Snatch"] }` plans Power Snatch MUST CHANGE and Toes-to-Bar OK; a replacement becomes the only candidate (`chosen by the athlete`); the prompt lists TODAY'S RESTRICTIONS with their keys; the SYSTEM rule forbids changing a movement for pain the plan does not mark; refine keeps the previous restrictions and replacements; the result carries `restrictions`. Implement.
+- [ ] **Step 7: API** — bodies and routes as in *Interfaces*; `handleAnalyzeRequest` loads the profile; save writes `restrictions`. Schema: `restrictions Json @default("[]")` on `TailoredWorkout`; `pnpm prisma migrate dev --name restrictions` (dev branch; the VPN must be off).
+- [ ] **Step 8: UI** — `ClarifyStep` replaces `ConfirmConditions`: per site question checkboxes (label + movements), "Everything that loads my <site>", "I can do everything", and a "Something else…" text box that posts to `/api/tailor/refine/analyze` once; per replacement question radios with "also loads your <site>: <mechanisms>". Free text replaces that restriction by the re-analysis (a site still unnamed bans every load on it) and shows its replacement questions, if any. `ResultView` shows each restriction as a chip: "Shoulder (right) · no Power Snatch · today", "… · overhead", "… · context only".
+- [ ] **Step 9: Data** — Power Snatch substitutes `["Power Clean", "Hang Power Snatch", "Dumbbell Snatch", "Kettlebell Swing"]` with a data test.
+- [ ] **Step 10: Eval** — `mustRestrict`, `mustKeep`, the harness's answers; cases 01, 03, 09, 11, 13 move from `mustDetect` injuries to `mustRestrict` (case 01 no longer forbids Pull-up: overhead only), drop `confirm`; new case 15. Run `pnpm eval`.
+- [ ] **Step 11: Verify** — `pnpm test`, `pnpm tsc --noEmit`, `pnpm lint`; browser: the three sentences above on the snatch session; refine "my knee hurts too" asks about the knee only if the session loads it.
+- [ ] **Step 12: Commit** — `feat: restrictions in the athlete's own scope, clarify only when unclear`
+
+---
+
 ### Task U5: Manual structured entry
 
 **Files:**

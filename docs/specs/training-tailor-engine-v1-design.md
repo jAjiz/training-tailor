@@ -8,6 +8,12 @@
 > gains laterality, low-load stresses, new sites/positions, strict variants and
 > effort/load conversions, an evaluation harness is part of v1, auth is Google
 > OAuth via Better Auth, and hosting is decided.
+>
+> Amendment U4c (2026-10-07): today's pain and limits are read as **restrictions** in the
+> athlete's own scope (named movements, named kinds of load, or a painful site), not as
+> severity-graded catalog injuries. Only a site with nothing named, or a replacement that
+> loads the painful site the same way, asks the athlete one question; everything else
+> tailors at once. This replaces the confirmation of today's conditions (U4b).
 
 ## Problem
 
@@ -72,22 +78,24 @@ Browser (phone)
   │  paste / manual entry + today's situation
   ▼
 Next.js route handlers (auth check, quota)
-  POST /api/tailor/analyze   → JSON analysis + suggested conditions
-  (athlete confirms or corrects today's conditions)
+  POST /api/tailor/analyze   → JSON analysis + restrictions + clarifying questions
+  (only when there are questions: the athlete answers them)
   POST /api/tailor           → NDJSON progress stream → result
   ▼
 tailor-service ── repository (domain JSON) ── profile (Postgres)
   ▼
 Engine pipeline (server-side, provider-agnostic)
-  1. analyze      LLM  raw text + situation → blocks (+stimulus per block) + suggested conditions
+  1. analyze      LLM  raw text + situation → blocks (+stimulus per block) + restrictions + conditions
   2. resolve      code movement names → canonical library rows
-     ── pause: the athlete confirms condition, side and severity (phase 2 starts here) ──
-  3. conditions   code profile injuries ⊕ today's CONFIRMED conditions → active conditions
+  2b. clarify     code questions for a painful site with nothing named, and for a best
+                       replacement that loads the painful site the same way
+     ── pause only when there is a question (phase 2 starts here) ──
+  3. conditions   code profile injuries ⊕ today's conditions ⊕ answered restrictions → active
   4. plan         code assess every movement (ok / caution / avoid, equipment) + candidate substitutes
   5. tailor       LLM  modified session, grounded by the plan, conversions, benchmarks
   6. validate     code contraindications, equipment, time cap, stimulus drift, block accounting
        └─ violations → one retry with the violations fed back → still unsafe → fail closed
-  7. refine       feedback → analyze feedback (LLM) → confirm new conditions → tailor → validate
+  7. refine       feedback → analyze feedback (LLM) → clarify → tailor → validate
 ```
 
 - **AI abstraction:** `LlmProvider.generateStructured(schema)`; a decorator retries once
@@ -95,17 +103,29 @@ Engine pipeline (server-side, provider-agnostic)
   Only `gemini-provider.ts` imports the SDK.
 - **Engine** depends only on `LlmProvider` and plain domain data — never on Prisma, Next,
   or a concrete SDK — so it runs identically in tests, in the eval script and in routes.
-- **Two phases (athlete-confirmed conditions).** The model only *suggests* today's
-  conditions: which catalog condition, which side and how severe is an interpretation, and
-  severity decides the whole assessment (the same "sore right shoulder" read as moderate
-  one day and mild the next). Phase 1 (`/api/tailor/analyze`, JSON) analyzes the workout
-  and the situation; when it suggests any condition, the athlete confirms or corrects it
-  (change side or severity, remove it, add a missed one from the catalog) before phase 2
-  (`/api/tailor`, NDJSON stream) tailors with the confirmed list. With no suggested
-  condition, phase 2 starts at once. Profile injuries already carry their severity and are
-  not asked again. The client sends the phase-1 analysis back to phase 2 (as refine already
-  sends the previous result): it can only alter the athlete's own session, the stored
-  profile injuries are always re-applied, and the validator enforces whatever is confirmed.
+- **Two phases (restrictions in the athlete's own scope).** Mapping "me duele el hombro,
+  no puedo hacer snatch" to a catalog injury with a severity bans far more than the athlete
+  said (a shoulder impingement also bans toes-to-bar). Today's pain and limits are read
+  instead as **restrictions** that ban exactly what the athlete named:
+  - movement and site named ("me duele el hombro, no puedo hacer snatch"): only the named
+    movements change; tailored at once, unless the best replacement loads that site the
+    same way (a Push Press for a snatch with a bad shoulder): then the athlete picks the
+    replacement, the safe one preselected;
+  - movement only ("no puedo hacer snatch"): only that movement changes, to the best
+    replacement by stimulus; the athlete corrects it with refine if needed;
+  - a kind of load ("nada por encima de la cabeza"): every movement with that load;
+  - site only ("me duele el hombro"): the athlete is asked which kinds of load bother
+    them, each option listing the session's movements it covers; the answer bans exactly
+    those. "Something else" is re-analyzed once; "I can do everything" keeps the pain as
+    context only.
+  Phase 1 (`/api/tailor/analyze`, JSON) analyzes the workout and the situation and builds
+  the questions deterministically (no extra LLM call). With no question, phase 2
+  (`/api/tailor`, NDJSON stream) starts at once. Non-pain catalog conditions (pregnancy)
+  read today apply directly and show on the result. Profile injuries keep their catalog
+  entry and severity. The client sends the phase-1 analysis back to phase 2 (as refine
+  already sends the previous result): it can only alter the athlete's own session, the
+  stored profile injuries are always re-applied, and the validator enforces every
+  restriction.
 - **Progress:** phase 2 streams NDJSON events (`progress` stages, then `result` or
   `error`); the UI shows "analyzing" during phase 1 and the streamed stage after. Typical
   cost is 2 LLM calls (3 with a retry), as before.
@@ -118,10 +138,13 @@ Engine pipeline (server-side, provider-agnostic)
    - the session split into ordered **blocks** (format, scheme, time domain, components,
      coaching notes, optional `day` for multi-day pastes) with a **stimulus profile per
      block**;
-   - **suggested conditions** from the situation text: catalog keys with side, severity
-     and the quoted evidence (e.g. "me duele el hombro derecho" →
-     `shoulder_impingement`, right, moderate). They are suggestions the athlete confirms,
-     never applied as read;
+   - **restrictions** from the situation text, each `{ site?, side?, movements[],
+     mechanisms[], positions[], evidence }`: the session (or library) movements the athlete
+     says they cannot do, the kinds of load (stress mechanisms) and positions they name in
+     general terms, and where it hurts. Nothing the athlete did not name is added: pain
+     alone gives empty lists. "No puedo hacer snatch" covers every snatch variant in the
+     session. Movement names resolve to the library; unknown ones are dropped;
+   - **conditions**: non-pain catalog conditions only (`kind: condition`, e.g. pregnancy);
    - **equipment unavailable today** mentioned in the situation ("no rower today").
 
    Manual entry skips the split: the same call only returns per-block stimulus,
@@ -145,9 +168,27 @@ Engine pipeline (server-side, provider-agnostic)
    anything done with a PVC pipe) are not components. Movements that let the athlete pick
    the method (shoulder-to-overhead, ground-to-overhead) are their own rows carrying the
    most restrictive stresses of the methods they allow.
-3. **Active conditions.** Profile injuries (persisting) are merged with today's
-   **confirmed** conditions; for the same key, today's side/severity win. Unknown keys are
-   dropped and logged.
+2b. **Clarify (deterministic, phase 1).** Questions, only when needed:
+   - **site** — a restriction with a site and nothing named: the session's resolved
+     movements that stress that site, grouped by identical movement sets, each option
+     labelled with its mechanisms in plain words ("Arms overhead or explosive: Power
+     Snatch"; "Hanging from a bar or kipping: Toes-to-Bar"), plus "everything that loads
+     it", "something else" (free text, re-analyzed once; a site still unnamed after that
+     bans every load on it) and "I can do everything" (context only). No session movement
+     loads the site → no question.
+   - **replacement** — a restriction with a site whose best candidate for a banned
+     movement shares a mechanism at that site with it: the candidates, each marked with
+     the loads it shares, the first sharing nothing preselected.
+   Answers turn into restrictions (the chosen mechanisms) and **replacements**
+   (`{ blockIndex, componentIndex, replacement }`, which become that component's only
+   candidate).
+3. **Active conditions.** Profile injuries (persisting) ⊕ previous conditions (refine) ⊕
+   today's conditions; for the same key, today's side/severity win. Unknown keys are
+   dropped and logged. Each restriction becomes a synthetic `limitation`
+   (`today_<n>`): `avoidMovements` = its movements, an `avoid` stress rule for its
+   mechanisms at its site (every site when none was named), an `avoid` position rule per
+   position, its side for laterality. A restriction with nothing to ban (context only)
+   activates nothing.
 4. **Plan (deterministic).** For every resolved component: an **assessment**
    (`ok | caution | avoid` with reasons, see *Assessment*), the equipment it needs that
    is missing today, and — when it must change or is cautioned — ranked **candidate
@@ -203,8 +244,9 @@ Engine pipeline (server-side, provider-agnostic)
    `contraindicated_movement` violation survives the retry, the engine **fails closed**
    (`engine_unsafe`); other surviving violations are returned as findings.
 7. **Refine.** The athlete reacts ("still hurts", "too easy", "no rower today"): a
-   situation-only analysis of the feedback (`/api/tailor/refine/analyze`) may suggest new
-   conditions — confirmed by the athlete exactly as in phase 1 — or remove equipment, then
+   situation-only analysis of the feedback (`/api/tailor/refine/analyze`, given the
+   session's movement names) may add restrictions — clarified exactly as in phase 1 — or
+   remove equipment, then
    tailor + validate re-run (`/api/tailor/refine`) against the **original** session with
    the rejected attempt and the feedback history in the prompt. No re-parse.
 
@@ -337,7 +379,8 @@ Domain entities are JSON (above). User data in Postgres:
   - `equipment` (`Equipment[] | null`; `null` = not specified → assume a full box);
   - `goals[]` `{ movement (canonical | null), description }`;
   - `availability` `{ minutesPerDay, daysPerWeek, days[] (mon…sun) }`.
-- **TailoredWorkout**: `original`, `request`, `conditions`, `tailored` (session +
+- **TailoredWorkout**: `original`, `request`, `conditions`, `restrictions` (today's,
+  answered; absent in older rows = none), `tailored` (session +
   droppedBlocks + changes + rationale + safetyNote), `findings`, `feedbackHistory[]`,
   `model`, `createdAt`; indexed by `(userId, createdAt)`.
 - **LlmUsage**: `userId`, `kind` (`analyze | tailor | refine`), `createdAt` — the quota
@@ -379,15 +422,12 @@ more than one distinct `day`.
    pick + side + severity + notes), equipment, benchmarks, goals, availability.
 3. **Tailor:** paste (or enter manually) + describe today's situation, optionally a time
    cap, a target movement, today's equipment.
-4. **Confirm today's conditions** when the analysis suggests any: one card per condition
-   (label, side, severity in plain words — mild: a niggle, you can train almost normally;
-   moderate: pain that limits some movements; acute: a recent injury, sharp pain, or told
-   to rest), pre-filled with the suggestion; remove it or add a missed one. Limitations
-   (not injuries) always apply and show no severity.
+4. **Clarify** only when phase 1 has a question (see *Clarify*): which loads bother a
+   painful site, or which replacement to use when the best one loads that site too.
 5. **Progress** shows the engine stage (analyzing → tailoring → validating).
 6. **Result:** original vs tailored side by side per block, caution badges, unverified
    movements, what changed and why, dropped blocks, rationale, safety note + disclaimer.
-7. **Refine** with feedback (new conditions are confirmed the same way), or **save** exactly what was reviewed (no re-run) to history.
+7. **Refine** with feedback (new restrictions are clarified the same way), or **save** exactly what was reviewed (no re-run) to history.
 
 ## Quality strategy
 
@@ -396,10 +436,11 @@ more than one distinct `day`.
   stream helper.
 - **Evaluation harness** (`pnpm eval`, needs `GEMINI_API_KEY`): synthetic/public cases in
   `evals/cases/*.json` run through the real pipeline and graded by the deterministic
-  validator plus per-case expectations. The harness plays the athlete: it confirms the
-  suggested conditions as read, unless a case pins `confirm` (the conditions the athlete
-  would confirm), which grades the tailor without the analyzer's severity noise; `mustDetect`
-  always grades the suggestions. Expectations: (`mustAvoid`, `mustDetect`, `maxTotalMinutes`,
+  validator plus per-case expectations. The harness plays the athlete: a site question is
+  answered "everything that loads it" (the conservative answer) and a replacement question
+  takes the preselected option. Expectations: (`mustAvoid`, `mustKeep` (original movements
+  that must survive: a snatch ban keeps toes-to-bar), `mustDetect` (today's catalog
+  conditions), `mustRestrict` (sites today's restrictions must name), `maxTotalMinutes`,
   `expectFailClosed`, `originalMustContain` / `originalMustNotContain`, which pin how
   the original was recognized, and `mustKeepPatterns`, the movement patterns some tailored
   movement must still train).
