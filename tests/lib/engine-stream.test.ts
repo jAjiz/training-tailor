@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { engineStreamResponse } from "@/lib/engine-stream";
 import { readEngineOutcome, readEngineStream, type EngineEvent } from "@/lib/engine-events";
+import { EngineTimeoutError } from "@/lib/ai/provider";
 import { EngineUnsafeError } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
 import { fran, identityResult } from "../fixtures/workouts";
@@ -35,6 +36,13 @@ describe("engine stream", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const res = engineStreamResponse(async () => { throw new EngineUnsafeError([]); });
     expect(await events(res)).toEqual([{ type: "error", error: "engine_unsafe" }]);
+    warn.mockRestore();
+  });
+
+  it("reports an engine out of time as engine_timeout", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = engineStreamResponse(async () => { throw new EngineTimeoutError(); });
+    expect(await events(res)).toEqual([{ type: "error", error: "engine_timeout" }]);
     warn.mockRestore();
   });
 

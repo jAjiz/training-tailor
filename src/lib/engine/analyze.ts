@@ -1,4 +1,4 @@
-import type { LlmProvider } from "@/lib/ai/provider";
+import { EngineTimeoutError, type LlmProvider } from "@/lib/ai/provider";
 import {
   Equipment, Position, Site, StressMechanism, type Contraindication, type Movement, type StimulusDef, type StimulusTaxonomy,
 } from "@/lib/domain/types";
@@ -151,6 +151,7 @@ export async function analyzePaste(
       analyzed: true,
     };
   } catch (e) {
+    if (e instanceof EngineTimeoutError) throw e; // out of time: degrading would only fail later
     console.error("analyzePaste failed; degrading to a raw block", e);
     const s = await analyzeSituation(provider, situation, ctx); // stated pain is never ignored
     return {
@@ -190,6 +191,7 @@ export async function analyzeManual(
     });
     return { workout: build(out.stimuli), ...clean(out, ctx), analyzed: true };
   } catch (e) {
+    if (e instanceof EngineTimeoutError) throw e;
     console.error("analyzeManual failed; continuing without stimulus", e);
     const s = await analyzeSituation(provider, situation, ctx);
     return { workout: build([]), ...s, analyzed: false };

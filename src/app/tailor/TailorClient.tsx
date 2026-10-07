@@ -46,6 +46,7 @@ const ERROR_TEXT: Record<string, string> = {
   quota_exceeded: "You reached today's limit. Try again tomorrow.",
   engine_unavailable: "The engine is not configured.",
   engine_failed: "The engine failed. Try again.",
+  engine_timeout: "The AI service is slow right now. Try again in a minute.",
   engine_unsafe: "We could not produce a modification that is safe for your conditions. Rephrase your situation, or check with a professional.",
 };
 

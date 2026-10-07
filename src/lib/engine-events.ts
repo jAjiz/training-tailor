@@ -1,7 +1,7 @@
 import type { ProgressStage } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
 
-export type EngineErrorCode = "engine_failed" | "engine_unsafe";
+export type EngineErrorCode = "engine_failed" | "engine_unsafe" | "engine_timeout";
 
 export type EngineEvent =
   | { type: "progress"; stage: ProgressStage }
