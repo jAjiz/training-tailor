@@ -1,9 +1,11 @@
 import type { LlmProvider } from "@/lib/ai/provider";
-import { Equipment, type Contraindication, type Movement, type StimulusDef, type StimulusTaxonomy } from "@/lib/domain/types";
-import { createMovementResolver } from "@/lib/domain/resolve";
+import {
+  Equipment, Position, Site, StressMechanism, type Contraindication, type Movement, type StimulusDef, type StimulusTaxonomy,
+} from "@/lib/domain/types";
+import { createMovementResolver, movementFamily } from "@/lib/domain/resolve";
 import {
   ManualAnalysisSchema, PasteAnalysisSchema, SituationAnalysisSchema,
-  type DetectedCondition, type ManualWorkout, type SituationAnalysis, type StimulusProfile, type StructuredWorkout,
+  type DetectedCondition, type ManualWorkout, type Restriction, type SituationAnalysis, type StimulusProfile, type StructuredWorkout,
 } from "./types";
 import { renderBlock, renderManualWorkout } from "./render-text";
 import { resolveBlocks } from "./resolve-blocks";
@@ -14,13 +16,26 @@ export interface AnalyzeContext {
   taxonomy: StimulusTaxonomy;
 }
 
-export interface WorkoutAnalysis extends SituationAnalysis {
+/** The analyzer's reading of a situation, cleaned: restrictions resolved to library names. */
+export interface SituationReading {
+  restrictions: Restriction[];
+  conditions: DetectedCondition[];
+  unavailableEquipment: Equipment[];
+}
+
+export interface WorkoutAnalysis extends SituationReading {
   workout: StructuredWorkout;
   analyzed: boolean; // false = degraded to a raw block
 }
 
 const SITUATION_RULES = `From the SITUATION text (any language) report:
-- "conditions": each injury, limitation or condition it describes, as a key from the CONDITION CATALOG only; never invent keys and omit what does not fit. "side": left/right/both when stated, else null. "severity": "mild" (a niggle), "moderate" (pain that limits training; the default when unclear) or "acute" (recent injury, sharp pain, told to rest). "evidence": the athlete's own words.
+- "restrictions": one per pain or limit the athlete describes, in THEIR scope; never add what they did not name.
+  - "site": where it hurts, only from: ${Site.options.join(", ")}; null when not said. "side": left/right/both when stated, else null.
+  - "movements": MOVEMENT LIBRARY names the athlete says they cannot or will not do today. A general name covers every library variant of it: "snatch" lists every snatch variant (Power Snatch, Hang Power Snatch, Squat Snatch, Dumbbell Snatch, ...). Empty when they named none.
+  - "mechanisms": kinds of load they name in general terms, only from: ${StressMechanism.options.join(", ")} ("nothing overhead" → overhead, "no jumping" → impact). Empty when they named none.
+  - "positions": positions they name, only from: ${Position.options.join(", ")} ("I can't hang" → hanging). Empty when they named none.
+  - Pain alone ("my shoulder hurts") gives a site with empty lists. "evidence": the athlete's own words.
+- "conditions": only non-pain conditions from the CONDITION CATALOG (e.g. pregnancy); never a pain or an injury. "side" null, "severity" "moderate", "evidence": the athlete's words.
 - "unavailableEquipment": equipment the athlete says they lack today, only from: ${Equipment.options.join(", ")}.`;
 
 const STIMULUS_RULES = `"stimulus" per block is the intended training effect, using only TAXONOMY keys: "quality", "energySystem" (null when not metabolic, e.g. skill work) and "loadIntensity" (null when unloaded), plus a one-sentence "rationale". Use null for the whole stimulus only for a pure rest block.`;
@@ -50,30 +65,34 @@ ${SITUATION_RULES}`;
 
 const defs = (title: string, list: StimulusDef[]) => `${title}:\n${list.map((d) => `- ${d.key}: ${d.description}`).join("\n")}`;
 
+// Today's pain is read as restrictions: only non-pain conditions come from the catalog.
+const todayCatalog = (ctx: AnalyzeContext) => ctx.contraindications.filter((c) => c.kind === "condition");
+
 function catalogText(ctx: AnalyzeContext): string {
-  return `CONDITION CATALOG:\n${ctx.contraindications.map((c) => `- ${c.key}: ${c.label} [${c.kind}]`).join("\n")}`;
+  return `CONDITION CATALOG:\n${todayCatalog(ctx).map((c) => `- ${c.key}: ${c.label} [${c.kind}]`).join("\n")}`;
 }
 
+const libraryText = (ctx: AnalyzeContext) => `MOVEMENT LIBRARY:\n${ctx.movements
+  .map((m) => (m.aliases.length > 0 ? `- ${m.name} (aka ${m.aliases.join(", ")})` : `- ${m.name}`))
+  .join("\n")}`;
+
 function vocabularyText(ctx: AnalyzeContext): string {
-  const library = ctx.movements
-    .map((m) => (m.aliases.length > 0 ? `- ${m.name} (aka ${m.aliases.join(", ")})` : `- ${m.name}`))
-    .join("\n");
   const taxonomy = [
     defs("quality", ctx.taxonomy.qualities),
     defs("energySystem", ctx.taxonomy.energySystems),
     defs("loadIntensity", ctx.taxonomy.loadIntensities),
   ].join("\n\n");
-  return `MOVEMENT LIBRARY:\n${library}\n\n${catalogText(ctx)}\n\nTAXONOMY:\n${taxonomy}`;
+  return `${libraryText(ctx)}\n\n${catalogText(ctx)}\n\nTAXONOMY:\n${taxonomy}`;
 }
 
 const situationText = (situation: string) => `SITUATION:\n"""\n${situation.trim() || "(none)"}\n"""`;
 
 function knownConditions(detected: DetectedCondition[], ctx: AnalyzeContext): DetectedCondition[] {
-  const keys = new Set(ctx.contraindications.map((c) => c.key));
+  const keys = new Set(todayCatalog(ctx).map((c) => c.key));
   const seen = new Set<string>();
   return detected.filter((d) => {
     if (!keys.has(d.key)) {
-      console.warn(`analyze: dropped unknown condition key "${d.key}"`);
+      console.warn(`analyze: dropped condition key "${d.key}"`);
       return false;
     }
     if (seen.has(d.key)) return false;
@@ -82,15 +101,31 @@ function knownConditions(detected: DetectedCondition[], ctx: AnalyzeContext): De
   });
 }
 
-function clean(s: SituationAnalysis, ctx: AnalyzeContext): SituationAnalysis {
-  return { conditions: knownConditions(s.conditions, ctx), unavailableEquipment: [...new Set(s.unavailableEquipment)] };
+function clean(s: SituationAnalysis, ctx: AnalyzeContext): SituationReading {
+  const resolve = createMovementResolver(ctx.movements);
+  const restrictions = s.restrictions.map((r): Restriction => {
+    // A general name ("Snatch") that is no library row covers every variant of it.
+    const movements = r.movements.flatMap((n) => {
+      const m = resolve(n);
+      const names = m ? [m.name] : movementFamily(n, ctx.movements).map((x) => x.name);
+      if (names.length === 0) console.warn(`analyze: dropped unknown restricted movement "${n}"`);
+      return names;
+    });
+    return {
+      ...r, movements: [...new Set(movements)], mechanisms: [...new Set(r.mechanisms)],
+      positions: [...new Set(r.positions)], replacements: [],
+    };
+  });
+  return {
+    restrictions, conditions: knownConditions(s.conditions, ctx), unavailableEquipment: [...new Set(s.unavailableEquipment)],
+  };
 }
 
-export async function analyzeSituation(provider: LlmProvider, situation: string, ctx: AnalyzeContext): Promise<SituationAnalysis> {
-  if (situation.trim() === "") return { conditions: [], unavailableEquipment: [] };
+export async function analyzeSituation(provider: LlmProvider, situation: string, ctx: AnalyzeContext): Promise<SituationReading> {
+  if (situation.trim() === "") return { restrictions: [], conditions: [], unavailableEquipment: [] };
   const out = await provider.generateStructured({
     systemPrompt: SITUATION_SYSTEM,
-    prompt: `${catalogText(ctx)}\n\n${situationText(situation)}`,
+    prompt: `${libraryText(ctx)}\n\n${catalogText(ctx)}\n\n${situationText(situation)}`,
     schema: SituationAnalysisSchema,
     schemaName: "SituationAnalysis",
   });

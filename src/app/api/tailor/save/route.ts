@@ -20,6 +20,7 @@ export async function POST(req: Request) {
       original: toJson(result.original),
       request: toJson(request),
       conditions: toJson(result.conditions),
+      restrictions: toJson(result.restrictions),
       tailored: toJson(result.tailored),
       findings: toJson(result.findings),
       feedbackHistory: toJson(result.feedbackHistory),

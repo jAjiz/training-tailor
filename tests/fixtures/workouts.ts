@@ -85,3 +85,21 @@ export function identityResult(workout: StructuredWorkout): TailoringResult {
     blocks: workout.blocks.map((b, i) => ({ ...b, sourceBlocks: [i] })),
   };
 }
+
+export const SNATCH_TEXT = "10 rounds for time:\n3 power snatch\n5 burpee facing bar\n7 toes to bar";
+
+/** The user's session: a snatch ban must leave toes-to-bar alone. */
+export function snatchSession(): StructuredWorkout {
+  return resolved({
+    name: null,
+    blocks: [{
+      title: null, rawText: SNATCH_TEXT, day: null, format: "for_time", scheme: "10 rounds for time",
+      timeDomainMinutes: 15, coachingNotes: null, stimulus: sprint,
+      components: [
+        component("Power Snatch", { reps: 3, load: "60/40 kg", loadKg: { male: 60, female: 40 } }),
+        component("Bar-facing Burpee", { reps: 5 }),
+        component("Toes-to-Bar", { reps: 7 }),
+      ],
+    }],
+  }, SNATCH_TEXT);
+}

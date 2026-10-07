@@ -1,16 +1,40 @@
 {
   "id": "fran-shoulder-mild-knee-dumbbells",
-  "description": "Fran at home with dumbbells, a sore right shoulder today and a mild left knee: the Thruster keeps its squat and the pull-up becomes a row",
-  "input": { "kind": "paste", "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
-  "profile": {
-    "equipment": ["dumbbell", "jump_rope"],
-    "injuries": [{ "key": "knee_pain", "side": "left", "severity": "mild", "notes": null, "since": null }]
+  "description": "Fran at home with dumbbells, a sore right shoulder today (every shoulder load banned, as the harness answers) and a mild left knee",
+  "input": {
+    "kind": "paste",
+    "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups"
   },
-  "request": { "situation": "sore right shoulder" },
-  "confirm": [{ "key": "shoulder_impingement", "side": "right", "severity": "moderate", "evidence": null }],
+  "profile": {
+    "equipment": [
+      "dumbbell",
+      "jump_rope"
+    ],
+    "injuries": [
+      {
+        "key": "knee_pain",
+        "side": "left",
+        "severity": "mild",
+        "notes": null,
+        "since": null
+      }
+    ]
+  },
+  "request": {
+    "situation": "sore right shoulder"
+  },
   "expect": {
-    "mustDetect": ["shoulder_impingement"],
-    "mustAvoid": ["Thruster", "Pull-up", "Dumbbell Bench Press"],
-    "mustKeepPatterns": ["squat", "horizontal_pull"]
+    "mustRestrict": [
+      "shoulder"
+    ],
+    "mustAvoid": [
+      "Thruster",
+      "Pull-up",
+      "Dumbbell Bench Press"
+    ],
+    "mustKeepPatterns": [
+      "squat",
+      "horizontal_pull"
+    ]
   }
 }

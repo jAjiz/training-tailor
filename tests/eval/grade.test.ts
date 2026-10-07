@@ -8,14 +8,15 @@ const baseCase = EvalCaseSchema.parse({
   id: "fran-shoulder", description: "Fran with a sore shoulder",
   input: { kind: "paste", rawText: "Fran" },
   request: { situation: "sore shoulder" },
-  expect: { mustAvoid: ["Thruster"], mustDetect: ["shoulder_impingement"], maxTotalMinutes: 10 },
+  expect: { mustAvoid: ["Thruster"], mustRestrict: ["shoulder"], maxTotalMinutes: 10 },
 });
 
 function result(overrides: Partial<PipelineResult> = {}): PipelineResult {
   const original = fran();
   return {
     original,
-    conditions: [{ key: "shoulder_impingement", side: "right", severity: "moderate", source: "today", evidence: "sore" }],
+    conditions: [],
+    restrictions: [{ site: "shoulder", side: "right", movements: [], mechanisms: ["overhead"], positions: [], evidence: "sore", replacements: [] }],
     unavailableEquipment: [],
     tailored: {
       name: null, rawText: "x", droppedBlocks: [], changes: [], rationale: "r", safetyNote: null,
@@ -35,22 +36,21 @@ describe("eval grading", () => {
   it("fills defaults for profile, request and expectations", () => {
     const c = EvalCaseSchema.parse({ id: "x", description: "x", input: { kind: "paste", rawText: "x" } });
     expect(c.expect).toEqual({
-      mustAvoid: [], mustDetect: [], maxTotalMinutes: null, expectFailClosed: false,
+      mustAvoid: [], mustKeep: [], mustDetect: [], mustRestrict: [], maxTotalMinutes: null, expectFailClosed: false,
       originalMustContain: [], originalMustNotContain: [], mustKeepPatterns: [],
     });
     const { profile, request } = resolveCase(c);
     expect(profile.equipment).toBeNull();
     expect(request.situation).toBe("");
-    expect(resolveCase(c).confirm).toBeNull();
   });
 
   it("passes a clean result that meets every expectation", () => {
     expect(gradeCase(baseCase, { kind: "result", result: result() })).toEqual({ passed: true, failures: [] });
   });
 
-  it("fails on violations, forbidden movements, missed detections and overtime", () => {
+  it("fails on violations, forbidden movements, missed restrictions and overtime", () => {
     const bad = result({
-      conditions: [],
+      restrictions: [],
       findings: [{ kind: "time_cap_exceeded", severity: "violation", blockIndex: null, movement: null, message: "over" }],
     });
     bad.tailored.blocks[0].components = [{ ...bad.tailored.blocks[0].components[0], movement: "Thruster", canonical: "Thruster" }];
@@ -60,7 +60,7 @@ describe("eval grading", () => {
     expect(g.failures).toEqual([
       "violation [time_cap_exceeded] over",
       "prescribed forbidden movement Thruster",
-      "did not detect shoulder_impingement",
+      "no restriction on the shoulder",
       "total 20 min > 10 min",
     ]);
   });
@@ -104,14 +104,14 @@ describe("eval grading", () => {
     expect(gradeCase(closed, { kind: "result", result: result() }).failures).toEqual(["expected the engine to fail closed"]);
   });
 
-  it("grades detection on the suggestions and accepts the conditions a case confirms", () => {
+  it("grades today's non-pain conditions, and the movements nothing restricted", () => {
     const c = EvalCaseSchema.parse({
-      id: "confirm", description: "x", input: { kind: "paste", rawText: "x" },
-      confirm: [{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }],
-      expect: { mustDetect: ["shoulder_impingement"] },
+      id: "keep", description: "x", input: { kind: "paste", rawText: "x" },
+      expect: { mustDetect: ["pregnancy"], mustKeep: ["Ring Row", "Toes-to-Bar"] },
     });
-    expect(resolveCase(c).confirm).toEqual([{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }]);
-    expect(gradeCase(c, { kind: "result", result: result(), suggested: [] }).failures).toEqual(["did not detect shoulder_impingement"]);
-    expect(gradeCase(c, { kind: "result", result: result(), suggested: ["shoulder_impingement"] }).passed).toBe(true);
+    expect(gradeCase(c, { kind: "result", result: result() }).failures).toEqual([
+      "dropped Toes-to-Bar, which nothing restricted",
+      "did not detect pregnancy",
+    ]);
   });
 });

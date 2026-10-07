@@ -19,13 +19,15 @@ describe("engine schemas", () => {
     expect(StructuredWorkoutSchema.parse(split()).blocks).toHaveLength(2);
   });
 
-  it("parses a paste analysis with detected conditions", () => {
+  it("parses a paste analysis with restrictions and non-pain conditions", () => {
     const a = PasteAnalysisSchema.parse({
       workout: franDraft(),
-      conditions: [{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: "me duele el hombro" }],
+      restrictions: [{ site: "shoulder", side: "right", movements: ["Power Snatch"], mechanisms: [], positions: [], evidence: "me duele el hombro" }],
+      conditions: [{ key: "pregnancy", side: null, severity: "moderate", evidence: "embarazada" }],
       unavailableEquipment: ["rower"],
     });
-    expect(a.conditions[0].side).toBe("right");
+    expect(a.restrictions[0].side).toBe("right");
+    expect(a.conditions[0].key).toBe("pregnancy");
   });
 
   it("parses a tailoring draft (model output) and a resolved tailoring result", () => {

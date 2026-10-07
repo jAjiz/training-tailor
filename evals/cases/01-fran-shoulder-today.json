@@ -1,8 +1,24 @@
 {
   "id": "fran-shoulder-today",
-  "description": "Fran with right-shoulder pain stated today in Spanish",
-  "input": { "kind": "paste", "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
-  "request": { "situation": "Me duele el hombro derecho al levantar el brazo por encima de la cabeza" },
-  "confirm": [{ "key": "shoulder_impingement", "side": "right", "severity": "moderate", "evidence": null }],
-  "expect": { "mustDetect": ["shoulder_impingement"], "mustAvoid": ["Thruster", "Pull-up", "Shoulder Press", "Push Press"] }
+  "description": "Fran with right-shoulder pain overhead stated today in Spanish: only overhead work changes",
+  "input": {
+    "kind": "paste",
+    "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups"
+  },
+  "request": {
+    "situation": "Me duele el hombro derecho al levantar el brazo por encima de la cabeza"
+  },
+  "expect": {
+    "mustRestrict": [
+      "shoulder"
+    ],
+    "mustAvoid": [
+      "Thruster",
+      "Shoulder Press",
+      "Push Press"
+    ],
+    "mustKeep": [
+      "Pull-up"
+    ]
+  }
 }

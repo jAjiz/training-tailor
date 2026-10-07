@@ -14,7 +14,7 @@ function result(extraOriginal: string[] = [], extraTailored: string[] = []): Pip
   const base = original.blocks[0].components[0];
   original.blocks[0].components.push(...extraOriginal.map((m) => unknown(base, m)));
   tailored.blocks[0].components.push(...extraTailored.map((m) => unknown(base, m)));
-  return { original, conditions: [], unavailableEquipment: [], tailored, findings: [], feedbackHistory: [], model: "fake" };
+  return { original, conditions: [], restrictions: [], unavailableEquipment: [], tailored, findings: [], feedbackHistory: [], model: "fake" };
 }
 
 function store(fail = false): UnrecognizedStore & { record: ReturnType<typeof vi.fn> } {

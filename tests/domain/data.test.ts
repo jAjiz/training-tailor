@@ -44,6 +44,10 @@ describe("domain data integrity", () => {
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
   });
 
+  it("a power snatch scales to the power clean first: same pull, no shoulder overhead", () => {
+    expect(byName("Power Snatch").substitutes[0]).toBe("Power Clean");
+  });
+
   it("the goblet squat has one row per implement, each scaling only to the air squat", () => {
     expect(byName("Dumbbell Goblet Squat").equipment).toEqual(["dumbbell"]);
     expect(byName("Kettlebell Goblet Squat").equipment).toEqual(["kettlebell"]);

@@ -6,7 +6,7 @@ import type { PipelineResult } from "@/lib/engine/types";
 import { fran, identityResult } from "../fixtures/workouts";
 
 const result: PipelineResult = {
-  original: fran(), conditions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  original: fran(), conditions: [], restrictions: [], unavailableEquipment: [], tailored: identityResult(fran()),
   findings: [], feedbackHistory: [], model: "fake",
 };
 

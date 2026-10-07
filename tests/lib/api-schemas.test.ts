@@ -1,13 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { AnalyzeBodySchema, AnalyzeFeedbackBodySchema, RefineBodySchema, SaveBodySchema, TailorBodySchema } from "@/lib/api-schemas";
-import { emptyRequest, type PipelineResult } from "@/lib/engine/types";
+import { RestrictionDraftSchema, emptyRequest, type PipelineResult } from "@/lib/engine/types";
 import { fran, identityResult } from "../fixtures/workouts";
 
 const result: PipelineResult = {
-  original: fran(), conditions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  original: fran(), conditions: [], restrictions: [], unavailableEquipment: [], tailored: identityResult(fran()),
   findings: [], feedbackHistory: [], model: "fake",
 };
-const shoulder = { key: "shoulder_impingement", side: "right", severity: "mild", evidence: "sore" };
+const pregnancy = { key: "pregnancy", side: null, severity: "moderate", evidence: "embarazada" };
+const snatch = {
+  site: "shoulder", side: null, movements: ["Power Snatch"], mechanisms: [], positions: [], evidence: "no snatch",
+  replacements: [{ blockIndex: 0, componentIndex: 0, replacement: "Power Clean" }],
+};
 
 describe("API bodies", () => {
   it("accepts a paste and a manual workout to analyze", () => {
@@ -23,21 +27,25 @@ describe("API bodies", () => {
     expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "x".repeat(20001) }, request: emptyRequest() }).success).toBe(false);
   });
 
-  it("tailors an analyzed session with the confirmed conditions, including athlete-added ones", () => {
-    const body = (confirmed: unknown[]) => ({ analysis: { original: fran(), unavailableEquipment: [] }, confirmed, request: emptyRequest() });
-    expect(TailorBodySchema.safeParse(body([shoulder, { key: "no_hanging", side: null, severity: "moderate", evidence: null }])).success).toBe(true);
-    expect(TailorBodySchema.safeParse(body([{ ...shoulder, severity: "unbearable" }])).success).toBe(false);
-    expect(TailorBodySchema.safeParse(body(Array.from({ length: 21 }, () => shoulder))).success).toBe(false);
-    // Suggestions the athlete removed; optional, so an older client still validates.
-    expect(TailorBodySchema.parse(body([])).dismissed).toEqual([]);
-    expect(TailorBodySchema.safeParse({ ...body([]), dismissed: [{ key: "shoulder_impingement", evidence: "sore" }] }).success).toBe(true);
-    expect(TailorBodySchema.safeParse({ ...body([]), dismissed: ["shoulder_impingement"] }).success).toBe(false);
+  it("tailors an analyzed session with today's conditions and answered restrictions", () => {
+    const body = (restrictions: unknown[]) => ({
+      analysis: { original: fran(), unavailableEquipment: [] }, confirmed: [pregnancy], restrictions, request: emptyRequest(),
+    });
+    expect(TailorBodySchema.safeParse(body([snatch])).success).toBe(true);
+    // An older client without replacements still validates.
+    const bare = RestrictionDraftSchema.parse(snatch); // zod strips the replacements
+    expect(TailorBodySchema.parse(body([bare])).restrictions[0].replacements).toEqual([]);
+    expect(TailorBodySchema.safeParse(body([{ ...snatch, site: "toe" }])).success).toBe(false);
+    expect(TailorBodySchema.safeParse(body(Array.from({ length: 21 }, () => snatch))).success).toBe(false);
   });
 
   it("requires feedback to analyze or refine", () => {
-    expect(AnalyzeFeedbackBodySchema.safeParse({ feedback: "  " }).success).toBe(false);
-    expect(AnalyzeFeedbackBodySchema.safeParse({ feedback: "too easy" }).success).toBe(true);
-    const refine = (feedback: string) => ({ previous: result, feedback, confirmed: [], unavailableEquipment: [], request: emptyRequest() });
+    const session = { original: fran(), conditions: [], restrictions: [snatch], unavailableEquipment: [] };
+    const analyze = (feedback: string) => ({ feedback, session, request: emptyRequest() });
+    expect(AnalyzeFeedbackBodySchema.safeParse(analyze("  ")).success).toBe(false);
+    expect(AnalyzeFeedbackBodySchema.safeParse(analyze("too easy")).success).toBe(true);
+    expect(AnalyzeFeedbackBodySchema.safeParse({ feedback: "too easy" }).success).toBe(false);
+    const refine = (feedback: string) => ({ previous: result, feedback, confirmed: [], restrictions: [], unavailableEquipment: [], request: emptyRequest() });
     expect(RefineBodySchema.safeParse(refine("")).success).toBe(false);
     expect(RefineBodySchema.safeParse(refine("too easy")).success).toBe(true);
   });

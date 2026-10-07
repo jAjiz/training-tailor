@@ -30,7 +30,7 @@ function input(overrides: Partial<TailorInput> = {}): TailorInput {
     conversions: domain.conversions,
     previousAttempt: null,
     violations: [],
-    dismissed: [],
+    restrictions: [],
     ...overrides,
   };
 }
@@ -86,11 +86,17 @@ describe("buildTailorPrompt", () => {
     expect(p).toMatch(/\[b0\.c1\] Pull-up → AVOID.*MUST CHANGE; no candidate: remove it/);
   });
 
-  it("names the conditions the athlete ruled out, only when there are any", () => {
-    expect(buildTailorPrompt(input())).not.toContain("RULED OUT");
-    const p = buildTailorPrompt(input({ dismissed: ["shoulder_impingement"] }));
-    expect(p).toContain("RULED OUT BY THE ATHLETE");
-    expect(p).toContain("- shoulder_impingement (Shoulder impingement)");
+  it("lists today's restrictions with their plan keys, or none", () => {
+    expect(buildTailorPrompt(input())).toContain("TODAY'S RESTRICTIONS (the athlete's own scope: each bans exactly what it lists):\nnone");
+    const r = { side: "right" as const, mechanisms: [], positions: [], replacements: [] };
+    const p = buildTailorPrompt(input({ restrictions: [
+      { ...r, site: "shoulder", movements: ["Power Snatch"], evidence: "no puedo hacer snatch" },
+      { ...r, site: null, side: null, movements: [], mechanisms: ["overhead"], evidence: "nada por encima de la cabeza" },
+      { ...r, site: "knee", movements: [], evidence: "la rodilla" },
+    ] }));
+    expect(p).toContain('- today_0: shoulder (right); cannot do: Power Snatch — "no puedo hacer snatch"');
+    expect(p).toContain('- today_1: no site named; no overhead load — "nada por encima de la cabeza"');
+    expect(p).toContain('- today_2: knee (right); context only (the athlete can do everything) — "la rodilla"');
   });
 
   it("lists the athlete's equipment when it is restricted", () => {
@@ -153,10 +159,10 @@ describe("tailor", () => {
     expect(schema.safeParse(withChange("Sandbag Thruster")).success).toBe(false);
   });
 
-  it("tells the model that only the confirmed conditions apply, whatever the situation text says", async () => {
+  it("tells the model never to change a movement for pain the plan does not mark", async () => {
     const provider = new FakeProvider({ TailoringResult: toTailoringDraft(fran()) });
     await tailor(provider, input());
-    expect(provider.calls[0].systemPrompt).toMatch(/ACTIVE CONDITIONS are the only conditions/);
+    expect(provider.calls[0].systemPrompt).toMatch(/Never change, drop or scale down a movement for pain the plan does not mark/);
   });
 
   it("tells the model to keep the safe part of a combined movement", async () => {

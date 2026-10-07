@@ -1,17 +1,20 @@
 import type { LlmProvider } from "@/lib/ai/provider";
-import type { ActiveCondition } from "@/lib/domain/assess";
+import { assessMovement, type ActiveCondition } from "@/lib/domain/assess";
 import type { DomainData } from "@/lib/domain/repository";
 import { createMovementResolver } from "@/lib/domain/resolve";
 import type { Equipment } from "@/lib/domain/types";
 import { analyzeManual, analyzePaste, analyzeSituation, type AnalyzeContext } from "./analyze";
-import { activateConditions, profileConditionRefs } from "./conditions";
-import { availableEquipment, goalFamily, planComponents } from "./plan";
+import { buildQuestions } from "./clarify";
+import { activateConditions, profileConditionRefs, restrictionConditions } from "./conditions";
+import {
+  availableEquipment, goalFamily, missingEquipment, planComponents, type ComponentPlan, type PlanContext,
+} from "./plan";
 import { tailor, type TailorInput } from "./tailor";
 import {
   REMOVED_MOVEMENT,
-  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type DismissedCondition, type FeedbackAnalysis,
-  type Finding, type ManualWorkout,
-  type PipelineResult, type StructuredWorkout, type TailorRequest, type TailoringResult, type WorkoutAnalysisResult,
+  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding, type ManualWorkout,
+  type PipelineResult, type Restriction, type StructuredWorkout, type TailorRequest, type TailoringResult,
+  type WorkoutAnalysisResult,
 } from "./types";
 import { isViolation, validateTailoring } from "./validate";
 
@@ -28,15 +31,32 @@ export class EngineUnsafeError extends Error {
 
 export interface AnalyzeArgs {
   input: WorkoutInput;
-  situation: string;
+  request: TailorRequest;
+  profile: AthleteProfile;
   domain: DomainData;
 }
 
-/** Phase 2 input: the phase-1 session plus the conditions the athlete confirmed. */
+/** What the session already carries when feedback (or a clarifying free-text answer) is analyzed. */
+export interface FeedbackSession {
+  original: StructuredWorkout;
+  conditions: ConditionRef[];
+  restrictions: Restriction[];
+  unavailableEquipment: Equipment[];
+}
+
+export interface FeedbackArgs {
+  feedback: string;
+  session: FeedbackSession;
+  request: TailorRequest;
+  profile: AthleteProfile;
+  domain: DomainData;
+}
+
+/** Phase 2 input: the phase-1 session, today's conditions and the answered restrictions. */
 export interface PipelineArgs {
   original: StructuredWorkout;
-  confirmed: ConfirmedCondition[];
-  dismissed?: DismissedCondition[]; // suggestions the athlete ruled out
+  confirmed: ConfirmedCondition[]; // today's non-pain catalog conditions
+  restrictions: Restriction[];
   unavailableEquipment: Equipment[];
   profile: AthleteProfile;
   request: TailorRequest;
@@ -47,8 +67,8 @@ export interface PipelineArgs {
 export interface RefineArgs {
   previous: PipelineResult;
   feedback: string;
-  confirmed: ConfirmedCondition[]; // conditions the feedback added, as the athlete confirmed them
-  dismissed?: DismissedCondition[]; // conditions the feedback suggested that the athlete ruled out
+  confirmed: ConfirmedCondition[]; // non-pain conditions the feedback added
+  restrictions: Restriction[]; // restrictions the feedback added, answered
   unavailableEquipment: Equipment[]; // equipment the feedback says is missing
   profile: AthleteProfile;
   request: TailorRequest;
@@ -58,47 +78,33 @@ export interface RefineArgs {
 
 interface TailorStage {
   original: StructuredWorkout;
-  active: ActiveCondition[];
   refs: ConditionRef[];
+  catalogActive: ActiveCondition[]; // profile and today's catalog conditions, index-aligned with refs
+  restrictions: Restriction[];
   unavailable: Equipment[];
   profile: AthleteProfile;
   request: TailorRequest;
   domain: DomainData;
   previousAttempt: TailorInput["previousAttempt"];
-  dismissed: DismissedCondition[];
   progress: (stage: ProgressStage) => void;
-}
-
-const cutPhrase = (text: string, phrase: string) =>
-  text.replace(new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
-
-/**
- * Keeps what the athlete ruled out away from the tailor: naming it, even as "ruled out", draws the model to it.
- * Its words are cut from the situation and the latest feedback; only when the analyzer paraphrased them (nothing
- * to cut) is it named as ruled out. A profile injury still applies even if today's same suggestion was dismissed.
- */
-function hideDismissed(s: TailorStage): Pick<TailorInput, "request" | "previousAttempt" | "dismissed"> {
-  let situation = s.request.situation;
-  const history = s.previousAttempt?.feedbackHistory ?? [];
-  let latest = history.at(-1) ?? "";
-  const ruledOut: string[] = [];
-  for (const d of s.dismissed) {
-    if (s.refs.some((r) => r.key === d.key)) continue;
-    const phrase = d.evidence?.trim();
-    const [cutSituation, cutLatest] = phrase ? [cutPhrase(situation, phrase), cutPhrase(latest, phrase)] : [situation, latest];
-    if (cutSituation === situation && cutLatest === latest) ruledOut.push(d.key);
-    [situation, latest] = [cutSituation, cutLatest];
-  }
-  return {
-    request: { ...s.request, situation },
-    previousAttempt: s.previousAttempt && { ...s.previousAttempt, feedbackHistory: [...history.slice(0, -1), latest] },
-    dismissed: ruledOut,
-  };
 }
 
 const analyzeContext = (d: DomainData): AnalyzeContext => ({
   movements: d.movements, contraindications: d.contraindications, taxonomy: d.taxonomy,
 });
+
+/** The athlete's pick is that component's only candidate; a pick the conditions or the equipment forbid is ignored. */
+function forceReplacements(plan: ComponentPlan[], restrictions: Restriction[], ctx: PlanContext): ComponentPlan[] {
+  const picks = restrictions.flatMap((r) => r.replacements);
+  return plan.map((p) => {
+    const pick = picks.find((x) => x.blockIndex === p.blockIndex && x.componentIndex === p.componentIndex);
+    const m = pick ? ctx.resolve(pick.replacement) : null;
+    if (!p.needsChange || !m) return p;
+    const verdict = assessMovement(m, ctx.active).verdict;
+    if (verdict === "avoid" || missingEquipment(m, ctx.equipment).length > 0) return p;
+    return { ...p, candidates: [{ name: m.name, verdict, source: "athlete", score: 0 }] };
+  });
+}
 
 const NO_EQUIPMENT_REASON = "No alternative with today's equipment.";
 
@@ -132,15 +138,17 @@ async function tailorAndValidate(
 ): Promise<{ result: TailoringResult; findings: Finding[] }> {
   const { domain } = s;
   const equipment = availableEquipment(s.profile.equipment, s.request.equipmentToday, s.unavailable);
-  const planContext = { movements: domain.movements, resolve: createMovementResolver(domain.movements), active: s.active, equipment };
+  const active = [...s.catalogActive, ...restrictionConditions(s.restrictions)];
+  const planContext = { movements: domain.movements, resolve: createMovementResolver(domain.movements), active, equipment };
   const input: TailorInput = {
-    original: s.original, profile: s.profile, conditions: s.refs,
-    contraindications: domain.contraindications, plan: planComponents(s.original, planContext),
+    original: s.original, profile: s.profile, request: s.request, conditions: s.refs, restrictions: s.restrictions,
+    contraindications: domain.contraindications,
+    plan: forceReplacements(planComponents(s.original, planContext), s.restrictions, planContext),
     goal: goalFamily(s.request.targetMovement, planContext), equipment, movements: domain.movements,
-    conversions: domain.conversions, violations: [], ...hideDismissed(s),
+    conversions: domain.conversions, previousAttempt: s.previousAttempt, violations: [],
   };
   const validate = (result: TailoringResult) => validateTailoring({
-    original: s.original, result, movements: domain.movements, active: s.active, equipment,
+    original: s.original, result, movements: domain.movements, active, equipment,
     timeCapMinutes: s.request.timeCapMinutes,
   });
 
@@ -164,19 +172,41 @@ async function tailorAndValidate(
   return { result, findings };
 }
 
-/** Phase 1: the session and today's SUGGESTED conditions; nothing is applied until the athlete confirms. */
+/**
+ * Phase 1: the session, today's restrictions and non-pain conditions, and the questions only the athlete can
+ * answer (built from the plan, no model call). Nothing is tailored yet.
+ */
 export async function analyzeWorkout(provider: LlmProvider, args: AnalyzeArgs): Promise<WorkoutAnalysisResult> {
   const ctx = analyzeContext(args.domain);
+  const situation = args.request.situation;
   const a = args.input.kind === "paste"
-    ? await analyzePaste(provider, args.input.rawText, args.situation, ctx)
-    : await analyzeManual(provider, args.input.workout, args.situation, ctx);
-  return { original: a.workout, suggested: a.conditions, unavailableEquipment: a.unavailableEquipment, analyzed: a.analyzed };
+    ? await analyzePaste(provider, args.input.rawText, situation, ctx)
+    : await analyzeManual(provider, args.input.workout, situation, ctx);
+  const { active } = activateConditions(profileConditionRefs(args.profile.injuries), a.conditions, args.domain.contraindications);
+  const questions = buildQuestions({
+    original: a.workout, restrictions: a.restrictions, base: active, movements: args.domain.movements,
+    equipment: availableEquipment(args.profile.equipment, args.request.equipmentToday, a.unavailableEquipment),
+  });
+  return {
+    original: a.workout, suggested: a.conditions, restrictions: a.restrictions, questions,
+    unavailableEquipment: a.unavailableEquipment, analyzed: a.analyzed,
+  };
 }
 
-/** Refine phase 1: the conditions and missing equipment the feedback suggests. */
-export async function analyzeFeedback(provider: LlmProvider, feedback: string, domain: DomainData): Promise<FeedbackAnalysis> {
-  const s = await analyzeSituation(provider, feedback, analyzeContext(domain));
-  return { suggested: s.conditions, unavailableEquipment: s.unavailableEquipment };
+/** Refine phase 1 (and a free-text answer to a question): what the feedback adds, and its questions. */
+export async function analyzeFeedback(provider: LlmProvider, args: FeedbackArgs): Promise<FeedbackAnalysis> {
+  const s = await analyzeSituation(provider, args.feedback, analyzeContext(args.domain));
+  const { session } = args;
+  const { active } = activateConditions(
+    [...profileConditionRefs(args.profile.injuries), ...session.conditions], s.conditions, args.domain.contraindications,
+  );
+  const unavailable = [...new Set([...session.unavailableEquipment, ...s.unavailableEquipment])];
+  const questions = buildQuestions({
+    original: session.original, restrictions: s.restrictions, offset: session.restrictions.length,
+    base: [...active, ...restrictionConditions(session.restrictions)], movements: args.domain.movements,
+    equipment: availableEquipment(args.profile.equipment, args.request.equipmentToday, unavailable),
+  });
+  return { suggested: s.conditions, restrictions: s.restrictions, questions, unavailableEquipment: s.unavailableEquipment };
 }
 
 export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
@@ -185,12 +215,12 @@ export async function runTailorPipeline(provider: LlmProvider, args: PipelineArg
     profileConditionRefs(args.profile.injuries), args.confirmed, args.domain.contraindications,
   );
   const { result, findings } = await tailorAndValidate(provider, {
-    original: args.original, active, refs, unavailable: args.unavailableEquipment,
-    profile: args.profile, request: args.request, domain: args.domain, previousAttempt: null, progress,
-    dismissed: args.dismissed ?? [],
+    original: args.original, refs, catalogActive: active, restrictions: args.restrictions,
+    unavailable: args.unavailableEquipment, profile: args.profile, request: args.request, domain: args.domain,
+    previousAttempt: null, progress,
   });
   return {
-    original: args.original, conditions: refs, unavailableEquipment: args.unavailableEquipment,
+    original: args.original, conditions: refs, restrictions: args.restrictions, unavailableEquipment: args.unavailableEquipment,
     tailored: result, findings, feedbackHistory: [], model: provider.model,
   };
 }
@@ -203,15 +233,15 @@ export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs)
     args.confirmed,
     args.domain.contraindications,
   );
+  const restrictions = [...args.previous.restrictions, ...args.restrictions];
   const unavailable = [...new Set([...args.previous.unavailableEquipment, ...args.unavailableEquipment])];
   const feedbackHistory = [...args.previous.feedbackHistory, args.feedback];
   const { result, findings } = await tailorAndValidate(provider, {
-    original: args.previous.original, active, refs, unavailable, profile: args.profile, request: args.request,
-    domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
-    dismissed: args.dismissed ?? [],
+    original: args.previous.original, refs, catalogActive: active, restrictions, unavailable, profile: args.profile,
+    request: args.request, domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
   });
   return {
-    original: args.previous.original, conditions: refs, unavailableEquipment: unavailable,
+    original: args.previous.original, conditions: refs, restrictions, unavailableEquipment: unavailable,
     tailored: result, findings, feedbackHistory, model: provider.model,
   };
 }

@@ -68,15 +68,17 @@ export async function handleEngineRequest<T>(req: Request, route: EngineRoute<T>
 interface AnalyzeRoute<T, R> {
   schema: z.ZodType<T>;
   maxBodyChars: number;
-  run: (body: T, ctx: { provider: LlmProvider; domain: DomainData }) => Promise<R>;
+  run: (body: T, ctx: { provider: LlmProvider; profile: AthleteProfile; domain: DomainData }) => Promise<R>;
 }
 
-/** Phase 1 (analyze): one model call, plain JSON; counted as "analyze". Never leaks exception text. */
+/** Phase 1 (analyze): one model call, plain JSON; counted as "analyze". Never leaks exception text. The profile
+ * (injuries, equipment) shapes the clarifying questions. */
 export async function handleAnalyzeRequest<T, R>(req: Request, route: AnalyzeRoute<T, R>): Promise<Response> {
   const p = await prepare(req, { schema: route.schema, maxBodyChars: route.maxBodyChars, kind: "analyze" });
   if (!p.ok) return p.response;
   try {
-    return NextResponse.json(await route.run(p.body, { provider: p.provider, domain: await getDomainData() }));
+    const [profile, domain] = await Promise.all([loadProfile(p.userId), getDomainData()]);
+    return NextResponse.json(await route.run(p.body, { provider: p.provider, profile, domain }));
   } catch (e) {
     console.error("analysis failed", e);
     return jsonError("engine_failed", 502);

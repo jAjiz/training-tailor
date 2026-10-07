@@ -13,7 +13,7 @@ export interface PlanContext {
 export interface Candidate {
   name: string;
   verdict: "ok" | "caution";
-  source: "substitute" | "pattern" | "related" | "goal";
+  source: "substitute" | "pattern" | "related" | "goal" | "athlete"; // athlete: picked in the clarify step
   score: number;
 }
 

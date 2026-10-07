@@ -1,7 +1,20 @@
 import { WorkoutView } from "@/components/WorkoutView";
 import { componentFindings } from "@/lib/findings";
-import type { CatalogEntry } from "./ConfirmConditions";
-import { REMOVED_MOVEMENT, type Finding, type PipelineResult, type WorkoutComponent } from "@/lib/engine/types";
+import { REMOVED_MOVEMENT, type Finding, type PipelineResult, type Restriction, type WorkoutComponent } from "@/lib/engine/types";
+
+export interface CatalogEntry {
+  key: string;
+  label: string;
+  kind: string; // "injury" | "limitation" | "condition"
+}
+
+/** "Shoulder (right) · no Power Snatch · today": exactly what the restriction bans. */
+function restrictionText(r: Restriction): string {
+  const site = r.site ? r.site.charAt(0).toUpperCase() + r.site.slice(1).replaceAll("_", " ") : "Today";
+  const loads = r.mechanisms.length > 4 ? ["no load on it"] : r.mechanisms.map((m) => `no ${m.replaceAll("_", " ")}`);
+  const bans = [...r.movements.map((m) => `no ${m}`), ...loads, ...r.positions.map((p) => `no ${p.replaceAll("_", " ")}`)];
+  return [`${site}${r.side ? ` (${r.side})` : ""}`, bans.join(", ") || "context only", ...(r.site ? ["today"] : [])].join(" · ");
+}
 
 const BADGE: Partial<Record<Finding["kind"], { text: string; className: string }>> = {
   caution_movement: { text: "caution", className: "bg-amber-100 text-amber-900" },
@@ -24,7 +37,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
 
   return (
     <div className="flex flex-col gap-6">
-      {result.conditions.length > 0 && (
+      {result.conditions.length + result.restrictions.length > 0 && (
         <div className="flex flex-wrap gap-2 text-xs">
           {result.conditions.map((c) => (
             <span key={c.key} className="rounded border px-2 py-1">
@@ -33,6 +46,9 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
               {entry(c.key)?.kind === "injury" ? ` · ${c.severity}` : ""}
               {c.source === "today" ? " · today" : ""}
             </span>
+          ))}
+          {result.restrictions.map((r, i) => (
+            <span key={`r${i}`} title={r.evidence} className="rounded border px-2 py-1">{restrictionText(r)}</span>
           ))}
         </div>
       )}

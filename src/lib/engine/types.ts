@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Equipment, Severity, Side } from "@/lib/domain/types";
+import { Equipment, Position, Severity, Side, Site, StressMechanism } from "@/lib/domain/types";
 
 // ---- stimulus (mirrors data/stimulus-taxonomy.json; pinned by a sync test) ----
 export const Quality = z.enum(["strength", "power", "skill", "conditioning", "muscular_endurance", "preparation"]);
@@ -96,8 +96,33 @@ export const DetectedConditionSchema = z.object({
 });
 export type DetectedCondition = z.infer<typeof DetectedConditionSchema>;
 
+// Today's pain or limit in the athlete's own scope: it bans exactly what they named, nothing more.
+export const RestrictionDraftSchema = z.object({
+  site: Site.nullable(), // where it hurts; null when not said
+  side: Side.nullable(),
+  movements: z.array(z.string().min(1).max(80)).max(20), // library movements they cannot do
+  mechanisms: z.array(StressMechanism), // kinds of load named in general terms ("nothing overhead")
+  positions: z.array(Position), // positions named ("I can't hang")
+  evidence: z.string().min(1).max(2000), // the athlete's words
+});
+export type RestrictionDraft = z.infer<typeof RestrictionDraftSchema>;
+
+// The athlete's pick when the best replacement loaded the painful site too: that component's only candidate.
+export const ReplacementChoiceSchema = z.object({
+  blockIndex: z.number().int().nonnegative(),
+  componentIndex: z.number().int().nonnegative(),
+  replacement: z.string().min(1).max(80),
+});
+export type ReplacementChoice = z.infer<typeof ReplacementChoiceSchema>;
+
+export const RestrictionSchema = RestrictionDraftSchema.extend({
+  replacements: z.array(ReplacementChoiceSchema).max(20).default([]),
+});
+export type Restriction = z.infer<typeof RestrictionSchema>;
+
 export const SituationAnalysisSchema = z.object({
-  conditions: z.array(DetectedConditionSchema),
+  restrictions: z.array(RestrictionDraftSchema),
+  conditions: z.array(DetectedConditionSchema), // non-pain catalog conditions only (pregnancy)
   unavailableEquipment: z.array(Equipment),
 });
 export type SituationAnalysis = z.infer<typeof SituationAnalysisSchema>;
@@ -244,6 +269,7 @@ export type ConditionRef = z.infer<typeof ConditionRefSchema>;
 export const PipelineResultSchema = z.object({
   original: StructuredWorkoutSchema,
   conditions: z.array(ConditionRefSchema),
+  restrictions: z.array(RestrictionSchema).default([]), // absent in results saved before U4c
   unavailableEquipment: z.array(Equipment),
   tailored: TailoringResultSchema,
   findings: z.array(FindingSchema),
@@ -252,16 +278,35 @@ export const PipelineResultSchema = z.object({
 });
 export type PipelineResult = z.infer<typeof PipelineResultSchema>;
 
-// ---- athlete-confirmed conditions (two-phase tailor) ----
-// The analyzer only suggests today's conditions; the athlete confirms or corrects them before tailoring.
+// ---- two-phase tailor: analyze, clarify only when unclear, then tailor ----
+// Today's catalog conditions (non-pain, e.g. pregnancy) apply as read; evidence null = added by hand.
 export const ConfirmedConditionSchema = DetectedConditionSchema.extend({
-  evidence: z.string().nullable(), // null when the athlete added the condition
+  evidence: z.string().nullable(),
 });
 export type ConfirmedCondition = z.infer<typeof ConfirmedConditionSchema>;
+
+const MechanismList = z.array(StressMechanism);
+export const ClarifyQuestionSchema = z.discriminatedUnion("kind", [
+  // A painful site with nothing named: which kinds of load bother it (each option lists the session's movements).
+  z.object({
+    kind: z.literal("site"), restriction: z.number().int().nonnegative(), site: Site, side: Side.nullable(), evidence: z.string(),
+    options: z.array(z.object({ label: z.string(), mechanisms: MechanismList, movements: z.array(z.string()) })),
+  }),
+  // The best replacement loads the painful site like the banned movement: the athlete picks.
+  z.object({
+    kind: z.literal("replacement"), restriction: z.number().int().nonnegative(),
+    blockIndex: z.number().int().nonnegative(), componentIndex: z.number().int().nonnegative(),
+    movement: z.string(), site: Site,
+    options: z.array(z.object({ name: z.string(), shared: MechanismList })), preselected: z.string(),
+  }),
+]);
+export type ClarifyQuestion = z.infer<typeof ClarifyQuestionSchema>;
 
 export const WorkoutAnalysisResultSchema = z.object({
   original: StructuredWorkoutSchema,
   suggested: z.array(DetectedConditionSchema),
+  restrictions: z.array(RestrictionSchema),
+  questions: z.array(ClarifyQuestionSchema),
   unavailableEquipment: z.array(Equipment),
   analyzed: z.boolean(), // false = degraded to one raw block
 });
@@ -269,13 +314,8 @@ export type WorkoutAnalysisResult = z.infer<typeof WorkoutAnalysisResultSchema>;
 
 export const FeedbackAnalysisSchema = z.object({
   suggested: z.array(DetectedConditionSchema),
+  restrictions: z.array(RestrictionSchema),
+  questions: z.array(ClarifyQuestionSchema),
   unavailableEquipment: z.array(Equipment),
 });
 export type FeedbackAnalysis = z.infer<typeof FeedbackAnalysisSchema>;
-
-// A suggestion the athlete removed: its words are kept out of what the tailor reads.
-export const DismissedConditionSchema = z.object({
-  key: z.string().min(1).max(64),
-  evidence: z.string().max(2000).nullable(),
-});
-export type DismissedCondition = z.infer<typeof DismissedConditionSchema>;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import movementsJson from "../../data/movements.json";
 import { MovementSchema } from "@/lib/domain/types";
-import { createMovementResolver, movementWordKey, normalizeMovementName } from "@/lib/domain/resolve";
+import { createMovementResolver, movementFamily, movementWordKey, normalizeMovementName } from "@/lib/domain/resolve";
 
 const movements = movementsJson.map((m) => MovementSchema.parse(m));
 const resolve = createMovementResolver(movements);
@@ -80,5 +80,16 @@ describe("createMovementResolver", () => {
 
   it("returns null for an unknown movement", () => {
     expect(resolve("Zercher Carry")).toBeNull();
+  });
+});
+
+describe("movementFamily", () => {
+  it("lists every library movement whose name contains all the words, for a general name", () => {
+    const names = movementFamily("Snatch", movements).map((m) => m.name);
+    expect(names).toEqual(expect.arrayContaining(["Power Snatch", "Hang Power Snatch", "Squat Snatch", "Dumbbell Snatch"]));
+    expect(names).not.toContain("Power Clean");
+    expect(movementFamily("DB snatch", movements).map((m) => m.name)).toEqual(expect.arrayContaining(["Dumbbell Snatch", "Dumbbell Squat Snatch"]));
+    expect(movementFamily("DB snatch", movements).map((m) => m.name)).not.toContain("Power Snatch");
+    expect(movementFamily("", movements)).toEqual([]);
   });
 });

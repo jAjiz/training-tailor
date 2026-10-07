@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
-import { MovementPattern, type Movement } from "@/lib/domain/types";
+import { MovementPattern, Site, type Movement } from "@/lib/domain/types";
 import type { WorkoutInput } from "@/lib/engine/pipeline";
 import {
-  AthleteProfileSchema, ConfirmedConditionSchema, ManualWorkoutSchema, TailorRequestSchema, emptyProfile, emptyRequest,
-  type AthleteProfile, type ConfirmedCondition, type PipelineResult, type TailorRequest,
+  AthleteProfileSchema, ManualWorkoutSchema, TailorRequestSchema, emptyProfile, emptyRequest,
+  type AthleteProfile, type PipelineResult, type TailorRequest,
 } from "@/lib/engine/types";
 
 export const EvalCaseSchema = z.object({
@@ -16,12 +16,13 @@ export const EvalCaseSchema = z.object({
   ]),
   profile: AthleteProfileSchema.partial().default({}),
   request: TailorRequestSchema.partial().default({}),
-  // The conditions the athlete would confirm; null = accept the analyzer's suggestions as read.
-  confirm: z.array(ConfirmedConditionSchema).nullable().default(null),
   // prefault (not default): the fallback object is parsed, so the inner defaults apply.
   expect: z.object({
     mustAvoid: z.array(z.string()).default([]),
-    mustDetect: z.array(z.string()).default([]),
+    // Original movements the tailored session must still prescribe: a snatch ban keeps the toes-to-bar.
+    mustKeep: z.array(z.string()).default([]),
+    mustDetect: z.array(z.string()).default([]), // today's non-pain catalog conditions
+    mustRestrict: z.array(Site).default([]), // sites today's restrictions must name
     maxTotalMinutes: z.number().positive().nullable().default(null),
     expectFailClosed: z.boolean().default(false),
     // Canonical names the analysis of the ORIGINAL must (not) produce: pins recognition, e.g. a
@@ -35,15 +36,14 @@ export const EvalCaseSchema = z.object({
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
 
 export type EvalOutcome =
-  | { kind: "result"; result: PipelineResult; suggested?: string[] } // suggested: the analyzer's condition keys
+  | { kind: "result"; result: PipelineResult }
   | { kind: "error"; error: "engine_unsafe" | "engine_failed" };
 
 export function resolveCase(c: EvalCase): {
-  input: WorkoutInput; profile: AthleteProfile; request: TailorRequest; confirm: ConfirmedCondition[] | null;
+  input: WorkoutInput; profile: AthleteProfile; request: TailorRequest;
 } {
   return {
     input: c.input,
-    confirm: c.confirm,
     profile: { ...emptyProfile(), ...c.profile },
     request: { ...emptyRequest(), ...c.request },
   };
@@ -65,12 +65,14 @@ export function gradeCase(
   for (const f of r.findings.filter((x) => x.severity === "violation")) failures.push(`violation [${f.kind}] ${f.message}`);
   const prescribed = new Set(r.tailored.blocks.flatMap((b) => b.components.map((x) => x.canonical ?? x.movement)));
   for (const name of c.expect.mustAvoid) if (prescribed.has(name)) failures.push(`prescribed forbidden movement ${name}`);
+  for (const name of c.expect.mustKeep) if (!prescribed.has(name)) failures.push(`dropped ${name}, which nothing restricted`);
   const resolve = createMovementResolver(movements);
   const patterns = new Set([...prescribed].flatMap((name) => resolve(name)?.patterns ?? []));
   for (const p of c.expect.mustKeepPatterns) if (!patterns.has(p)) failures.push(`no tailored movement keeps the ${p} pattern`);
-  // Detection is the analyzer's job: graded on its suggestions, whatever the athlete confirmed.
-  const detected = new Set(outcome.suggested ?? r.conditions.map((x) => x.key));
+  const detected = new Set(r.conditions.map((x) => x.key));
   for (const key of c.expect.mustDetect) if (!detected.has(key)) failures.push(`did not detect ${key}`);
+  const restricted = new Set(r.restrictions.map((x) => x.site));
+  for (const site of c.expect.mustRestrict) if (!restricted.has(site)) failures.push(`no restriction on the ${site}`);
   if (c.expect.maxTotalMinutes !== null) {
     const total = r.tailored.blocks.reduce((sum, b) => sum + (b.timeDomainMinutes ?? 0), 0);
     if (total > c.expect.maxTotalMinutes) failures.push(`total ${total} min > ${c.expect.maxTotalMinutes} min`);

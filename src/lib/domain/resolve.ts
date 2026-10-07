@@ -62,3 +62,16 @@ export function createMovementResolver(movements: Movement[]): MovementResolver 
     return words ? byWords.get(words) ?? null : null;
   };
 }
+
+/**
+ * Every movement whose name holds all the words of a general name ("snatch" → Power Snatch, Hang Power Snatch,
+ * Dumbbell Snatch, ...): what an athlete means by a movement they cannot do, when it is not one library row.
+ */
+export function movementFamily(name: string, movements: Movement[]): Movement[] {
+  const words = movementWordKey(name).split(" ").filter(Boolean);
+  if (words.length === 0) return [];
+  return movements.filter((m) => {
+    const own = movementWordKey(m.name).split(" ");
+    return words.every((w) => own.includes(w));
+  });
+}

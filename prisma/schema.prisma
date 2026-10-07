@@ -88,6 +88,7 @@ model TailoredWorkout {
   original        Json // StructuredWorkout
   request         Json // TailorRequest
   conditions      Json // ConditionRef[]
+  restrictions    Json     @default("[]") // Restriction[]: today's, answered
   tailored        Json // TailoringResult
   findings        Json // Finding[]
   feedbackHistory Json     @default("[]") // string[]

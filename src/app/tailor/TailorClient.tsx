@@ -3,15 +3,16 @@
 import { useState } from "react";
 import type { Equipment } from "@/lib/domain/types";
 import type { ProgressStage } from "@/lib/engine/pipeline";
+import { applyAnswers, mergeFreeText, type ClarifyAnswer } from "@/lib/engine/clarify";
 import {
   ManualWorkoutSchema,
-  type ConfirmedCondition, type FeedbackAnalysis, type ManualWorkout, type PipelineResult, type TailorRequest,
-  type WorkoutAnalysisResult,
+  type ClarifyQuestion, type ConfirmedCondition, type FeedbackAnalysis, type ManualWorkout, type PipelineResult,
+  type Restriction, type StructuredWorkout, type TailorRequest, type WorkoutAnalysisResult,
 } from "@/lib/engine/types";
 import { readEngineOutcome } from "@/lib/engine-events";
-import { ConfirmConditions, type CatalogEntry } from "./ConfirmConditions";
+import { ClarifyStep, type FreeTextAnswer } from "./ClarifyStep";
 import { ManualEntryForm, emptyManualWorkout } from "./ManualEntryForm";
-import { ResultView } from "./ResultView";
+import { ResultView, type CatalogEntry } from "./ResultView";
 
 interface Props {
   movementNames: string[];
@@ -19,10 +20,17 @@ interface Props {
   catalog: CatalogEntry[];
 }
 
-// What phase 2 needs once the athlete has confirmed today's conditions.
-type Pending =
-  | { kind: "tailor"; analysis: WorkoutAnalysisResult; request: TailorRequest; suggested: ConfirmedCondition[] }
-  | { kind: "refine"; previous: PipelineResult; feedback: string; unavailableEquipment: Equipment[]; request: TailorRequest; suggested: ConfirmedCondition[] };
+// What phase 2 needs; `questions` are the ones still open for the athlete.
+interface PendingBase {
+  original: StructuredWorkout;
+  conditions: ConfirmedCondition[]; // today's non-pain conditions, applied as read
+  restrictions: Restriction[];
+  questions: ClarifyQuestion[];
+  allowFreeText: boolean;
+  unavailableEquipment: Equipment[]; // today's additions (refine: the feedback's)
+  request: TailorRequest;
+}
+type Pending = PendingBase & ({ kind: "tailor" } | { kind: "refine"; previous: PipelineResult; feedback: string });
 
 const STAGE_TEXT: Record<ProgressStage, string> = {
   analyzing: "Reading the workout and your situation…",
@@ -109,28 +117,57 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
     }
   }
 
-  /** Phase 2 with the conditions the athlete confirmed (none when nothing was suggested). */
-  async function proceed(p: Pending, confirmed: ConfirmedCondition[]) {
+  /** Phase 2 with the answered restrictions. */
+  async function proceed(p: Pending) {
     setPending(null);
-    const dismissed = p.suggested
-      .filter((s) => !confirmed.some((c) => c.key === s.key))
-      .map(({ key, evidence }) => ({ key, evidence }));
+    const { conditions: confirmed, restrictions, request: req } = p;
     if (p.kind === "tailor") {
-      const { original, unavailableEquipment } = p.analysis;
-      await runEngine("/api/tailor", { analysis: { original, unavailableEquipment }, confirmed, dismissed, request: p.request }, p.request);
+      await runEngine("/api/tailor", {
+        analysis: { original: p.original, unavailableEquipment: p.unavailableEquipment }, confirmed, restrictions, request: req,
+      }, req);
     } else {
       await runEngine("/api/tailor/refine", {
-        previous: p.previous, feedback: p.feedback, confirmed, dismissed, unavailableEquipment: p.unavailableEquipment, request: p.request,
-      }, p.request);
+        previous: p.previous, feedback: p.feedback, confirmed, restrictions, unavailableEquipment: p.unavailableEquipment, request: req,
+      }, req);
     }
   }
 
-  /** Confirmation only when the analyzer suggested a condition; otherwise phase 2 starts at once. */
-  async function confirmOrProceed(p: Pending) {
-    if (p.suggested.length > 0) {
+  /** Asks only when a question is open; otherwise phase 2 starts at once. */
+  async function clarifyOrProceed(p: Pending) {
+    if (p.questions.length > 0) {
       setStage(null);
       setPending(p);
-    } else await proceed(p, []);
+    } else await proceed(p);
+  }
+
+  /** A free-text answer is re-analyzed once (counted as an analysis) and replaces the vague restriction. */
+  async function answer(p: Pending, answers: ClarifyAnswer[], freeText: FreeTextAnswer[]) {
+    let next: Pending = { ...p, restrictions: applyAnswers(p.restrictions, answers), questions: [], allowFreeText: false };
+    // Highest index first, so the indices still to merge do not move.
+    for (const ft of [...freeText].sort((a, b) => b.restriction - a.restriction)) {
+      setPending(null);
+      setStage("analyzing");
+      const others = next.restrictions.filter((_, i) => i !== ft.restriction);
+      const earlier = next.kind === "refine" ? next.previous : null;
+      const reading = await postJson<FeedbackAnalysis>("/api/tailor/refine/analyze", {
+        feedback: ft.text,
+        session: {
+          original: next.original, conditions: earlier?.conditions ?? [],
+          restrictions: [...(earlier?.restrictions ?? []), ...others],
+          unavailableEquipment: [...(earlier?.unavailableEquipment ?? []), ...next.unavailableEquipment],
+        },
+        request: next.request,
+      });
+      if (!reading) return setStage(null);
+      const merged = mergeFreeText(next.restrictions, ft.restriction, reading);
+      const shifted = next.questions.map((q) => (q.restriction > ft.restriction ? { ...q, restriction: q.restriction - 1 } : q));
+      next = {
+        ...next, restrictions: merged.restrictions, questions: [...shifted, ...merged.questions],
+        conditions: [...next.conditions, ...reading.suggested],
+        unavailableEquipment: [...new Set([...next.unavailableEquipment, ...reading.unavailableEquipment])],
+      };
+    }
+    await clarifyOrProceed(next);
   }
 
   async function submit() {
@@ -150,9 +187,12 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
     setPending(null);
     setError(null);
     setStage("analyzing");
-    const analysis = await postJson<WorkoutAnalysisResult>("/api/tailor/analyze", { input, request: req });
-    if (!analysis) return setStage(null);
-    await confirmOrProceed({ kind: "tailor", analysis, request: req, suggested: analysis.suggested });
+    const a = await postJson<WorkoutAnalysisResult>("/api/tailor/analyze", { input, request: req });
+    if (!a) return setStage(null);
+    await clarifyOrProceed({
+      kind: "tailor", original: a.original, conditions: a.suggested, restrictions: a.restrictions, questions: a.questions,
+      allowFreeText: true, unavailableEquipment: a.unavailableEquipment, request: req,
+    });
   }
 
   async function refine() {
@@ -162,10 +202,15 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
     const text = feedback.trim();
     setError(null);
     setStage("analyzing");
-    const a = await postJson<FeedbackAnalysis>("/api/tailor/refine/analyze", { feedback: text });
+    const session = {
+      original: result.original, conditions: result.conditions, restrictions: result.restrictions,
+      unavailableEquipment: result.unavailableEquipment,
+    };
+    const a = await postJson<FeedbackAnalysis>("/api/tailor/refine/analyze", { feedback: text, session, request: req });
     if (!a) return setStage(null);
-    await confirmOrProceed({
-      kind: "refine", previous: result, feedback: text, unavailableEquipment: a.unavailableEquipment, request: req, suggested: a.suggested,
+    await clarifyOrProceed({
+      kind: "refine", previous: result, feedback: text, original: result.original, conditions: a.suggested,
+      restrictions: a.restrictions, questions: a.questions, allowFreeText: true, unavailableEquipment: a.unavailableEquipment, request: req,
     });
   }
 
@@ -230,9 +275,8 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
       {busy && <p className="text-sm text-neutral-600" aria-live="polite">{STAGE_TEXT[stage!]}</p>}
       {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
       {pending && (
-        <ConfirmConditions key={pending.kind + pending.suggested.map((s) => s.key).join(",")}
-          suggested={pending.suggested} catalog={catalog} busy={busy}
-          onConfirm={(confirmed) => void proceed(pending, confirmed)} onCancel={() => setPending(null)} />
+        <ClarifyStep key={JSON.stringify(pending.questions)} questions={pending.questions} allowFreeText={pending.allowFreeText}
+          busy={busy} onSubmit={(answers, freeText) => void answer(pending, answers, freeText)} onCancel={() => setPending(null)} />
       )}
 
       {result && (
