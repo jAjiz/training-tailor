@@ -3,12 +3,10 @@ import { runTailorPipeline } from "@/lib/engine/pipeline";
 import { handleEngineRequest } from "@/lib/engine-route";
 
 export const maxDuration = 120;
-const budgetMs = (maxDuration - 10) * 1000; // model time; leaves a margin to answer the athlete
 
 export function POST(req: Request) {
   return handleEngineRequest(req, {
     schema: TailorBodySchema,
-    budgetMs,
     maxBodyChars: MAX_RESULT_BODY_CHARS,
     kind: "tailor",
     run: (body, { provider, ...ctx }) => runTailorPipeline(provider, {

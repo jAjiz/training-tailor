@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { FakeProvider } from "@/lib/ai/fake-provider";
-import { EngineTimeoutError } from "@/lib/ai/provider";
 import { getDomainData, type DomainData } from "@/lib/domain/repository";
 import { analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
 import { FRAN_TEXT, component, franDraft } from "../fixtures/workouts";
@@ -99,12 +98,5 @@ describe("analyzeSituation", () => {
     await analyzeSituation(provider, "no puedo hacer snatch", domain);
     expect(provider.calls[0].prompt).toContain("- Hang Power Snatch");
     expect(provider.calls[0].systemPrompt).toContain("every snatch variant");
-  });
-});
-
-describe("analysis out of time", () => {
-  it("does not degrade to a raw block when the model ran out of time", async () => {
-    const provider = new FakeProvider({ PasteAnalysis: new EngineTimeoutError(), SituationAnalysis: { restrictions: [], conditions: [], unavailableEquipment: [] } });
-    await expect(analyzePaste(provider, "cryptic", "", domain)).rejects.toBeInstanceOf(EngineTimeoutError);
   });
 });

@@ -21,14 +21,6 @@ export class StructuredOutputError extends Error {
   }
 }
 
-/** The model did not answer within the request's time budget (or every attempt timed out). */
-export class EngineTimeoutError extends Error {
-  constructor(message = "engine_timeout") {
-    super(message);
-    this.name = "EngineTimeoutError";
-  }
-}
-
 export function parseStructured<T>(schema: z.ZodType<T>, value: unknown, source: string): T {
   const result = schema.safeParse(value);
   if (!result.success) {

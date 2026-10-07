@@ -1,4 +1,3 @@
-import { EngineTimeoutError } from "@/lib/ai/provider";
 import { EngineUnsafeError, type ProgressStage } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
 import type { EngineEvent } from "@/lib/engine-events";
@@ -23,9 +22,6 @@ export function engineStreamResponse(
         if (e instanceof EngineUnsafeError) {
           console.warn("engine failed closed", e.findings);
           send({ type: "error", error: "engine_unsafe" });
-        } else if (e instanceof EngineTimeoutError) {
-          console.warn("engine timed out");
-          send({ type: "error", error: "engine_timeout" });
         } else {
           console.error("engine failed", e);
           send({ type: "error", error: "engine_failed" });

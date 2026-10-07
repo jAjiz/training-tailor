@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { z } from "zod";
 import { getProvider } from "@/lib/ai";
-import { EngineTimeoutError, type LlmProvider } from "@/lib/ai/provider";
+import type { LlmProvider } from "@/lib/ai/provider";
 import { getDomainData, type DomainData } from "@/lib/domain/repository";
 import type { ProgressStage } from "@/lib/engine/pipeline";
 import type { AthleteProfile, PipelineResult } from "@/lib/engine/types";
@@ -25,7 +25,6 @@ interface RouteCheck<T> {
   schema: z.ZodType<T>;
   maxBodyChars: number;
   kind: UsageKind;
-  budgetMs: number; // model time allowed: the route's maxDuration minus a margin to answer
 }
 
 type Prepared<T> = { ok: true; userId: string; body: T; provider: LlmProvider } | { ok: false; response: Response };
@@ -41,7 +40,7 @@ async function prepare<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<
 
   let provider: LlmProvider;
   try {
-    provider = getProvider({ budgetMs: check.budgetMs });
+    provider = getProvider();
   } catch (e) {
     console.error("engine unavailable", e);
     return { ok: false, response: jsonError("engine_unavailable", 503) };
@@ -69,23 +68,18 @@ export async function handleEngineRequest<T>(req: Request, route: EngineRoute<T>
 interface AnalyzeRoute<T, R> {
   schema: z.ZodType<T>;
   maxBodyChars: number;
-  budgetMs: number;
   run: (body: T, ctx: { provider: LlmProvider; profile: AthleteProfile; domain: DomainData }) => Promise<R>;
 }
 
 /** Phase 1 (analyze): one model call, plain JSON; counted as "analyze". Never leaks exception text. The profile
  * (injuries, equipment) shapes the clarifying questions. */
 export async function handleAnalyzeRequest<T, R>(req: Request, route: AnalyzeRoute<T, R>): Promise<Response> {
-  const p = await prepare(req, { schema: route.schema, maxBodyChars: route.maxBodyChars, kind: "analyze", budgetMs: route.budgetMs });
+  const p = await prepare(req, { schema: route.schema, maxBodyChars: route.maxBodyChars, kind: "analyze" });
   if (!p.ok) return p.response;
   try {
     const [profile, domain] = await Promise.all([loadProfile(p.userId), getDomainData()]);
     return NextResponse.json(await route.run(p.body, { provider: p.provider, profile, domain }));
   } catch (e) {
-    if (e instanceof EngineTimeoutError) {
-      console.warn("analysis timed out");
-      return jsonError("engine_timeout", 504);
-    }
     console.error("analysis failed", e);
     return jsonError("engine_failed", 502);
   }
