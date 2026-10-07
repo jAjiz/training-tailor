@@ -102,4 +102,12 @@ describe("mergeFreeText", () => {
     // Only replacement questions remain, re-indexed into the merged list.
     expect(merged.questions).toEqual([expect.objectContaining({ kind: "replacement", restriction: 1 })]);
   });
+
+  it("keeps the asked site when the answer names none", () => {
+    const vague = r({ site: "shoulder", side: "right", evidence: "me duele el hombro" });
+    const merged = mergeFreeText([vague], 0, {
+      restrictions: [r({ mechanisms: ["traction"], positions: ["hanging"], evidence: "solo al colgarme" })], questions: [],
+    });
+    expect(merged.restrictions).toEqual([expect.objectContaining({ site: "shoulder", side: "right", mechanisms: ["traction"] })]);
+  });
 });

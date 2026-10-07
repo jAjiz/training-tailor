@@ -124,7 +124,11 @@ export function mergeFreeText(
   restrictions: Restriction[], index: number, reading: { restrictions: Restriction[]; questions: ClarifyQuestion[] },
 ): { restrictions: Restriction[]; questions: ClarifyQuestion[] } {
   const others = restrictions.filter((_, i) => i !== index);
-  const added = reading.restrictions.map((r) => (r.site && !hasScope(r) ? { ...r, mechanisms: StressMechanism.options } : r));
+  // The answer was about the asked site: one that names none ("only when I hang") keeps it.
+  const asked = restrictions[index];
+  const added = reading.restrictions
+    .map((r) => (r.site ? r : { ...r, site: asked.site, side: r.side ?? asked.side }))
+    .map((r) => (r.site && !hasScope(r) ? { ...r, mechanisms: StressMechanism.options } : r));
   return {
     restrictions: [...others, ...added],
     questions: reading.questions.filter((q) => q.kind === "replacement").map((q) => ({ ...q, restriction: others.length + q.restriction })),

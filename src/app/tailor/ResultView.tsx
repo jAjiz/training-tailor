@@ -12,7 +12,11 @@ export interface CatalogEntry {
 function restrictionText(r: Restriction): string {
   const site = r.site ? r.site.charAt(0).toUpperCase() + r.site.slice(1).replaceAll("_", " ") : "Today";
   const loads = r.mechanisms.length > 4 ? ["no load on it"] : r.mechanisms.map((m) => `no ${m.replaceAll("_", " ")}`);
-  const bans = [...r.movements.map((m) => `no ${m}`), ...loads, ...r.positions.map((p) => `no ${p.replaceAll("_", " ")}`)];
+  // A general name ("snatch") expands to every variant: name the first ones, count the rest (all in the tooltip).
+  const named = r.movements.length > 3
+    ? [`no ${r.movements.slice(0, 2).join(", ")} +${r.movements.length - 2} variants`]
+    : r.movements.map((m) => `no ${m}`);
+  const bans = [...named, ...loads, ...r.positions.map((p) => `no ${p.replaceAll("_", " ")}`)];
   return [`${site}${r.side ? ` (${r.side})` : ""}`, bans.join(", ") || "context only", ...(r.site ? ["today"] : [])].join(" · ");
 }
 
@@ -48,7 +52,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
             </span>
           ))}
           {result.restrictions.map((r, i) => (
-            <span key={`r${i}`} title={r.evidence} className="rounded border px-2 py-1">{restrictionText(r)}</span>
+            <span key={`r${i}`} title={[r.evidence, ...r.movements].join(" · ")} className="rounded border px-2 py-1">{restrictionText(r)}</span>
           ))}
         </div>
       )}
