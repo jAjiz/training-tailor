@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Equipment } from "@/lib/domain/types";
 import {
-  ConditionRefSchema, ConfirmedConditionSchema, ManualWorkoutSchema, PipelineResultSchema, RestrictionSchema, StructuredWorkoutSchema,
+  ConditionRefSchema, ConfirmedConditionSchema, PipelineResultSchema, RestrictionSchema, StructuredWorkoutSchema,
   TailorRequestSchema, WorkoutAnalysisResultSchema,
 } from "@/lib/engine/types";
 
@@ -10,16 +10,11 @@ import {
 export const MAX_TAILOR_BODY_CHARS = 64_000;
 export const MAX_RESULT_BODY_CHARS = 256_000;
 
-export const WorkoutInputSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("paste"), rawText: z.string().min(1).max(20000) }),
-  z.object({ kind: z.literal("manual"), workout: ManualWorkoutSchema }),
-]);
-
 const feedback = z.string().trim().min(1).max(2000);
 const confirmed = z.array(ConfirmedConditionSchema).max(20);
 const restrictions = z.array(RestrictionSchema).max(20); // answered in the clarify step
 
-export const AnalyzeBodySchema = z.object({ input: WorkoutInputSchema, request: TailorRequestSchema });
+export const AnalyzeBodySchema = z.object({ rawText: z.string().min(1).max(20000), request: TailorRequestSchema });
 // Refine feedback, or a free-text answer to a clarifying question, read against the session it applies to.
 export const AnalyzeFeedbackBodySchema = z.object({
   feedback,

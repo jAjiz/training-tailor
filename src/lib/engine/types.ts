@@ -62,7 +62,7 @@ export type WorkoutBlock = z.infer<typeof WorkoutBlockSchema>;
 export const WorkoutDraftSchema = z.object({ name: z.string().nullable(), blocks: z.array(BlockDraftSchema).min(1) });
 export type WorkoutDraft = z.infer<typeof WorkoutDraftSchema>;
 
-export const WorkoutSource = z.enum(["paste", "manual"]);
+export const WorkoutSource = z.enum(["paste"]); // workouts arrive as the coach's free text
 export type WorkoutSource = z.infer<typeof WorkoutSource>;
 
 // A training SESSION. rawText is the durable source of truth; blocks are a derived extraction.
@@ -73,19 +73,6 @@ export const StructuredWorkoutSchema = z.object({
   blocks: z.array(WorkoutBlockSchema).min(1),
 });
 export type StructuredWorkout = z.infer<typeof StructuredWorkoutSchema>;
-
-// ---- manual entry ----
-export const ManualBlockSchema = z.object({
-  title: z.string().nullable(),
-  format: BlockFormat,
-  scheme: z.string().nullable(),
-  timeDomainMinutes: z.number().nonnegative().nullable(),
-  coachingNotes: z.string().nullable(),
-  components: z.array(ComponentDraftSchema),
-});
-export type ManualBlock = z.infer<typeof ManualBlockSchema>;
-export const ManualWorkoutSchema = z.object({ name: z.string().nullable(), blocks: z.array(ManualBlockSchema).min(1) });
-export type ManualWorkout = z.infer<typeof ManualWorkoutSchema>;
 
 // ---- analysis ----
 export const DetectedConditionSchema = z.object({
@@ -128,8 +115,6 @@ export const SituationAnalysisSchema = z.object({
 export type SituationAnalysis = z.infer<typeof SituationAnalysisSchema>;
 export const PasteAnalysisSchema = SituationAnalysisSchema.extend({ workout: WorkoutDraftSchema });
 export type PasteAnalysis = z.infer<typeof PasteAnalysisSchema>;
-export const ManualAnalysisSchema = SituationAnalysisSchema.extend({ stimuli: z.array(StimulusProfileSchema.nullable()) });
-export type ManualAnalysis = z.infer<typeof ManualAnalysisSchema>;
 
 // ---- tailoring ----
 const sourceBlocks = z.array(z.number().int().nonnegative()); // original block indices

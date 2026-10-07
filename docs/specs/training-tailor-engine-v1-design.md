@@ -14,6 +14,9 @@
 > severity-graded catalog injuries. Only a site with nothing named, or a replacement that
 > loads the painful site the same way, asks the athlete one question; everything else
 > tailors at once. This replaces the confirmation of today's conditions (U4b).
+>
+> Amendment (2026-10-07): structured manual entry is dropped. Coaches publish workouts as
+> free text, so the paste is the only ingestion path (task U5 cancelled).
 
 ## Problem
 
@@ -36,8 +39,8 @@ The full product vision has three sub-systems:
 - **A. Modification engine** — workout + athlete profile + today's situation →
   tailored workout with rationale. The novel, hard, valuable core. LLM-driven,
   domain-enforced.
-- **B. Athlete-side essentials** — profile management + ingestion (free-text paste;
-  manual entry). Needed to run the engine end-to-end.
+- **B. Athlete-side essentials** — profile management + ingestion (free-text paste, as
+  coaches publish it). Needed to run the engine end-to-end.
 - **C. Coach/program side** — coaches author programs, schedule daily workouts,
   athletes link to a program and fetch "today's workout." Standard multi-user SaaS.
   **Not** where the individualization magic lives.
@@ -66,7 +69,7 @@ same engine.
 | Auth | **Google OAuth** via **Better Auth** (`better-auth`, Prisma adapter, database sessions). Route protection in Next 16 `src/proxy.ts` (Node runtime) for pages; API routes check the session themselves and return 401. |
 | User data | **Postgres via Prisma 7** (driver adapter `@prisma/adapter-pg`), schema evolved with **`prisma migrate`** (no `db push` once v2 lands). |
 | Domain data | **Versioned JSON in the repo** (`data/`), Zod-validated at load, accessed only through `src/lib/domain/repository.ts`. Moves to the DB in Phase C behind the same interface. |
-| Ingestion (v1) | Free-text paste (LLM analysis) + structured manual entry. |
+| Ingestion (v1) | Free-text paste (LLM analysis) only: coaches publish workouts as free text. |
 | Hosting | **Vercel** (Fluid compute; engine routes declare `maxDuration = 120`) + **Neon** Postgres. |
 | Cost control | Per-user daily quota on engine calls (`DAILY_ENGINE_LIMIT`, default 30, counted per kind: analyze, tailor, refine), enforced server-side. |
 | Repo visibility | The GitHub repo is **public**: real (often paid) programming used for coverage/evaluation lives in a **gitignored** `data/corpus/`; committed eval cases are synthetic or public benchmarks. |
@@ -75,7 +78,7 @@ same engine.
 
 ```
 Browser (phone)
-  │  paste / manual entry + today's situation
+  │  pasted workout + today's situation
   ▼
 Next.js route handlers (auth check, quota)
   POST /api/tailor/analyze   → JSON analysis + restrictions + clarifying questions
@@ -147,8 +150,7 @@ Engine pipeline (server-side, provider-agnostic)
    - **conditions**: non-pain catalog conditions only (`kind: condition`, e.g. pregnancy);
    - **equipment unavailable today** mentioned in the situation ("no rower today").
 
-   Manual entry skips the split: the same call only returns per-block stimulus,
-   conditions and unavailable equipment. The verbatim invariant holds: session
+   The verbatim invariant holds: session
    `rawText` is the input; a block slice that is not a substring of the input falls
    back to the session text. If analysis fails, the session degrades to one raw block
    (no stimulus) **and** a situation-only analysis still runs; if that also fails while
@@ -395,7 +397,7 @@ Domain entities are JSON (above). User data in Postgres:
 A training **session**, stored as JSON. Raw text is the durable source of truth; the
 structure is a derived extraction.
 
-- **session**: `name?`, `rawText`, `source` (`paste | manual`), `blocks[]`
+- **session**: `name?`, `rawText`, `source` (`paste`), `blocks[]`
 - **block**: `title?`, `rawText` (verbatim slice), `day?` (1-based, multi-day pastes),
   `format` (`amrap | for_time | emom | intervals | strength | skill | partner | rest |
   other`), `scheme?`, `timeDomainMinutes?`, `components[]`, `coachingNotes?` (intensity,
@@ -420,7 +422,7 @@ more than one distinct `day`.
 1. **Sign in with Google.**
 2. **Onboard** profile (incremental): sex & scaling level, injuries/limitations (catalog
    pick + side + severity + notes), equipment, benchmarks, goals, availability.
-3. **Tailor:** paste (or enter manually) + describe today's situation, optionally a time
+3. **Tailor:** paste the workout + describe today's situation, optionally a time
    cap, a target movement, today's equipment.
 4. **Clarify** only when phase 1 has a question (see *Clarify*): which loads bother a
    painful site, or which replacement to use when the best one loads that site too.

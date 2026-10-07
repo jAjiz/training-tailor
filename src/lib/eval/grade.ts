@@ -1,19 +1,15 @@
 import { z } from "zod";
 import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
 import { MovementPattern, Site, type Movement } from "@/lib/domain/types";
-import type { WorkoutInput } from "@/lib/engine/pipeline";
 import {
-  AthleteProfileSchema, ManualWorkoutSchema, TailorRequestSchema, emptyProfile, emptyRequest,
+  AthleteProfileSchema, TailorRequestSchema, emptyProfile, emptyRequest,
   type AthleteProfile, type PipelineResult, type TailorRequest,
 } from "@/lib/engine/types";
 
 export const EvalCaseSchema = z.object({
   id: z.string().min(1),
   description: z.string().min(1),
-  input: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("paste"), rawText: z.string().min(1) }),
-    z.object({ kind: z.literal("manual"), workout: ManualWorkoutSchema }),
-  ]),
+  rawText: z.string().min(1), // the session as the coach wrote it
   profile: AthleteProfileSchema.partial().default({}),
   request: TailorRequestSchema.partial().default({}),
   // prefault (not default): the fallback object is parsed, so the inner defaults apply.
@@ -40,10 +36,10 @@ export type EvalOutcome =
   | { kind: "error"; error: "engine_unsafe" | "engine_failed" };
 
 export function resolveCase(c: EvalCase): {
-  input: WorkoutInput; profile: AthleteProfile; request: TailorRequest;
+  rawText: string; profile: AthleteProfile; request: TailorRequest;
 } {
   return {
-    input: c.input,
+    rawText: c.rawText,
     profile: { ...emptyProfile(), ...c.profile },
     request: { ...emptyRequest(), ...c.request },
   };

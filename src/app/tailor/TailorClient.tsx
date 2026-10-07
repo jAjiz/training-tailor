@@ -5,13 +5,11 @@ import type { Equipment } from "@/lib/domain/types";
 import type { ProgressStage } from "@/lib/engine/pipeline";
 import { applyAnswers, mergeFreeText, type ClarifyAnswer } from "@/lib/engine/clarify";
 import {
-  ManualWorkoutSchema,
-  type ClarifyQuestion, type ConfirmedCondition, type FeedbackAnalysis, type ManualWorkout, type PipelineResult,
+  type ClarifyQuestion, type ConfirmedCondition, type FeedbackAnalysis, type PipelineResult,
   type Restriction, type StructuredWorkout, type TailorRequest, type WorkoutAnalysisResult,
 } from "@/lib/engine/types";
 import { readEngineOutcome } from "@/lib/engine-events";
 import { ClarifyStep, type FreeTextAnswer } from "./ClarifyStep";
-import { ManualEntryForm, emptyManualWorkout } from "./ManualEntryForm";
 import { ResultView, type CatalogEntry } from "./ResultView";
 
 interface Props {
@@ -54,9 +52,7 @@ const field = "rounded border px-2 py-1 text-sm";
 const chip = (on: boolean) => `rounded border px-3 py-1 text-sm ${on ? "bg-black text-white" : ""}`;
 
 export function TailorClient({ movementNames, equipmentOptions, catalog }: Props) {
-  const [mode, setMode] = useState<"paste" | "manual">("paste");
   const [rawText, setRawText] = useState("");
-  const [manual, setManual] = useState<ManualWorkout>(emptyManualWorkout());
   const [situation, setSituation] = useState("");
   const [timeCap, setTimeCap] = useState("");
   const [target, setTarget] = useState("");
@@ -173,22 +169,14 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
 
   async function submit() {
     const req = buildRequest();
-    let input;
-    if (mode === "paste") {
-      if (!rawText.trim()) return setError("Paste a workout first.");
-      input = { kind: "paste", rawText };
-    } else {
-      const parsed = ManualWorkoutSchema.safeParse(manual);
-      if (!parsed.success) return setError("Give every movement a name.");
-      input = { kind: "manual", workout: parsed.data };
-    }
+    if (!rawText.trim()) return setError("Paste a workout first.");
     // A new workout replaces the old result even if it fails: never leave a stale result to save.
     setResult(null);
     setRequest(null);
     setPending(null);
     setError(null);
     setStage("analyzing");
-    const a = await postJson<WorkoutAnalysisResult>("/api/tailor/analyze", { input, request: req });
+    const a = await postJson<WorkoutAnalysisResult>("/api/tailor/analyze", { rawText, request: req });
     if (!a) return setStage(null);
     await clarifyOrProceed({
       kind: "tailor", original: a.original, conditions: a.suggested, restrictions: a.restrictions, questions: a.questions,
@@ -229,16 +217,9 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
       <datalist id="movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
 
       <section className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          <button type="button" className={chip(mode === "paste")} aria-pressed={mode === "paste"} onClick={() => setMode("paste")}>Paste</button>
-          <button type="button" className={chip(mode === "manual")} aria-pressed={mode === "manual"} onClick={() => setMode("manual")}>Enter manually</button>
-        </div>
-        {mode === "paste" ? (
-          <textarea className={`${field} min-h-48`} value={rawText} onChange={(e) => setRawText(e.target.value)}
-            placeholder={"Paste today's session exactly as programmed.\nMissed days? Paste all of them."} />
-        ) : (
-          <ManualEntryForm value={manual} onChange={setManual} movementNames={movementNames} />
-        )}
+        <h2 className="font-semibold">Workout</h2>
+        <textarea className={`${field} min-h-48`} value={rawText} onChange={(e) => setRawText(e.target.value)}
+          placeholder={"Paste today's session exactly as programmed.\nMissed days? Paste all of them."} />
       </section>
 
       <section className="flex flex-col gap-2">

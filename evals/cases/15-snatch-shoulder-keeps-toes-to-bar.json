@@ -1,10 +1,7 @@
 {
   "id": "snatch-shoulder-keeps-toes-to-bar",
   "description": "The user's report: a sore shoulder that blocks the snatch changes the snatch only; toes-to-bar stays",
-  "input": {
-    "kind": "paste",
-    "rawText": "10 rounds for time:\n3 power snatch\n5 burpee facing bar\n7 toes to bar\n\nTime cap 15min\n\nRx+: 70/45 kg\nRx: 60/40 kg\nInt: 50/30 kg"
-  },
+  "rawText": "10 rounds for time:\n3 power snatch\n5 burpee facing bar\n7 toes to bar\n\nTime cap 15min\n\nRx+: 70/45 kg\nRx: 60/40 kg\nInt: 50/30 kg",
   "request": {
     "situation": "Me duele el hombro hoy no puedo hacer snatch"
   },

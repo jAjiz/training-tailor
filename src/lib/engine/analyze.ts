@@ -4,10 +4,9 @@ import {
 } from "@/lib/domain/types";
 import { createMovementResolver, movementFamily } from "@/lib/domain/resolve";
 import {
-  ManualAnalysisSchema, PasteAnalysisSchema, SituationAnalysisSchema,
-  type DetectedCondition, type ManualWorkout, type Restriction, type SituationAnalysis, type StimulusProfile, type StructuredWorkout,
+  PasteAnalysisSchema, SituationAnalysisSchema,
+  type DetectedCondition, type Restriction, type SituationAnalysis, type StructuredWorkout,
 } from "./types";
-import { renderBlock, renderManualWorkout } from "./render-text";
 import { resolveBlocks } from "./resolve-blocks";
 
 export interface AnalyzeContext {
@@ -50,12 +49,6 @@ WORKOUT
 - "components": one per movement, including accessory, activation and warm-up movements; never drop one. "movement": the MOVEMENT LIBRARY name only when it is the SAME movement (a spelling, abbreviation or translation of it); a related variant that is not in the library keeps its own name as written (a "snatch pull" is not a Hang Power Snatch, a "Bulgarian split squat" is not a Lunge). Mobility drills, stretches and technique drills (the Sots press, anything done with a PVC pipe) are not movements: leave them out. "load" as written (e.g. "61/43 kg"); "loadKg" male/female kilograms when explicit (convert lb); "percent1RM" when prescribed as a percentage.
 - Keep intensity cues, tempo, rest and scaling tiers (Rx+/Rx/Int, M/F) in "coachingNotes".
 - ${STIMULUS_RULES}
-
-SITUATION
-${SITUATION_RULES}`;
-
-const MANUAL_SYSTEM = `You classify an athlete-entered training session for a coaching engine. Return JSON only.
-- "stimuli": one entry per block, in the given order. ${STIMULUS_RULES}
 
 SITUATION
 ${SITUATION_RULES}`;
@@ -165,35 +158,5 @@ export async function analyzePaste(
       ...s,
       analyzed: false,
     };
-  }
-}
-
-export async function analyzeManual(
-  provider: LlmProvider, manual: ManualWorkout, situation: string, ctx: AnalyzeContext,
-): Promise<WorkoutAnalysis> {
-  const resolve = createMovementResolver(ctx.movements);
-  const rawText = renderManualWorkout(manual);
-  const build = (stimuli: (StimulusProfile | null)[]): StructuredWorkout => ({
-    name: manual.name, rawText, source: "manual",
-    blocks: resolveBlocks(
-      manual.blocks.map((b, i) => ({ ...b, rawText: renderBlock(b), day: null, stimulus: stimuli[i] ?? null })),
-      resolve,
-    ),
-  });
-  try {
-    const out = await provider.generateStructured({
-      systemPrompt: MANUAL_SYSTEM,
-      prompt: `${vocabularyText(ctx)}\n\n${situationText(situation)}\n\nSESSION (one entry per block, in order):\n${
-        manual.blocks.map((b, i) => `[block ${i}]\n${renderBlock(b)}`).join("\n\n")
-      }`,
-      schema: ManualAnalysisSchema,
-      schemaName: "ManualAnalysis",
-    });
-    return { workout: build(out.stimuli), ...clean(out, ctx), analyzed: true };
-  } catch (e) {
-    if (e instanceof EngineTimeoutError) throw e;
-    console.error("analyzeManual failed; continuing without stimulus", e);
-    const s = await analyzeSituation(provider, situation, ctx);
-    return { workout: build([]), ...s, analyzed: false };
   }
 }

@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { FakeProvider } from "@/lib/ai/fake-provider";
 import { EngineTimeoutError } from "@/lib/ai/provider";
 import { getDomainData, type DomainData } from "@/lib/domain/repository";
-import { analyzeManual, analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
-import { FRAN_TEXT, component, franDraft, sprint } from "../fixtures/workouts";
+import { analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
+import { FRAN_TEXT, component, franDraft } from "../fixtures/workouts";
 
 let domain: DomainData;
 beforeAll(async () => { domain = await getDomainData(); });
@@ -84,31 +84,6 @@ describe("analyzePaste", () => {
   it("fails rather than ignore stated pain when both calls fail", async () => {
     const provider = new FakeProvider({ PasteAnalysis: new Error("garbage"), SituationAnalysis: new Error("down") });
     await expect(analyzePaste(provider, "cryptic", "me duele la rodilla", domain)).rejects.toThrow("down");
-  });
-});
-
-describe("analyzeManual", () => {
-  const manual = {
-    name: "Manual",
-    blocks: [
-      { title: "A", format: "strength" as const, scheme: "5x5", timeDomainMinutes: 15, coachingNotes: null, components: [component("Back Squat")] },
-      { title: "B", format: "amrap" as const, scheme: "AMRAP 8", timeDomainMinutes: 8, coachingNotes: null, components: [component("T2B", { reps: 10 })] },
-    ],
-  };
-
-  it("renders text, aligns stimuli by block and resolves names", async () => {
-    const provider = new FakeProvider({ ManualAnalysis: { stimuli: [null, sprint], restrictions: [], conditions: [], unavailableEquipment: [] } });
-    const a = await analyzeManual(provider, manual, "", domain);
-    expect(a.workout.source).toBe("manual");
-    expect(a.workout.blocks[0].rawText).toBe("A\n5x5\nBack Squat");
-    expect(a.workout.blocks[1].stimulus).toEqual(sprint);
-    expect(a.workout.blocks[1].components[0].canonical).toBe("Toes-to-Bar");
-  });
-
-  it("fills missing stimuli with null when the model returns too few", async () => {
-    const provider = new FakeProvider({ ManualAnalysis: { stimuli: [sprint], restrictions: [], conditions: [], unavailableEquipment: [] } });
-    const a = await analyzeManual(provider, manual, "", domain);
-    expect(a.workout.blocks[1].stimulus).toBeNull();
   });
 });
 

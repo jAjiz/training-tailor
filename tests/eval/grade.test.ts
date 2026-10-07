@@ -6,7 +6,7 @@ import { fran } from "../fixtures/workouts";
 
 const baseCase = EvalCaseSchema.parse({
   id: "fran-shoulder", description: "Fran with a sore shoulder",
-  input: { kind: "paste", rawText: "Fran" },
+  rawText: "Fran",
   request: { situation: "sore shoulder" },
   expect: { mustAvoid: ["Thruster"], mustRestrict: ["shoulder"], maxTotalMinutes: 10 },
 });
@@ -34,7 +34,7 @@ beforeAll(async () => { domain = await getDomainData(); });
 
 describe("eval grading", () => {
   it("fills defaults for profile, request and expectations", () => {
-    const c = EvalCaseSchema.parse({ id: "x", description: "x", input: { kind: "paste", rawText: "x" } });
+    const c = EvalCaseSchema.parse({ id: "x", description: "x", rawText: "x" });
     expect(c.expect).toEqual({
       mustAvoid: [], mustKeep: [], mustDetect: [], mustRestrict: [], maxTotalMinutes: null, expectFailClosed: false,
       originalMustContain: [], originalMustNotContain: [], mustKeepPatterns: [],
@@ -67,7 +67,7 @@ describe("eval grading", () => {
 
   it("checks how the original workout was recognized", () => {
     const c = EvalCaseSchema.parse({
-      id: "snatch-pull", description: "x", input: { kind: "paste", rawText: "x" },
+      id: "snatch-pull", description: "x", rawText: "x",
       expect: { originalMustContain: ["Thruster", "Snatch Pull"], originalMustNotContain: ["Pull-up"] },
     });
     expect(gradeCase(c, { kind: "result", result: result() }).failures).toEqual([
@@ -80,7 +80,7 @@ describe("eval grading", () => {
     const r = result();
     r.original.blocks[0].components.push({ ...r.original.blocks[0].components[0], movement: "sots press", canonical: null });
     const c = EvalCaseSchema.parse({
-      id: "sots", description: "x", input: { kind: "paste", rawText: "x" },
+      id: "sots", description: "x", rawText: "x",
       expect: { originalMustContain: ["thruster"], originalMustNotContain: ["Sots Press"] },
     });
     expect(gradeCase(c, { kind: "result", result: r }).failures).toEqual(["original contains Sots Press"]);
@@ -88,7 +88,7 @@ describe("eval grading", () => {
 
   it("checks that the tailored session keeps the required movement patterns", () => {
     const c = EvalCaseSchema.parse({
-      id: "keep-squat", description: "x", input: { kind: "paste", rawText: "x" },
+      id: "keep-squat", description: "x", rawText: "x",
       expect: { mustKeepPatterns: ["squat", "horizontal_pull"] },
     });
     // result() prescribes only Ring Row (horizontal_pull): the squat half of the Thruster is gone.
@@ -106,7 +106,7 @@ describe("eval grading", () => {
 
   it("grades today's non-pain conditions, and the movements nothing restricted", () => {
     const c = EvalCaseSchema.parse({
-      id: "keep", description: "x", input: { kind: "paste", rawText: "x" },
+      id: "keep", description: "x", rawText: "x",
       expect: { mustDetect: ["pregnancy"], mustKeep: ["Ring Row", "Toes-to-Bar"] },
     });
     expect(gradeCase(c, { kind: "result", result: result() }).failures).toEqual([

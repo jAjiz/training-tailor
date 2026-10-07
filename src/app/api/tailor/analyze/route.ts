@@ -10,6 +10,6 @@ export function POST(req: Request) {
     schema: AnalyzeBodySchema,
     budgetMs,
     maxBodyChars: MAX_TAILOR_BODY_CHARS,
-    run: (body, { provider, ...ctx }) => analyzeWorkout(provider, { input: body.input, request: body.request, ...ctx }),
+    run: (body, { provider, ...ctx }) => analyzeWorkout(provider, { rawText: body.rawText, request: body.request, ...ctx }),
   });
 }

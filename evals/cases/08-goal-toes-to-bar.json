@@ -1,7 +1,9 @@
 {
   "id": "goal-toes-to-bar",
   "description": "No constraint, biased toward toes-to-bar",
-  "input": { "kind": "paste", "rawText": "AMRAP 12 min\n12 Kettlebell Swings 24/16 kg\n12 Box Jumps 60/50 cm\n200 m Run" },
-  "request": { "targetMovement": "Toes-to-Bar" },
+  "rawText": "AMRAP 12 min\n12 Kettlebell Swings 24/16 kg\n12 Box Jumps 60/50 cm\n200 m Run",
+  "request": {
+    "targetMovement": "Toes-to-Bar"
+  },
   "expect": {}
 }

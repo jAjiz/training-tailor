@@ -1,10 +1,7 @@
 {
   "id": "hand-tear",
   "description": "Gymnastics EMOM with a torn palm stated today",
-  "input": {
-    "kind": "paste",
-    "rawText": "EMOM 12\nMin 1: 15 Toes-to-Bar\nMin 2: 12 Chest-to-Bar Pull-ups\nMin 3: 15/12 Cal Row"
-  },
+  "rawText": "EMOM 12\nMin 1: 15 Toes-to-Bar\nMin 2: 12 Chest-to-Bar Pull-ups\nMin 3: 15/12 Cal Row",
   "request": {
     "situation": "Se me ha abierto un callo en la palma de la mano derecha"
   },

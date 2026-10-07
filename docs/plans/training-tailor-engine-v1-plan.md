@@ -30,7 +30,7 @@ Revision 1 of this plan delivered Phase 0 (scaffold, Vitest), Phase 1 (Prisma 7 
 
 ## Execution order
 
-`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U4b → U5 → U6` (API, unrecognized-movement queue, UI, athlete-confirmed conditions) → `F1` (README, verification).
+`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U4b → U4c → U6` (API, unrecognized-movement queue, UI, athlete-confirmed conditions, restrictions; U5 cancelled) → `F1` (README, verification).
 
 The engine and its evaluation come before auth and UI on purpose: the LLM loop is validated end-to-end (`pnpm eval`) before any screen exists.
 
@@ -7282,105 +7282,12 @@ Behaviour (the user's three cases, session `3 Power Snatch / 5 Bar-facing Burpee
 
 ---
 
-### Task U5: Manual structured entry
+### Task U5: Manual structured entry — CANCELLED (2026-10-07)
 
-**Files:**
-- Modify: `src/app/tailor/ManualEntryForm.tsx` (replace the stub component)
-
-**Interfaces:**
-- Consumes: `BlockFormat`, `ComponentDraft`, `ManualBlock`, `ManualWorkout` (E1).
-- Produces: the full `ManualEntryForm`; `emptyComponent`, `emptyBlock`, `emptyManualWorkout` keep their U4 signatures.
-
-- [ ] **Step 1: Replace `ManualEntryForm` in `src/app/tailor/ManualEntryForm.tsx`**
-
-Keep the three `empty*` helpers and the `Props` interface from U4; add `BlockFormat` to the import (`import { BlockFormat, type ComponentDraft, type ManualBlock, type ManualWorkout } from "@/lib/engine/types";`) and replace the stub function with:
-
-```tsx
-const field = "rounded border px-2 py-1 text-sm";
-const textOrNull = (v: string) => (v.trim() === "" ? null : v);
-const numberOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
-const repsValue = (v: string): ComponentDraft["reps"] => {
-  if (v.trim() === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : v;
-};
-
-export function ManualEntryForm({ value, onChange, movementNames }: Props) {
-  const setBlock = (i: number, patch: Partial<ManualBlock>) =>
-    onChange({ ...value, blocks: value.blocks.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
-  const setComponent = (bi: number, ci: number, patch: Partial<ComponentDraft>) =>
-    setBlock(bi, { components: value.blocks[bi].components.map((c, j) => (j === ci ? { ...c, ...patch } : c)) });
-
-  return (
-    <div className="flex flex-col gap-3">
-      <datalist id="manual-movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
-      <input className={field} placeholder="Session name (optional)" value={value.name ?? ""}
-        onChange={(e) => onChange({ ...value, name: textOrNull(e.target.value) })} />
-
-      {value.blocks.map((b, bi) => (
-        <div key={bi} className="flex flex-col gap-2 rounded border p-3">
-          <div className="flex flex-wrap gap-2">
-            <input className={field} placeholder={`Block ${bi + 1} title`} value={b.title ?? ""}
-              onChange={(e) => setBlock(bi, { title: textOrNull(e.target.value) })} />
-            <select className={field} value={b.format} onChange={(e) => setBlock(bi, { format: BlockFormat.parse(e.target.value) })}>
-              {BlockFormat.options.map((f) => <option key={f} value={f}>{f.replaceAll("_", " ")}</option>)}
-            </select>
-            <input className={field} placeholder="scheme, e.g. AMRAP 12" value={b.scheme ?? ""}
-              onChange={(e) => setBlock(bi, { scheme: textOrNull(e.target.value) })} />
-            <input className={`${field} w-24`} type="number" min={0} placeholder="min" value={b.timeDomainMinutes ?? ""}
-              onChange={(e) => setBlock(bi, { timeDomainMinutes: numberOrNull(e.target.value) })} />
-          </div>
-
-          {b.components.map((c, ci) => (
-            <div key={ci} className="flex flex-wrap gap-2">
-              <input className={`${field} grow`} list="manual-movement-names" placeholder="movement" value={c.movement}
-                onChange={(e) => setComponent(bi, ci, { movement: e.target.value })} />
-              <input className={`${field} w-20`} placeholder="reps" value={c.reps ?? ""}
-                onChange={(e) => setComponent(bi, ci, { reps: repsValue(e.target.value) })} />
-              <input className={`${field} w-28`} placeholder="load" value={c.load ?? ""}
-                onChange={(e) => setComponent(bi, ci, { load: textOrNull(e.target.value) })} />
-              <input className={`${field} w-20`} type="number" min={0} placeholder="m" value={c.distanceMeters ?? ""}
-                onChange={(e) => setComponent(bi, ci, { distanceMeters: numberOrNull(e.target.value) })} />
-              <input className={`${field} w-20`} type="number" min={0} placeholder="cal" value={c.calories ?? ""}
-                onChange={(e) => setComponent(bi, ci, { calories: numberOrNull(e.target.value) })} />
-              <button type="button" className="text-sm underline"
-                onClick={() => setBlock(bi, { components: b.components.filter((_, j) => j !== ci) })}>remove</button>
-            </div>
-          ))}
-
-          <textarea className={field} placeholder="Coaching notes (tempo, intensity, scaling)" value={b.coachingNotes ?? ""}
-            onChange={(e) => setBlock(bi, { coachingNotes: textOrNull(e.target.value) })} />
-          <div className="flex gap-3 text-sm">
-            <button type="button" className="underline" onClick={() => setBlock(bi, { components: [...b.components, emptyComponent()] })}>
-              Add movement
-            </button>
-            {value.blocks.length > 1 && (
-              <button type="button" className="underline"
-                onClick={() => onChange({ ...value, blocks: value.blocks.filter((_, j) => j !== bi) })}>Remove block</button>
-            )}
-          </div>
-        </div>
-      ))}
-
-      <button type="button" className="w-fit rounded border px-3 py-1 text-sm"
-        onClick={() => onChange({ ...value, blocks: [...value.blocks, emptyBlock()] })}>Add block</button>
-    </div>
-  );
-}
-```
-
-- [ ] **Step 2: Manual check**
-
-`/tailor` → "Enter manually": one strength block (Back Squat, 5x5, 100 kg) and one AMRAP block (T2B 10, Burpee 10). Submit with "no pull-up bar today". Expected: the original shows both blocks with a stimulus chip each; the tailored version has no Toes-to-Bar. Leaving a movement name empty shows "Give every movement a name." without calling the API.
-
-- [ ] **Step 3: Verify and commit**
-
-Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
-
-```bash
-git add -A
-git commit -m "feat: manual structured workout entry"
-```
+Coaches publish workouts as free text, so the paste is the only ingestion path. The manual path was removed instead
+of completed: the "Enter manually" toggle and `ManualEntryForm`, `analyzeManual` and its schemas, the manual variant
+of the analyze body (now `{ rawText, request }`) and of eval cases (now a top-level `rawText`), and the block
+renderers only it used.
 
 ---
 
@@ -7534,7 +7441,7 @@ git commit -m "docs: README, deployment notes and v1 verification"
 | Prisma migrations; profile document; saved results; quota ledger + 429 | S1, U2, U3 |
 | Save exactly what was reviewed | U3 |
 | Structured profile (sex, scaling level, injuries with side/severity, benchmarks, equipment, goals, availability) | E1, U1 |
-| Phone-first UI; disclaimer; caution badges | S2, U4, U5, U6 |
+| Phone-first UI; disclaimer; caution badges | S2, U4, U6 |
 | Public repo: corpus and reports gitignored | E9, E10 |
 | Hosting on Vercel + Neon | F1 |
 

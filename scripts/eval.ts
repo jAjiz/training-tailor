@@ -24,8 +24,8 @@ async function main() {
     const started = Date.now();
     let outcome: EvalOutcome;
     try {
-      const { input, profile, request } = resolveCase(c);
-      const analysis = await analyzeWorkout(provider, { input, request, profile, domain });
+      const { rawText, profile, request } = resolveCase(c);
+      const analysis = await analyzeWorkout(provider, { rawText, request, profile, domain });
       // The harness plays a conservative athlete: every load on a painful site, the preselected replacement.
       const result = await runTailorPipeline(provider, {
         original: analysis.original, confirmed: analysis.suggested,

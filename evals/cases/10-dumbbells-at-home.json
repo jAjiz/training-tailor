@@ -1,7 +1,17 @@
 {
   "id": "dumbbells-at-home",
   "description": "Fran at home with dumbbells and a jump rope only",
-  "profile": { "equipment": ["dumbbell", "jump_rope"] },
-  "input": { "kind": "paste", "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
-  "expect": { "mustAvoid": ["Thruster", "Pull-up"] }
+  "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups",
+  "profile": {
+    "equipment": [
+      "dumbbell",
+      "jump_rope"
+    ]
+  },
+  "expect": {
+    "mustAvoid": [
+      "Thruster",
+      "Pull-up"
+    ]
+  }
 }

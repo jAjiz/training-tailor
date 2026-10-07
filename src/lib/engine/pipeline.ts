@@ -3,7 +3,7 @@ import { assessMovement, type ActiveCondition } from "@/lib/domain/assess";
 import type { DomainData } from "@/lib/domain/repository";
 import { createMovementResolver } from "@/lib/domain/resolve";
 import type { Equipment } from "@/lib/domain/types";
-import { analyzeManual, analyzePaste, analyzeSituation, type AnalyzeContext } from "./analyze";
+import { analyzePaste, analyzeSituation, type AnalyzeContext } from "./analyze";
 import { buildQuestions } from "./clarify";
 import { activateConditions, profileConditionRefs, restrictionConditions } from "./conditions";
 import {
@@ -12,13 +12,12 @@ import {
 import { tailor, type TailorInput } from "./tailor";
 import {
   REMOVED_MOVEMENT,
-  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding, type ManualWorkout,
+  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding,
   type PipelineResult, type Restriction, type StructuredWorkout, type TailorRequest, type TailoringResult,
   type WorkoutAnalysisResult,
 } from "./types";
 import { isViolation, validateTailoring } from "./validate";
 
-export type WorkoutInput = { kind: "paste"; rawText: string } | { kind: "manual"; workout: ManualWorkout };
 export type ProgressStage = "analyzing" | "tailoring" | "validating" | "retrying";
 
 /** A contraindicated movement survived the retry: nothing is returned to the athlete. */
@@ -30,7 +29,7 @@ export class EngineUnsafeError extends Error {
 }
 
 export interface AnalyzeArgs {
-  input: WorkoutInput;
+  rawText: string; // the session as the coach wrote it
   request: TailorRequest;
   profile: AthleteProfile;
   domain: DomainData;
@@ -178,10 +177,7 @@ async function tailorAndValidate(
  */
 export async function analyzeWorkout(provider: LlmProvider, args: AnalyzeArgs): Promise<WorkoutAnalysisResult> {
   const ctx = analyzeContext(args.domain);
-  const situation = args.request.situation;
-  const a = args.input.kind === "paste"
-    ? await analyzePaste(provider, args.input.rawText, situation, ctx)
-    : await analyzeManual(provider, args.input.workout, situation, ctx);
+  const a = await analyzePaste(provider, args.rawText, args.request.situation, ctx);
   const { active } = activateConditions(profileConditionRefs(args.profile.injuries), a.conditions, args.domain.contraindications);
   const questions = buildQuestions({
     original: a.workout, restrictions: a.restrictions, base: active, movements: args.domain.movements,

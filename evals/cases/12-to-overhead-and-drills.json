@@ -1,9 +1,17 @@
 {
   "id": "to-overhead-and-drills",
   "description": "Shoulder-to-overhead and ground-to-overhead are their own movements; the Sots press is a technique drill, not a component",
-  "input": { "kind": "paste", "rawText": "Calentamiento, 2 rondas con barra vacía:\n3 Sots Press\n5 PVC pass-through\n\nAMRAP 12 min\n15 shoulder to overhead 50/35 kg\n10 ground to overhead 50/35 kg\n15 toes to bar" },
+  "rawText": "Calentamiento, 2 rondas con barra vacía:\n3 Sots Press\n5 PVC pass-through\n\nAMRAP 12 min\n15 shoulder to overhead 50/35 kg\n10 ground to overhead 50/35 kg\n15 toes to bar",
   "expect": {
-    "originalMustContain": ["Shoulder-to-Overhead", "Ground-to-Overhead", "Toes-to-Bar"],
-    "originalMustNotContain": ["Sots Press", "Shoulder Press", "Clean & Jerk"]
+    "originalMustContain": [
+      "Shoulder-to-Overhead",
+      "Ground-to-Overhead",
+      "Toes-to-Bar"
+    ],
+    "originalMustNotContain": [
+      "Sots Press",
+      "Shoulder Press",
+      "Clean & Jerk"
+    ]
   }
 }

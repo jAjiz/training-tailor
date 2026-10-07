@@ -1,13 +1,38 @@
 {
   "id": "fran-mild-knee-profile-only",
   "description": "Fran at home with dumbbells, only a mild left knee in the profile and no situation today: the Thruster becomes a dumbbell thruster, not a half-movement",
-  "input": { "kind": "paste", "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups" },
+  "rawText": "Fran\n21-15-9 for time\nThrusters 43/30 kg\nPull-ups",
   "profile": {
-    "equipment": ["dumbbell", "jump_rope"],
+    "equipment": [
+      "dumbbell",
+      "jump_rope"
+    ],
     "injuries": [
-      { "key": "knee_pain", "side": "left", "severity": "mild", "notes": null, "since": null },
-      { "key": "no_hanging", "side": null, "severity": "moderate", "notes": null, "since": null }
+      {
+        "key": "knee_pain",
+        "side": "left",
+        "severity": "mild",
+        "notes": null,
+        "since": null
+      },
+      {
+        "key": "no_hanging",
+        "side": null,
+        "severity": "moderate",
+        "notes": null,
+        "since": null
+      }
     ]
   },
-  "expect": { "mustAvoid": ["Thruster", "Pull-up"], "mustKeepPatterns": ["squat", "vertical_push", "horizontal_pull"] }
+  "expect": {
+    "mustAvoid": [
+      "Thruster",
+      "Pull-up"
+    ],
+    "mustKeepPatterns": [
+      "squat",
+      "vertical_push",
+      "horizontal_pull"
+    ]
+  }
 }

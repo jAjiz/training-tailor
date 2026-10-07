@@ -1,10 +1,7 @@
 {
   "id": "olympic-pulls-recognition",
   "description": "Pulls, split squats and core accessories are recognized as themselves, not as a similar library movement",
-  "input": {
-    "kind": "paste",
-    "rawText": "A) Halterofilia\nEMOM 10 min: 2 snatch pull + 1 hang power snatch @70%\n\nB) 4 x 3 clean pull @90% del clean\n\nC) Accesorio, 3 rondas:\n8+8 Bulgarian split squat con DB 2x16 kg\n10 pallof press / lado\n12 glute bridge"
-  },
+  "rawText": "A) Halterofilia\nEMOM 10 min: 2 snatch pull + 1 hang power snatch @70%\n\nB) 4 x 3 clean pull @90% del clean\n\nC) Accesorio, 3 rondas:\n8+8 Bulgarian split squat con DB 2x16 kg\n10 pallof press / lado\n12 glute bridge",
   "request": {
     "situation": "Me molesta el hombro derecho al ir por encima de la cabeza"
   },

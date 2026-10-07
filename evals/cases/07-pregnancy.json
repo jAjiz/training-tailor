@@ -1,7 +1,26 @@
 {
   "id": "pregnancy",
   "description": "Chipper for a pregnant athlete (profile condition)",
-  "profile": { "sex": "female", "injuries": [{ "key": "pregnancy", "side": null, "severity": "moderate", "notes": "Second trimester", "since": null }] },
-  "input": { "kind": "paste", "rawText": "For time\n50 Sit-ups\n40 Wall Balls 9/6 kg\n30 Box Jumps\n20 Handstand Push-ups" },
-  "expect": { "mustAvoid": ["Sit-up", "GHD Sit-up", "V-up", "Handstand Push-up", "Strict Handstand Push-up"] }
+  "rawText": "For time\n50 Sit-ups\n40 Wall Balls 9/6 kg\n30 Box Jumps\n20 Handstand Push-ups",
+  "profile": {
+    "sex": "female",
+    "injuries": [
+      {
+        "key": "pregnancy",
+        "side": null,
+        "severity": "moderate",
+        "notes": "Second trimester",
+        "since": null
+      }
+    ]
+  },
+  "expect": {
+    "mustAvoid": [
+      "Sit-up",
+      "GHD Sit-up",
+      "V-up",
+      "Handstand Push-up",
+      "Strict Handstand Push-up"
+    ]
+  }
 }

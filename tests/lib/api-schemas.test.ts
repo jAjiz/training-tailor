@@ -14,17 +14,13 @@ const snatch = {
 };
 
 describe("API bodies", () => {
-  it("accepts a paste and a manual workout to analyze", () => {
-    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "Fran" }, request: emptyRequest() }).success).toBe(true);
-    expect(AnalyzeBodySchema.safeParse({
-      input: { kind: "manual", workout: { name: null, blocks: [{ title: null, format: "amrap", scheme: null, timeDomainMinutes: 10, coachingNotes: null, components: [] }] } },
-      request: emptyRequest(),
-    }).success).toBe(true);
+  it("accepts a pasted workout to analyze", () => {
+    expect(AnalyzeBodySchema.safeParse({ rawText: "Fran", request: emptyRequest() }).success).toBe(true);
   });
 
   it("rejects an empty or oversized paste", () => {
-    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "" }, request: emptyRequest() }).success).toBe(false);
-    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "x".repeat(20001) }, request: emptyRequest() }).success).toBe(false);
+    expect(AnalyzeBodySchema.safeParse({ rawText: "", request: emptyRequest() }).success).toBe(false);
+    expect(AnalyzeBodySchema.safeParse({ rawText: "x".repeat(20001), request: emptyRequest() }).success).toBe(false);
   });
 
   it("tailors an analyzed session with today's conditions and answered restrictions", () => {

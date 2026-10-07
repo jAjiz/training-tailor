@@ -8,7 +8,7 @@ import {
 import {
   RestrictionDraftSchema, WorkoutDraftSchema, emptyProfile, emptyRequest, type Restriction, type TailoringDraft,
 } from "@/lib/engine/types";
-import { FRAN_TEXT, SNATCH_TEXT, component, fran, franDraft, snatchSession, sprint, toTailoringDraft } from "../fixtures/workouts";
+import { FRAN_TEXT, SNATCH_TEXT, component, fran, franDraft, snatchSession, toTailoringDraft } from "../fixtures/workouts";
 
 let domain: DomainData;
 beforeAll(async () => { domain = await getDomainData(); });
@@ -52,7 +52,7 @@ const run = (provider: FakeProvider, stages: ProgressStage[] = [], overrides: Pa
 
 describe("analyzeWorkout", () => {
   const analyze = (provider: FakeProvider, rawText: string, situation: string) => analyzeWorkout(provider, {
-    input: { kind: "paste", rawText }, request: { ...emptyRequest(), situation }, profile: emptyProfile(), domain,
+    rawText, request: { ...emptyRequest(), situation }, profile: emptyProfile(), domain,
   });
 
   it("reads today's restrictions without tailoring, in one model call", async () => {
@@ -78,19 +78,6 @@ describe("analyzeWorkout", () => {
     expect(q.kind === "site" && q.options.map((o) => o.movements)).toEqual([["Power Snatch"], ["Toes-to-Bar"]]);
   });
 
-  it("analyzes a manual workout", async () => {
-    const provider = new FakeProvider({ ManualAnalysis: { stimuli: [sprint], restrictions: [], conditions: [], unavailableEquipment: [] } });
-    const a = await analyzeWorkout(provider, {
-      input: { kind: "manual", workout: { name: "Fran", blocks: [{
-        title: "Fran", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
-        components: franDraft().blocks[0].components,
-      }] } },
-      request: emptyRequest(), profile: emptyProfile(), domain,
-    });
-    expect(a.original.source).toBe("manual");
-    expect(a.original.blocks[0].stimulus).toEqual(sprint);
-    expect(a.restrictions).toEqual([]);
-  });
 });
 
 describe("analyzeFeedback", () => {
