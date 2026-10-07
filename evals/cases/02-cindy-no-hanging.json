@@ -1,0 +1,25 @@
+{
+  "id": "cindy-no-hanging",
+  "description": "Cindy for an athlete with a cast who cannot hang (profile limitation)",
+  "rawText": "Cindy\nAMRAP 20 min\n5 Pull-ups\n10 Push-ups\n15 Air Squats",
+  "profile": {
+    "injuries": [
+      {
+        "key": "no_hanging",
+        "side": null,
+        "severity": "moderate",
+        "notes": "Cast on the left wrist",
+        "since": null
+      }
+    ]
+  },
+  "expect": {
+    "mustAvoid": [
+      "Pull-up",
+      "Strict Pull-up",
+      "Banded Pull-up",
+      "Chest-to-Bar",
+      "Dead Hang"
+    ]
+  }
+}

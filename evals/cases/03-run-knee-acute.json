@@ -1,0 +1,18 @@
+{
+  "id": "run-knee-acute",
+  "description": "Running and jumping with an acute knee sprain",
+  "rawText": "5 rounds for time\n400 m Run\n15 Kettlebell Swings 24/16 kg\n10 Box Jumps 60/50 cm",
+  "request": {
+    "situation": "Ayer me torcí la rodilla izquierda y hoy me duele bastante al apoyar"
+  },
+  "expect": {
+    "mustRestrict": [
+      "knee"
+    ],
+    "mustAvoid": [
+      "Run",
+      "Box Jump",
+      "Box Jump Over"
+    ]
+  }
+}

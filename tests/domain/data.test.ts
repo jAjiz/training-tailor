@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import movementsJson from "../../data/movements.json";
-import injuriesJson from "../../data/injury-contraindications.json";
-import stimuli from "../../data/stimulus-taxonomy.json";
-import { MovementSchema, InjuryContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
-import type { Movement } from "@/lib/domain/types";
-import { matchesContraindication } from "@/lib/domain/matching";
+import contraindicationsJson from "../../data/contraindications.json";
+import taxonomyJson from "../../data/stimulus-taxonomy.json";
+import { MovementSchema, ContraindicationSchema, StimulusTaxonomySchema } from "@/lib/domain/types";
+import type { Movement, Severity, Side } from "@/lib/domain/types";
+import { assessMovement, matchesContraindication } from "@/lib/domain/assess";
 
 const movements = movementsJson.map((m) => MovementSchema.parse(m));
-const injuries = injuriesJson.map((i) => InjuryContraindicationSchema.parse(i));
+const injuries = contraindicationsJson.map((i) => ContraindicationSchema.parse(i));
 
 function byName(name: string): Movement {
   const m = movements.find((mv) => mv.name === name);
@@ -42,6 +42,10 @@ describe("domain data integrity", () => {
     expect(ballistic("Handstand Push-up")).toBe(true);
     expect(ballistic("Strict Handstand Push-up")).toBe(false);
     expect(ballistic("Wall-facing Handstand Push-up")).toBe(false);
+  });
+
+  it("a power snatch scales to the power clean first: same pull, no shoulder overhead", () => {
+    expect(byName("Power Snatch").substitutes[0]).toBe("Power Clean");
   });
 
   it("the goblet squat has one row per implement, each scaling only to the air squat", () => {
@@ -97,7 +101,10 @@ describe("domain data integrity", () => {
     for (const name of ["Dumbbell Farmer Carry", "Kettlebell Farmer Carry"]) {
       const m = byName(name);
       expect(m.patterns).toEqual(["carry"]);
-      expect(m.stresses).toEqual([{ site: "lumbar", mechanisms: ["compression"] }]);
+      expect(m.stresses).toEqual([
+        { site: "lumbar", mechanisms: ["compression"], load: "high" },
+        { site: "grip", mechanisms: ["traction"], load: "high" },
+      ]);
     }
     expect(byName("Dumbbell Farmer Carry").equipment).toEqual(["dumbbell"]);
     expect(byName("Kettlebell Farmer Carry").equipment).toEqual(["kettlebell"]);
@@ -176,17 +183,16 @@ describe("domain data integrity", () => {
   });
 
   it("no contraindication relies on an explicit movement override", () => {
-    for (const i of injuries) expect(i.avoidMovements, i.injuryKey).toEqual([]);
+    for (const i of injuries) expect(i.avoidMovements, i.key).toEqual([]);
   });
 
-  it("stimulus taxonomy is valid with unique keys", () => {
-    const keys = new Set<string>();
-    for (const s of stimuli) {
-      StimulusDefSchema.parse(s);
-      expect(keys.has(s.key)).toBe(false);
-      keys.add(s.key);
+  it("stimulus taxonomy has three vocabularies with unique keys", () => {
+    const taxonomy = StimulusTaxonomySchema.parse(taxonomyJson);
+    for (const list of [taxonomy.qualities, taxonomy.energySystems, taxonomy.loadIntensities]) {
+      const keys = list.map((d) => d.key);
+      expect(new Set(keys).size).toBe(keys.length);
     }
-    expect(keys.has("aerobic_capacity")).toBe(true);
+    expect(taxonomy.qualities.map((q) => q.key)).toContain("conditioning");
   });
 
   it("loaded deep knee flexion always travels with deep hip flexion", () => {
@@ -317,14 +323,16 @@ describe("domain data integrity", () => {
 
   it("every site annotated on a movement is blocked by some contraindication", () => {
     const movementSites = new Set(movements.flatMap((m) => m.stresses.map((s) => s.site)));
-    const blockedSites = new Set(injuries.flatMap((i) => i.avoidStresses.map((s) => s.site)));
+    const blockedSites = new Set(
+      injuries.flatMap((i) => i.rules.filter((r) => r.tier === "avoid").map((r) => r.site))
+    );
     for (const site of movementSites) expect(blockedSites.has(site), site).toBe(true);
   });
 });
 
 describe("contraindication matching over real data", () => {
   function injury(key: string) {
-    const i = injuries.find((x) => x.injuryKey === key);
+    const i = injuries.find((x) => x.key === key);
     if (!i) throw new Error(`injury not found: ${key}`);
     return i;
   }
@@ -519,7 +527,7 @@ describe("contraindication matching over real data", () => {
 
   it("no_inversion blocks partially inverted movements, not only full inversion", () => {
     const wallClimb = byName("Wall Climb");
-    expect(wallClimb.positions).toEqual(["partial_inversion"]);
+    expect(wallClimb.positions).toContain("partial_inversion");
     expect(matchesContraindication(wallClimb, injury("no_inversion"))).toBe(true);
   });
 
@@ -547,18 +555,282 @@ describe("contraindication matching over real data", () => {
 
   it("the bodyweight lunge survives every contraindication", () => {
     const lunge = byName("Lunge");
-    for (const i of injuries) expect(matchesContraindication(lunge, i), i.injuryKey).toBe(false);
+    for (const i of injuries) expect(matchesContraindication(lunge, i), i.key).toBe(false);
   });
 
   it("the plank survives every contraindication", () => {
     const plank = byName("Plank");
-    for (const i of injuries) expect(matchesContraindication(plank, i), i.injuryKey).toBe(false);
+    for (const i of injuries) expect(matchesContraindication(plank, i), i.key).toBe(false);
   });
 
   it("every injury leaves at least five movements available", () => {
     for (const i of injuries) {
       const remaining = movements.filter((m) => !matchesContraindication(m, i));
-      expect(remaining.length, i.injuryKey).toBeGreaterThanOrEqual(5);
+      expect(remaining.length, i.key).toBeGreaterThanOrEqual(5);
     }
+  });
+});
+
+describe("v2 annotations", () => {
+  function condition(key: string) {
+    const c = injuries.find((x) => x.key === key);
+    if (!c) throw new Error(`contraindication not found: ${key}`);
+    return c;
+  }
+  const verdict = (name: string, key: string, severity: Severity = "moderate", side: Side | null = null) =>
+    assessMovement(byName(name), [{ contraindication: condition(key), side, severity }]);
+
+  it("every hanging movement loads the grip", () => {
+    for (const m of movements.filter((mv) => mv.positions.includes("hanging"))) {
+      expect(m.stresses.some((s) => s.site === "grip"), m.name).toBe(true);
+    }
+  });
+
+  it("trunk-flexion core work loads the abdominals", () => {
+    for (const name of ["Sit-up", "V-up", "GHD Sit-up", "Toes-to-Bar", "Toes-to-Ring", "Knees-to-Elbows", "Hanging Knee Raise"]) {
+      expect(byName(name).stresses.some((s) => s.site === "abdominals" && s.mechanisms.includes("flexion")), name).toBe(true);
+    }
+  });
+
+  it("lying positions are annotated", () => {
+    for (const name of ["Bench Press", "Dumbbell Bench Press", "Sit-up", "V-up", "GHD Sit-up"]) {
+      expect(byName(name).positions, name).toContain("supine");
+    }
+    for (const name of ["Burpee", "Devil Press", "Up-Down", "Wall Climb"]) {
+      expect(byName(name).positions, name).toContain("prone");
+    }
+  });
+
+  it("the catalog has 21 entries with the expected kinds", () => {
+    expect(injuries).toHaveLength(21);
+    expect(injuries.filter((c) => c.kind === "limitation").map((c) => c.key).sort()).toEqual(["no_hanging", "no_inversion"]);
+    expect(injuries.filter((c) => c.kind === "condition").map((c) => c.key)).toEqual(["pregnancy"]);
+  });
+
+  it("hand_tear blocks kipping on the bar and only cautions strict hanging", () => {
+    expect(matchesContraindication(byName("Pull-up"), condition("hand_tear"))).toBe(true);
+    expect(verdict("Dead Hang", "hand_tear").verdict).toBe("caution");
+    expect(verdict("Ring Row", "hand_tear").verdict).toBe("ok");
+  });
+
+  it("abdominal_strain blocks trunk flexion and spares the plank", () => {
+    for (const name of ["Sit-up", "GHD Sit-up", "Toes-to-Bar"]) {
+      expect(matchesContraindication(byName(name), condition("abdominal_strain")), name).toBe(true);
+    }
+    expect(verdict("Plank", "abdominal_strain").verdict).toBe("ok");
+  });
+
+  it("pregnancy avoids inversion and trunk flexion, and cautions lying positions and impact", () => {
+    expect(verdict("Handstand Push-up", "pregnancy").verdict).toBe("avoid");
+    expect(verdict("Sit-up", "pregnancy").verdict).toBe("avoid");
+    expect(verdict("Bench Press", "pregnancy").verdict).toBe("caution");
+    expect(verdict("Burpee", "pregnancy").verdict).toBe("caution");
+    expect(verdict("Plank", "pregnancy").verdict).toBe("ok");
+    expect(condition("pregnancy").notes).toMatch(/healthcare provider/);
+  });
+
+  it("knee pain severity scales the bodyweight and the loaded squat", () => {
+    expect(verdict("Air Squat", "knee_pain", "mild").verdict).toBe("ok");
+    expect(verdict("Air Squat", "knee_pain", "moderate").verdict).toBe("caution");
+    expect(verdict("Air Squat", "knee_pain", "acute").verdict).toBe("avoid");
+    expect(verdict("Back Squat", "knee_pain", "mild").verdict).toBe("caution");
+    expect(verdict("Back Squat", "knee_pain", "moderate").verdict).toBe("avoid");
+  });
+
+  it("a one-sided shoulder injury leaves single-arm dumbbell work for the healthy side", () => {
+    const a = verdict("Dumbbell Shoulder Press", "shoulder_impingement", "moderate", "right");
+    expect(a.verdict).toBe("caution");
+    expect(a.reasons.every((r) => r.healthySideOnly)).toBe(true);
+    expect(verdict("Shoulder Press", "shoulder_impingement", "moderate", "right").verdict).toBe("avoid");
+    expect(verdict("Dumbbell Shoulder Press", "shoulder_impingement").verdict).toBe("avoid");
+  });
+
+  it("laterality never exempts the spine", () => {
+    expect(verdict("Dumbbell Snatch", "lower_back_strain", "moderate", "left").verdict).toBe("avoid");
+  });
+
+  it("limitations ignore severity", () => {
+    expect(verdict("Pull-up", "no_hanging", "mild").verdict).toBe("avoid");
+  });
+
+  it("unilateral twins match", () => {
+    for (const m of movements.filter((mv) => mv.name.startsWith("Kettlebell "))) {
+      const twin = movements.find((mv) => mv.name === "Dumbbell " + m.name.slice("Kettlebell ".length));
+      if (twin) expect(m.unilateral, m.name).toBe(twin.unilateral);
+    }
+    expect(byName("Dumbbell Snatch").unilateral).toBe("upper");
+    expect(byName("Step-up").unilateral).toBe("lower");
+    expect(byName("Thruster").unilateral).toBeNull();
+  });
+});
+
+describe("strict variants and known gaps", () => {
+  const kips = (name: string) => byName(name).stresses.some((s) => s.mechanisms.includes("kipping"));
+  const elbow = () => {
+    const c = injuries.find((x) => x.key === "elbow_tendinopathy");
+    if (!c) throw new Error("elbow_tendinopathy missing");
+    return c;
+  };
+
+  it("kipping and strict variants are separate rows", () => {
+    for (const [kipping, strict] of [
+      ["Pull-up", "Strict Pull-up"], ["Chest-to-Bar", "Strict Chest-to-Bar"], ["Toes-to-Bar", "Strict Toes-to-Bar"],
+    ]) {
+      expect(kips(kipping), kipping).toBe(true);
+      expect(kips(strict), strict).toBe(false);
+      expect(byName(kipping).substitutes, kipping).toContain(strict);
+    }
+    expect(byName("Pull-up").substitutes[0]).toBe("Strict Pull-up");
+  });
+
+  it("an elbow tendinopathy keeps the strict pull-up and blocks the kipping one", () => {
+    expect(matchesContraindication(byName("Pull-up"), elbow())).toBe(true);
+    expect(matchesContraindication(byName("Strict Pull-up"), elbow())).toBe(false);
+  });
+
+  it("the burpee family starts prone", () => {
+    for (const name of ["Burpee", "Burpee Pull-up", "Burpee Box Jump Over", "Bar-facing Burpee", "Devil Press", "Up-Down"]) {
+      expect(byName(name).positions, name).toContain("prone");
+    }
+  });
+
+  it("hang variants mirror their floor lifts", () => {
+    expect(byName("Hang Power Clean").stresses).toEqual(byName("Power Clean").stresses);
+    expect(byName("Hang Squat Clean").stresses).toEqual(byName("Squat Clean").stresses);
+    expect(byName("Hang Power Snatch").stresses).toEqual(byName("Power Snatch").stresses);
+  });
+
+  it("the pistol is a single-leg deep squat", () => {
+    const p = byName("Pistol");
+    expect(p.unilateral).toBe("lower");
+    expect(p.stresses.some((s) => s.site === "knee" && s.mechanisms.includes("deep_flexion") && s.load === "high")).toBe(true);
+  });
+
+  it("horizontal pulling has a bodyweight, dumbbell and barbell option", () => {
+    expect(byName("Ring Row").substitutes).toEqual(["Dumbbell Row"]);
+    expect(byName("Dumbbell Row").unilateral).toBe("upper");
+    expect(byName("Bent-over Row").equipment).toEqual(["barbell"]);
+    expect(movements.filter((m) => m.patterns[0] === "horizontal_pull").map((m) => m.name).sort())
+      .toEqual(["Banded Face Pull", "Bent-over Row", "Dumbbell Row", "Ring Row"]);
+  });
+
+  it("the catalog has 139 movements", () => {
+    expect(movements).toHaveLength(139);
+  });
+});
+
+describe("corpus coverage pass", () => {
+  it("olympic pulls stop at triple extension: no catch, no overhead, no deep squat", () => {
+    for (const name of ["Snatch Pull", "Clean Pull"]) {
+      const m = byName(name);
+      expect(m.equipment, name).toEqual(["barbell"]);
+      expect(m.stresses.some((s) => s.site === "lumbar" && s.mechanisms.includes("ballistic")), name).toBe(true);
+      expect(m.stresses.some((s) => s.mechanisms.includes("overhead") || s.mechanisms.includes("deep_flexion")), name).toBe(false);
+    }
+  });
+
+  it("a shoulder impingement keeps the snatch pull and blocks the snatch", () => {
+    const shoulder = injuries.find((c) => c.key === "shoulder_impingement");
+    if (!shoulder) throw new Error("shoulder_impingement missing");
+    expect(matchesContraindication(byName("Snatch Pull"), shoulder)).toBe(false);
+    expect(matchesContraindication(byName("Hang Power Snatch"), shoulder)).toBe(true);
+  });
+
+  it("the snatch balance is a ballistic drop into an overhead squat", () => {
+    const m = byName("Snatch Balance");
+    for (const site of byName("Overhead Squat").stresses.map((x) => x.site)) {
+      expect(m.stresses.some((x) => x.site === site), site).toBe(true);
+    }
+    expect(m.stresses.find((x) => x.site === "shoulder")?.mechanisms).toContain("ballistic");
+  });
+
+  it("the bulgarian split squat is a single-leg lunge that stretches the rear hip", () => {
+    const m = byName("Bulgarian Split Squat");
+    expect(m.patterns[0]).toBe("lunge");
+    expect(m.unilateral).toBe("lower");
+    expect(m.stresses.some((s) => s.site === "hip_flexors" && s.mechanisms.includes("eccentric"))).toBe(true);
+  });
+
+  it("anti-rotation and floor core work load no site, so no stress rule blocks them", () => {
+    for (const name of ["Pallof Press", "Dead Bug", "Glute Bridge"]) {
+      const m = byName(name);
+      expect(m.stresses, name).toEqual([]);
+      for (const c of injuries.filter((i) => i.key !== "pregnancy")) {
+        expect(matchesContraindication(m, c), `${name} / ${c.key}`).toBe(false);
+      }
+    }
+    expect(byName("Dead Bug").positions).toContain("supine");
+    expect(byName("Glute Bridge").positions).toContain("supine");
+  });
+
+  it("pogo jumps are low-load impact", () => {
+    const m = byName("Pogo Jump");
+    expect(m.stresses.every((s) => s.load === "low")).toBe(true);
+    expect(m.stresses.some((s) => s.site === "ankle" && s.mechanisms.includes("impact"))).toBe(true);
+  });
+
+  it("corpus spellings resolve to the new rows", () => {
+    for (const [alias, name] of [
+      ["Face Pull", "Banded Face Pull"], ["Pogo Jumps", "Pogo Jump"], ["RFESS", "Bulgarian Split Squat"],
+      ["Drop Snatch", "Snatch Balance"],
+    ]) {
+      expect(movements.find((m) => m.aliases.includes(alias))?.name, alias).toBe(name);
+    }
+  });
+});
+
+describe("to-overhead movements", () => {
+  const pairs = (names: string[]) =>
+    new Set(names.flatMap((n) => byName(n).stresses.flatMap((s) => s.mechanisms.map((mech) => `${s.site}:${mech}`))));
+
+  it("shoulder-to-overhead carries the most restrictive of press, push press and jerk", () => {
+    const own = pairs(["Shoulder-to-Overhead"]);
+    for (const p of pairs(["Shoulder Press", "Push Press", "Push Jerk", "Split Jerk"])) expect(own.has(p), p).toBe(true);
+    expect(byName("Shoulder-to-Overhead").equipment).toEqual(["barbell"]);
+  });
+
+  it("ground-to-overhead carries the most restrictive of the snatch and the clean & jerk", () => {
+    const own = pairs(["Ground-to-Overhead"]);
+    for (const p of pairs(["Power Snatch", "Squat Snatch", "Clean & Jerk"])) expect(own.has(p), p).toBe(true);
+    expect(byName("Ground-to-Overhead").equipment).toEqual(["barbell"]);
+  });
+
+  it("the usual shorthand resolves to them", () => {
+    for (const [alias, name] of [["S2OH", "Shoulder-to-Overhead"], ["STOH", "Shoulder-to-Overhead"], ["G2O", "Ground-to-Overhead"], ["GTO", "Ground-to-Overhead"]]) {
+      expect(movements.find((m) => m.aliases.includes(alias))?.name, alias).toBe(name);
+    }
+  });
+});
+
+describe("floor press", () => {
+  it("is the dumbbell bench press without a bench", () => {
+    const floor = byName("Dumbbell Floor Press");
+    const bench = byName("Dumbbell Bench Press");
+    expect(floor.equipment).toEqual(["dumbbell"]);
+    expect(floor.patterns).toEqual(bench.patterns);
+    expect(floor.positions).toContain("supine");
+    expect(floor.stresses).toEqual(bench.stresses);
+    expect(movements.find((m) => m.aliases.includes("DB Floor Press"))?.name).toBe("Dumbbell Floor Press");
+  });
+
+  it("is the first fallback when the bench press cannot be done", () => {
+    expect(byName("Dumbbell Bench Press").substitutes[0]).toBe("Dumbbell Floor Press");
+    expect(byName("Bench Press").substitutes).toContain("Dumbbell Floor Press");
+  });
+});
+
+describe("dumbbell thruster", () => {
+  it("is the thruster without the barbell's front-rack wrist load", () => {
+    const db = byName("Dumbbell Thruster");
+    const bb = byName("Thruster");
+    expect(db.patterns).toEqual(bb.patterns);
+    expect(db.equipment).toEqual(["dumbbell"]);
+    expect(db.stresses).toEqual(bb.stresses.filter((s) => s.site !== "wrist"));
+    expect(db.unilateral).toBeNull();
+    expect(movements.find((m) => m.aliases.includes("DB Thruster"))?.name).toBe("Dumbbell Thruster");
+  });
+
+  it("is the thruster's first substitute", () => {
+    expect(byName("Thruster").substitutes[0]).toBe("Dumbbell Thruster");
   });
 });

@@ -1,0 +1,12 @@
+{
+  "id": "missed-days",
+  "description": "Two missed days merged into one hour",
+  "rawText": "Day 1\nEMOM 10: 3 Power Snatches @ 60%\nThen 5 rounds: 12 Wall Balls 9/6 kg, 9 Toes-to-Bar\n\nDay 2\nFront Squat 4x8 @ 70%\nAMRAP 20 min: 10 Double-unders, 10 Dumbbell Snatches 22.5/15 kg, 200 m Run",
+  "request": {
+    "situation": "I missed the last two days and have one hour today",
+    "timeCapMinutes": 60
+  },
+  "expect": {
+    "maxTotalMinutes": 66
+  }
+}

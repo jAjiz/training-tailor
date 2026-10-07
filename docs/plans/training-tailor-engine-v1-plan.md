@@ -14,6 +14,7 @@
 
 - Package manager **pnpm**; platform Windows (commands are cross-platform unless noted).
 - **Prisma 7:** client generated to `src/generated/prisma`; import from `@/generated/prisma/client`, never `@prisma/client`. Schema changes go through `prisma migrate dev` (no `db push` after Task S1).
+- **Database (Neon):** local `.env` points at the Neon branch `dev`, never `production`. `DATABASE_URL` is the pooled connection (host ends in `-pooler`), used by the app in `src/lib/db.ts`; `DIRECT_URL` is the direct connection, used by the Prisma CLI through `prisma.config.ts`. Both use `sslmode=verify-full`.
 - **Boundary rule:** only `src/lib/ai/gemini-provider.ts` imports `@google/genai`. `src/lib/engine/**` and `src/lib/domain/**` never import Prisma, Next.js or a concrete provider.
 - **Domain data** lives in `data/*.json`, is edited only through scripts that use `scripts/lib/domain-json.mjs` (keeps the one-row-per-line style), and is validated by `tests/domain/*`.
 - **Model pinned:** `GEMINI_MODEL` default `gemini-3.8-flash`; never a `-latest` alias.
@@ -27,9 +28,11 @@
 
 Revision 1 of this plan delivered Phase 0 (scaffold, Vitest), Phase 1 (Prisma 7 + driver adapter; its schema is **replaced** in Task S1) and the domain catalog (types, matching, 111 movements, 18 contraindications, 7 stimulus tags — 85 tests green at `41faad1`). Revision 2 restarts at **Task D1**. Completed tasks are not repeated here: the code is the source of truth.
 
+**Paused (2026-10-07)** on `feat/engine-v1` after U4c: D1–E10, S1–S2 and U1–U4c are done; U5 and U6 are cancelled; F1 (README, deploy notes, full verification) is pending. Known open items: Gemini latency is not controlled (single calls have taken over 2 min, beyond the routes' `maxDuration`; a per-attempt `httpOptions.timeout` must not be used, since the SDK sends it to Gemini as `X-Server-Timeout`), deterministic `changes` generation, and saved results that no page reads yet.
+
 ## Execution order
 
-`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 … U6` (API + UI) → `F1` (README, verification).
+`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U4b → U4c` (API, unrecognized-movement queue, UI, athlete-confirmed conditions, restrictions; U5 and U6 cancelled) → `F1` (README, verification).
 
 The engine and its evaluation come before auth and UI on purpose: the LLM loop is validated end-to-end (`pnpm eval`) before any screen exists.
 
@@ -47,6 +50,7 @@ scripts/
   lib/domain-json.mjs         # readRows/writeRows/fmt — keeps the data file style
   eval.ts                     # pnpm eval
   coverage.ts                 # pnpm coverage
+  review-movements.ts         # pnpm review:movements (unrecognized-movement queue)
 src/
   proxy.ts                    # Next 16 route protection (pages)
   lib/
@@ -82,6 +86,8 @@ src/
     engine-stream.ts          # engineStreamResponse, readEngineStream, EngineEvent
     api-schemas.ts            # request bodies for the engine/save routes
     tailor-service.ts         # loadProfile
+    unrecognized.ts           # collectUnrecognized, recordUnrecognized, newlyResolved
+    unrecognized-store.ts     # prismaUnrecognizedStore
   app/
     layout.tsx, page.tsx, signin/page.tsx
     profile/page.tsx + ProfileForm.tsx
@@ -4485,7 +4491,7 @@ model LlmUsage {
 
 - [ ] **Step 5: Reset the dev database and create the initial migration**
 
-The dev database only holds throwaway data from `db push`; resetting it is expected.
+The dev database only holds throwaway data from `db push`; resetting it is expected. Before running it, confirm `DIRECT_URL` in `.env` points at the Neon `dev` branch: `migrate reset` drops every table on whatever database it targets.
 
 ```bash
 pnpm exec prisma migrate reset --force
@@ -5636,6 +5642,297 @@ git commit -m "feat: streaming tailor and refine endpoints with quota, and save-
 
 ---
 
+### Task U3b: Unrecognized-movement queue
+
+The catalog grows from real usage: every movement name the engine meets but cannot resolve is queued (name only, never workout text), and `pnpm review:movements` lists the queue by frequency and closes entries the library has since learned. Adding a movement stays a reviewed data change (one-off migration script + a test, as in Task E10) — the queue never edits `data/`.
+
+**Files:**
+- Create: `src/lib/unrecognized.ts`, `src/lib/unrecognized-store.ts`, `scripts/review-movements.ts`, `tests/lib/unrecognized.test.ts`, `prisma/migrations/<timestamp>_unrecognized_movement/` (generated)
+- Modify: `prisma/schema.prisma` (append a model), `src/app/api/tailor/route.ts`, `src/app/api/tailor/refine/route.ts`, `package.json` (script)
+
+**Interfaces:**
+- Consumes: `normalizeMovementName`, `createMovementResolver`, `MovementResolver` (D5); `getDomainData` (D5); `PipelineResult` (E1); `prisma` (S1); the U3 routes.
+- Produces:
+  - `@/lib/unrecognized`: `type UnrecognizedStatus = "pending" | "resolved" | "ignored"`, `interface UnrecognizedEntry { key: string; example: string }`, `interface UnrecognizedStore { record(entries: UnrecognizedEntry[]): Promise<void> }`, `collectUnrecognized(result: PipelineResult): UnrecognizedEntry[]`, `recordUnrecognized(store, result): Promise<void>` (never throws), `newlyResolved(entries, resolve): { key: string; resolvedTo: string }[]`.
+  - `@/lib/unrecognized-store`: `prismaUnrecognizedStore: UnrecognizedStore`.
+  - Prisma model `UnrecognizedMovement { key @unique, example, count, status, resolvedTo?, firstSeenAt, lastSeenAt }`; command `pnpm review:movements [ignore <key>]`.
+
+- [ ] **Step 1: Write the failing test `tests/lib/unrecognized.test.ts`**
+
+```ts
+import { describe, it, expect, vi } from "vitest";
+import movementsJson from "../../data/movements.json";
+import { MovementSchema } from "@/lib/domain/types";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import type { PipelineResult, WorkoutComponent } from "@/lib/engine/types";
+import { collectUnrecognized, newlyResolved, recordUnrecognized, type UnrecognizedStore } from "@/lib/unrecognized";
+import { fran, identityResult } from "../fixtures/workouts";
+
+const unknown = (base: WorkoutComponent, movement: string): WorkoutComponent => ({ ...base, movement, canonical: null });
+
+function result(extraOriginal: string[] = [], extraTailored: string[] = []): PipelineResult {
+  const original = fran();
+  const tailored = identityResult(fran());
+  const base = original.blocks[0].components[0];
+  original.blocks[0].components.push(...extraOriginal.map((m) => unknown(base, m)));
+  tailored.blocks[0].components.push(...extraTailored.map((m) => unknown(base, m)));
+  return { original, conditions: [], unavailableEquipment: [], tailored, findings: [], feedbackHistory: [], model: "fake" };
+}
+
+function store(fail = false): UnrecognizedStore & { record: ReturnType<typeof vi.fn> } {
+  return { record: vi.fn(async () => { if (fail) throw new Error("db down"); }) };
+}
+
+describe("collectUnrecognized", () => {
+  it("returns nothing when every movement resolved", () => {
+    expect(collectUnrecognized(result())).toEqual([]);
+  });
+
+  it("collects each unresolved name once, from the original and the tailored session", () => {
+    expect(collectUnrecognized(result(["Zercher Carry"], [" zercher carry ", "Sandbag Bear Hug Squat"]))).toEqual([
+      { key: "zerchercarry", example: "Zercher Carry" },
+      { key: "sandbagbearhugsquat", example: "Sandbag Bear Hug Squat" },
+    ]);
+  });
+
+  it("stores a bounded example, never a whole block of text", () => {
+    const [entry] = collectUnrecognized(result(["x".repeat(500)]));
+    expect(entry.example).toHaveLength(80);
+  });
+});
+
+describe("recordUnrecognized", () => {
+  it("records the entries", async () => {
+    const s = store();
+    await recordUnrecognized(s, result(["Zercher Carry"]));
+    expect(s.record).toHaveBeenCalledWith([{ key: "zerchercarry", example: "Zercher Carry" }]);
+  });
+
+  it("does not touch the store when there is nothing to record", async () => {
+    const s = store();
+    await recordUnrecognized(s, result());
+    expect(s.record).not.toHaveBeenCalled();
+  });
+
+  it("never fails the request when the store fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(recordUnrecognized(store(true), result(["Zercher Carry"]))).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
+describe("newlyResolved", () => {
+  it("closes the entries the library now resolves", () => {
+    const resolve = createMovementResolver(movementsJson.map((m) => MovementSchema.parse(m)));
+    expect(newlyResolved([
+      { key: "t2b", example: "T2B" },
+      { key: "zerchercarry", example: "Zercher Carry" },
+    ], resolve)).toEqual([{ key: "t2b", resolvedTo: "Toes-to-Bar" }]);
+  });
+});
+```
+
+Run: `pnpm exec vitest run tests/lib/unrecognized.test.ts` → FAIL (module not found).
+
+- [ ] **Step 2: Implement `src/lib/unrecognized.ts`**
+
+```ts
+import { normalizeMovementName, type MovementResolver } from "@/lib/domain/resolve";
+import type { PipelineResult } from "@/lib/engine/types";
+
+// The queue that grows the catalog: movement names the engine met but could not resolve.
+// Only the name is stored, never the workout text (programming may be private or paid).
+
+export type UnrecognizedStatus = "pending" | "resolved" | "ignored";
+
+export interface UnrecognizedEntry {
+  key: string; // normalizeMovementName(example)
+  example: string; // as written, truncated
+}
+
+export interface UnrecognizedStore {
+  record(entries: UnrecognizedEntry[]): Promise<void>;
+}
+
+const MAX_EXAMPLE = 80;
+
+/** Each unresolved movement name of the original and the tailored session, once per normalized key. */
+export function collectUnrecognized(result: PipelineResult): UnrecognizedEntry[] {
+  const byKey = new Map<string, UnrecognizedEntry>();
+  for (const c of [...result.original.blocks, ...result.tailored.blocks].flatMap((b) => b.components)) {
+    if (c.canonical) continue;
+    const example = c.movement.trim().slice(0, MAX_EXAMPLE);
+    const key = normalizeMovementName(example);
+    if (key && !byKey.has(key)) byKey.set(key, { key, example });
+  }
+  return [...byKey.values()];
+}
+
+/** Records the result's unrecognized names; a store failure is logged, never surfaced to the athlete. */
+export async function recordUnrecognized(store: UnrecognizedStore, result: PipelineResult): Promise<void> {
+  const entries = collectUnrecognized(result);
+  if (entries.length === 0) return;
+  try {
+    await store.record(entries);
+  } catch (e) {
+    console.error("recording unrecognized movements failed", e);
+  }
+}
+
+/** Queue entries the current library resolves (a new row or alias was added since they were seen). */
+export function newlyResolved(
+  entries: UnrecognizedEntry[], resolve: MovementResolver,
+): { key: string; resolvedTo: string }[] {
+  return entries.flatMap((e) => {
+    const m = resolve(e.example);
+    return m ? [{ key: e.key, resolvedTo: m.name }] : [];
+  });
+}
+```
+
+Run: `pnpm exec vitest run tests/lib/unrecognized.test.ts` → PASS (7 tests).
+
+- [ ] **Step 3: Append the model to `prisma/schema.prisma` and migrate**
+
+```prisma
+// Catalog growth queue: movement names the engine could not resolve (names only, never workout text).
+model UnrecognizedMovement {
+  id          String   @id @default(cuid())
+  key         String   @unique // normalizeMovementName(example)
+  example     String // as first written, max 80 chars
+  count       Int      @default(1)
+  status      String   @default("pending") // "pending" | "resolved" | "ignored"
+  resolvedTo  String? // canonical name once the library resolves it
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@index([status, count])
+}
+```
+
+Confirm `DIRECT_URL` points at the Neon `dev` branch, then:
+
+```bash
+pnpm exec prisma migrate dev --name unrecognized_movement
+```
+
+Expected: `prisma/migrations/<timestamp>_unrecognized_movement/migration.sql` creates `UnrecognizedMovement` only (no drops).
+
+- [ ] **Step 4: Implement `src/lib/unrecognized-store.ts`**
+
+```ts
+import { prisma } from "@/lib/db";
+import type { UnrecognizedStore } from "@/lib/unrecognized";
+
+export const prismaUnrecognizedStore: UnrecognizedStore = {
+  record: async (entries) => {
+    const now = new Date();
+    await prisma.$transaction(
+      entries.map((e) =>
+        prisma.unrecognizedMovement.upsert({
+          where: { key: e.key },
+          create: { key: e.key, example: e.example },
+          update: { count: { increment: 1 }, lastSeenAt: now },
+        }),
+      ),
+    );
+  },
+};
+```
+
+- [ ] **Step 5: Record from both engine routes**
+
+In `src/app/api/tailor/route.ts` add the imports:
+```ts
+import { recordUnrecognized } from "@/lib/unrecognized";
+import { prismaUnrecognizedStore } from "@/lib/unrecognized-store";
+```
+and replace the `return engineStreamResponse(...)` statement with:
+```ts
+  return engineStreamResponse(async (onProgress) => {
+    const result = await runTailorPipeline(provider, { input: body.data.input, profile, request: body.data.request, domain, onProgress });
+    await recordUnrecognized(prismaUnrecognizedStore, result);
+    return result;
+  });
+```
+
+In `src/app/api/tailor/refine/route.ts` add the same two imports and replace its `return engineStreamResponse(...)` statement with:
+```ts
+  return engineStreamResponse(async (onProgress) => {
+    const result = await runRefinePipeline(provider, {
+      previous: body.data.previous, feedback: body.data.feedback, profile, request: body.data.request, domain, onProgress,
+    });
+    await recordUnrecognized(prismaUnrecognizedStore, result);
+    return result;
+  });
+```
+
+A fail-closed run (`EngineUnsafeError`) records nothing: it throws before returning a result.
+
+- [ ] **Step 6: Create `scripts/review-movements.ts`** and add `"review:movements": "tsx scripts/review-movements.ts"` to `package.json` `scripts`
+
+```ts
+// Reviews the unrecognized-movement queue (needs DATABASE_URL).
+// Usage: pnpm review:movements               — close entries the library now resolves, list the pending ones
+//        pnpm review:movements ignore <key>  — mark a non-movement (drill, cue, typo) as ignored
+// Adding a movement stays a reviewed data change (scripts/migrations + a test), never automatic.
+import "dotenv/config";
+import { prisma } from "@/lib/db";
+import { getDomainData } from "@/lib/domain/repository";
+import { createMovementResolver } from "@/lib/domain/resolve";
+import { newlyResolved } from "@/lib/unrecognized";
+
+async function main() {
+  const [command, key] = process.argv.slice(2);
+  if (command === "ignore") {
+    if (!key) throw new Error("usage: pnpm review:movements ignore <key>");
+    await prisma.unrecognizedMovement.update({ where: { key }, data: { status: "ignored" } });
+    console.log(`ignored ${key}`);
+    return;
+  }
+
+  const { movements } = await getDomainData();
+  const pending = await prisma.unrecognizedMovement.findMany({
+    where: { status: "pending" },
+    orderBy: [{ count: "desc" }, { lastSeenAt: "desc" }],
+  });
+  const closed = newlyResolved(pending, createMovementResolver(movements));
+  for (const c of closed) {
+    await prisma.unrecognizedMovement.update({ where: { key: c.key }, data: { status: "resolved", resolvedTo: c.resolvedTo } });
+    console.log(`resolved  ${c.key} -> ${c.resolvedTo}`);
+  }
+
+  const closedKeys = new Set(closed.map((c) => c.key));
+  const open = pending.filter((p) => !closedKeys.has(p.key));
+  console.log(`\npending: ${open.length}`);
+  for (const p of open) {
+    console.log(`  ${String(p.count).padStart(4)}  ${p.example}  [${p.key}]  last ${p.lastSeenAt.toISOString().slice(0, 10)}`);
+  }
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());
+```
+
+- [ ] **Step 7: Verify**
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean. Then, signed in with `pnpm dev`, tailor a workout containing an unknown movement (e.g. "3 rounds: 10 Zercher Carry steps, 10 Air Squats") and run `pnpm review:movements`.
+Expected: `zerchercarry` is listed as pending with count 1; `pnpm review:movements ignore zerchercarry` marks it ignored.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add -A
+git commit -m "feat: queue unrecognized movements for catalog review"
+```
+
+---
+
 ### Task U4: Tailor page — input, request, progress and result
 
 **Files:**
@@ -6040,186 +6337,967 @@ git commit -m "feat: tailor page with streamed progress, side-by-side result, re
 
 ---
 
-### Task U5: Manual structured entry
+### Task U4b: Athlete-confirmed conditions (two-phase tailor)
+
+The model only **suggests** today's conditions: which catalog condition, which side and how severe is an interpretation, and severity decides the whole assessment (the same "sore right shoulder" was read as moderate one day and mild the next). Phase 1 (`POST /api/tailor/analyze`, JSON) analyzes the workout and the situation; when it suggests any condition the athlete confirms or corrects it (side, severity, remove, add a missed one) and phase 2 (`POST /api/tailor`, NDJSON) tailors with the confirmed list. With no suggestion phase 2 starts at once. Refine works the same way (`/api/tailor/refine/analyze` → confirm → `/api/tailor/refine`). The client sends the phase-1 analysis back (as refine already sends `previous`): it can only alter the athlete's own session, the stored profile injuries are always re-applied, and the validator enforces whatever is confirmed. Quota is counted per kind (`analyze`, `tailor`, `refine`, each with `DAILY_ENGINE_LIMIT`) so neither phase can be called unbounded.
 
 **Files:**
-- Modify: `src/app/tailor/ManualEntryForm.tsx` (replace the stub component)
+- Modify: `src/lib/engine/types.ts` (append), `src/lib/engine/conditions.ts`, `src/lib/engine/pipeline.ts`, `src/lib/quota.ts`, `src/lib/quota-store.ts`, `prisma/schema.prisma` (comment only), `src/lib/api-schemas.ts`, `src/lib/engine-route.ts`, `src/app/api/tailor/route.ts`, `src/app/api/tailor/refine/route.ts`, `src/app/tailor/page.tsx`, `src/app/tailor/TailorClient.tsx`, `src/lib/eval/grade.ts`, `scripts/eval.ts`
+- Create: `src/app/api/tailor/analyze/route.ts`, `src/app/api/tailor/refine/analyze/route.ts`, `src/app/tailor/ConfirmConditions.tsx`
+- Test: `tests/engine/pipeline.test.ts` (rewritten), `tests/lib/quota.test.ts`, `tests/lib/api-schemas.test.ts`, `tests/eval/grade.test.ts`
 
 **Interfaces:**
-- Consumes: `BlockFormat`, `ComponentDraft`, `ManualBlock`, `ManualWorkout` (E1).
-- Produces: the full `ManualEntryForm`; `emptyComponent`, `emptyBlock`, `emptyManualWorkout` keep their U4 signatures.
+- Consumes: `analyzePaste`, `analyzeManual`, `analyzeSituation` (E4); `activateConditions`, `profileConditionRefs` (E5); `tailorAndValidate` internals (E8); `handleEngineRequest` (U3 refactor); `readEngineOutcome` (review fixes); `ResultView` (U4).
+- Produces:
+  - `@/lib/engine/types`: `ConfirmedConditionSchema` / `ConfirmedCondition` (`DetectedCondition` with `evidence: string | null`), `WorkoutAnalysisResultSchema` / `WorkoutAnalysisResult` `{ original, suggested, unavailableEquipment, analyzed }`, `FeedbackAnalysisSchema` / `FeedbackAnalysis` `{ suggested, unavailableEquipment }`.
+  - `@/lib/engine/pipeline`: `analyzeWorkout(provider, { input, situation, domain })`, `analyzeFeedback(provider, feedback, domain)`; `PipelineArgs` is now `{ original, confirmed, unavailableEquipment, profile, request, domain, onProgress? }`; `RefineArgs` adds `confirmed` and `unavailableEquipment`. Neither pipeline calls the analyzer any more; their first stage is `tailoring`.
+  - `@/lib/quota`: `UsageKind = "analyze" | "tailor" | "refine"`; `QuotaStore.countSince(userId, kind, since)`.
+  - `@/lib/api-schemas`: `AnalyzeBodySchema`, `AnalyzeFeedbackBodySchema`; `TailorBodySchema = { analysis: { original, unavailableEquipment }, confirmed, request }`; `RefineBodySchema` adds `confirmed`, `unavailableEquipment`.
+  - `@/lib/engine-route`: `handleAnalyzeRequest(req, { schema, maxBodyChars, run })` → JSON.
+  - `ConfirmConditions({ suggested, catalog, busy, onConfirm, onCancel })`; `TailorClient({ movementNames, equipmentOptions, catalog })`.
+  - Eval cases accept `confirm` (the conditions the athlete would confirm); `mustDetect` grades the suggestions.
 
-- [ ] **Step 1: Replace `ManualEntryForm` in `src/app/tailor/ManualEntryForm.tsx`**
+- [ ] **Step 1: Write the failing pipeline tests** — replace `tests/engine/pipeline.test.ts` with:
 
-Keep the three `empty*` helpers and the `Props` interface from U4; add `BlockFormat` to the import (`import { BlockFormat, type ComponentDraft, type ManualBlock, type ManualWorkout } from "@/lib/engine/types";`) and replace the stub function with:
+```ts
+import { describe, it, expect, beforeAll } from "vitest";
+import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
+import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import {
+  EngineUnsafeError, analyzeFeedback, analyzeWorkout, runRefinePipeline, runTailorPipeline,
+  type PipelineArgs, type ProgressStage,
+} from "@/lib/engine/pipeline";
+import { emptyProfile, emptyRequest, type ConfirmedCondition, type TailoringDraft } from "@/lib/engine/types";
+import { FRAN_TEXT, component, fran, franDraft, sprint, toTailoringDraft } from "../fixtures/workouts";
+
+let domain: DomainData;
+beforeAll(async () => { domain = await getDomainData(); });
+
+const shoulderToday: ConfirmedCondition = { key: "shoulder_impingement", side: "right", severity: "moderate", evidence: "me duele el hombro derecho" };
+const pasteAnalysis = (conditions: unknown[] = [shoulderToday]) => ({ workout: franDraft(), conditions, unavailableEquipment: [] });
+
+function safeDraft(): TailoringDraft {
+  const d = toTailoringDraft(fran());
+  d.blocks[0].components = [
+    component("Kettlebell Goblet Squat", { reps: "21-15-9", loadKg: { male: 24, female: 16 } }),
+    component("Ring Row", { reps: "21-15-9" }),
+  ];
+  d.changes = [{ blockIndex: 0, original: "Thruster", modified: "Kettlebell Goblet Squat", reason: "No overhead." }];
+  return d;
+}
+const unsafeDraft = () => toTailoringDraft(fran()); // keeps Thruster and Pull-up
+
+const run = (provider: FakeProvider, stages: ProgressStage[] = [], overrides: Partial<PipelineArgs> = {}) =>
+  runTailorPipeline(provider, {
+    original: fran(),
+    confirmed: [shoulderToday],
+    unavailableEquipment: [],
+    profile: emptyProfile(),
+    request: { ...emptyRequest(), situation: "me duele el hombro derecho" },
+    domain,
+    onProgress: (s) => stages.push(s),
+    ...overrides,
+  });
+
+describe("analyzeWorkout", () => {
+  it("suggests today's conditions without applying them, in one model call", async () => {
+    const provider = new FakeProvider({ PasteAnalysis: pasteAnalysis() });
+    const a = await analyzeWorkout(provider, { input: { kind: "paste", rawText: FRAN_TEXT }, situation: "me duele el hombro derecho", domain });
+    expect(provider.calls).toHaveLength(1);
+    expect(a.suggested).toEqual([shoulderToday]);
+    expect(a.original.blocks[0].components.map((c) => c.canonical)).toEqual(["Thruster", "Pull-up"]);
+    expect(a.analyzed).toBe(true);
+  });
+
+  it("analyzes a manual workout", async () => {
+    const provider = new FakeProvider({ ManualAnalysis: { stimuli: [sprint], conditions: [], unavailableEquipment: [] } });
+    const a = await analyzeWorkout(provider, {
+      input: { kind: "manual", workout: { name: "Fran", blocks: [{
+        title: "Fran", format: "for_time", scheme: "21-15-9 for time", timeDomainMinutes: 6, coachingNotes: null,
+        components: franDraft().blocks[0].components,
+      }] } },
+      situation: "", domain,
+    });
+    expect(a.original.source).toBe("manual");
+    expect(a.original.blocks[0].stimulus).toEqual(sprint);
+    expect(a.suggested).toEqual([]);
+  });
+});
+
+describe("analyzeFeedback", () => {
+  it("suggests the feedback's conditions and missing equipment", async () => {
+    const knee = { key: "knee_pain", side: "left", severity: "mild", evidence: "la rodilla también" };
+    const provider = new FakeProvider({ SituationAnalysis: { conditions: [knee], unavailableEquipment: ["kettlebell"] } });
+    expect(await analyzeFeedback(provider, "la rodilla también, y no hay kettlebell", domain)).toEqual({
+      suggested: [knee], unavailableEquipment: ["kettlebell"],
+    });
+  });
+});
+
+describe("runTailorPipeline", () => {
+  it("tailors and validates against the confirmed conditions in one model call", async () => {
+    const provider = new FakeProvider({ TailoringResult: safeDraft() });
+    const stages: ProgressStage[] = [];
+    const r = await run(provider, stages);
+    expect(stages).toEqual(["tailoring", "validating"]);
+    expect(provider.calls).toHaveLength(1);
+    expect(r.conditions).toEqual([{ ...shoulderToday, source: "today" }]);
+    expect(r.tailored.blocks[0].components.map((c) => c.canonical)).toEqual(["Kettlebell Goblet Squat", "Ring Row"]);
+    expect(r.findings.filter((f) => f.severity === "violation")).toEqual([]);
+    expect(r.feedbackHistory).toEqual([]);
+    expect(r.model).toBe("fake");
+  });
+
+  it("the confirmed severity decides: mild keeps the Thruster with a caution, moderate fails closed", async () => {
+    const mild = await run(new FakeProvider({ TailoringResult: unsafeDraft() }), [], { confirmed: [{ ...shoulderToday, severity: "mild" }] });
+    expect(mild.findings).toContainEqual(expect.objectContaining({ kind: "caution_movement", movement: "Thruster", severity: "warning" }));
+    await expect(run(new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) }))).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+
+  it("applies a condition the athlete added (no evidence)", async () => {
+    const provider = new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) });
+    await expect(run(provider, [], {
+      confirmed: [{ key: "no_hanging", side: null, severity: "moderate", evidence: null }],
+    })).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+
+  it("retries once with the violations and returns the corrected result", async () => {
+    const provider = new FakeProvider({ TailoringResult: sequence(unsafeDraft(), safeDraft()) });
+    const stages: ProgressStage[] = [];
+    const r = await run(provider, stages);
+    expect(stages).toEqual(["tailoring", "validating", "retrying", "validating"]);
+    expect(provider.calls[1].prompt).toContain("REJECTED BY THE SAFETY CHECK");
+    expect(r.tailored.blocks[0].components[0].canonical).toBe("Kettlebell Goblet Squat");
+  });
+
+  it("returns non-safety violations that survive the retry as findings", async () => {
+    const slow = () => {
+      const d = safeDraft();
+      d.blocks[0].timeDomainMinutes = 30;
+      return d;
+    };
+    const r = await run(new FakeProvider({ TailoringResult: sequence(slow(), slow()) }), [], {
+      request: { ...emptyRequest(), situation: "me duele el hombro derecho", timeCapMinutes: 10 },
+    });
+    expect(r.findings).toContainEqual(expect.objectContaining({ kind: "time_cap_exceeded", severity: "violation" }));
+  });
+
+  it("applies profile injuries even with nothing confirmed today", async () => {
+    const profile = { ...emptyProfile(), injuries: [{ key: "no_hanging", side: null, severity: "moderate" as const, notes: "cast", since: null }] };
+    await expect(run(new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) }), [], {
+      confirmed: [], profile, request: emptyRequest(),
+    })).rejects.toBeInstanceOf(EngineUnsafeError);
+  });
+});
+
+describe("runRefinePipeline", () => {
+  it("re-tailors the original with the feedback and the newly confirmed conditions", async () => {
+    const first = await run(new FakeProvider({ TailoringResult: safeDraft() }));
+    const provider = new FakeProvider({
+      TailoringResult: (() => {
+        const d = safeDraft();
+        d.blocks[0].components[0] = component("Dumbbell Goblet Squat", { reps: "15-12-9" });
+        d.changes = [{ blockIndex: 0, original: "Thruster", modified: "Dumbbell Goblet Squat", reason: "No kettlebell today." }];
+        return d;
+      })(),
+    });
+    const stages: ProgressStage[] = [];
+    const r = await runRefinePipeline(provider, {
+      previous: first, feedback: "too heavy, and my knee hurts too",
+      confirmed: [{ key: "knee_pain", side: "left", severity: "mild", evidence: "my knee hurts too" }],
+      unavailableEquipment: ["kettlebell"],
+      profile: emptyProfile(), request: emptyRequest(), domain, onProgress: (s) => stages.push(s),
+    });
+    expect(stages).toEqual(["tailoring", "validating"]);
+    expect(provider.calls).toHaveLength(1);
+    expect(r.original).toEqual(first.original);
+    expect(r.conditions.map((c) => c.key)).toEqual(["shoulder_impingement", "knee_pain"]);
+    expect(r.unavailableEquipment).toEqual(["kettlebell"]);
+    expect(r.feedbackHistory).toEqual(["too heavy, and my knee hurts too"]);
+    expect(provider.calls[0].prompt).toContain("PREVIOUS ATTEMPT");
+    expect(provider.calls[0].prompt).toContain("- too heavy, and my knee hurts too");
+  });
+
+  it("re-applies profile injuries even if the client dropped them from the previous result", async () => {
+    const first = await run(new FakeProvider({ TailoringResult: safeDraft() }));
+    const tampered = { ...first, conditions: [] };
+    const profile = { ...emptyProfile(), injuries: [{ key: "hand_tear", side: null, severity: "moderate" as const, notes: null, since: null }] };
+    const r = await runRefinePipeline(new FakeProvider({ TailoringResult: safeDraft() }), {
+      previous: tampered, feedback: "more volume", confirmed: [], unavailableEquipment: [],
+      profile, request: emptyRequest(), domain,
+    });
+    expect(r.conditions.map((c) => c.key)).toEqual(["hand_tear"]);
+  });
+});
+```
+
+Run: `pnpm exec vitest run tests/engine/pipeline.test.ts` → FAIL (`analyzeWorkout` is not exported; `ConfirmedCondition` missing).
+
+- [ ] **Step 2: Append the two-phase types to `src/lib/engine/types.ts`** (after `PipelineResultSchema`)
+
+```ts
+// ---- athlete-confirmed conditions (two-phase tailor) ----
+// The analyzer only suggests today's conditions; the athlete confirms or corrects them before tailoring.
+export const ConfirmedConditionSchema = DetectedConditionSchema.extend({
+  evidence: z.string().nullable(), // null when the athlete added the condition
+});
+export type ConfirmedCondition = z.infer<typeof ConfirmedConditionSchema>;
+
+export const WorkoutAnalysisResultSchema = z.object({
+  original: StructuredWorkoutSchema,
+  suggested: z.array(DetectedConditionSchema),
+  unavailableEquipment: z.array(Equipment),
+  analyzed: z.boolean(), // false = degraded to one raw block
+});
+export type WorkoutAnalysisResult = z.infer<typeof WorkoutAnalysisResultSchema>;
+
+export const FeedbackAnalysisSchema = z.object({
+  suggested: z.array(DetectedConditionSchema),
+  unavailableEquipment: z.array(Equipment),
+});
+export type FeedbackAnalysis = z.infer<typeof FeedbackAnalysisSchema>;
+```
+
+- [ ] **Step 3: Let `activateConditions` take confirmed conditions** — in `src/lib/engine/conditions.ts` replace the type import and the signature:
+
+```ts
+import type { ConditionRef, ConfirmedCondition, ProfileInjury } from "./types";
+```
+```ts
+/** base (profile or a previous result) ⊕ today's confirmed conditions; for the same key today's side/severity win. */
+export function activateConditions(
+  base: ConditionRef[], confirmed: ConfirmedCondition[], catalog: Contraindication[],
+): ActivatedConditions {
+  const merged = new Map<string, ConditionRef>();
+  for (const r of base) merged.set(r.key, r);
+  for (const d of confirmed) {
+    merged.set(d.key, { key: d.key, side: d.side, severity: d.severity, source: "today", evidence: d.evidence });
+  }
+```
+(the rest of the function is unchanged; `DetectedCondition` values still type-check because their `evidence` is a string).
+
+- [ ] **Step 4: Split the pipeline in `src/lib/engine/pipeline.ts`**
+
+Replace the type import block with:
+```ts
+import type {
+  AthleteProfile, ConditionRef, ConfirmedCondition, FeedbackAnalysis, Finding, ManualWorkout, PipelineResult,
+  StructuredWorkout, TailorRequest, TailoringResult, WorkoutAnalysisResult,
+} from "./types";
+```
+Replace `PipelineArgs` and `RefineArgs` with:
+```ts
+export interface AnalyzeArgs {
+  input: WorkoutInput;
+  situation: string;
+  domain: DomainData;
+}
+
+/** Phase 2 input: the phase-1 session plus the conditions the athlete confirmed. */
+export interface PipelineArgs {
+  original: StructuredWorkout;
+  confirmed: ConfirmedCondition[];
+  unavailableEquipment: Equipment[];
+  profile: AthleteProfile;
+  request: TailorRequest;
+  domain: DomainData;
+  onProgress?: (stage: ProgressStage) => void;
+}
+
+export interface RefineArgs {
+  previous: PipelineResult;
+  feedback: string;
+  confirmed: ConfirmedCondition[]; // conditions the feedback added, as the athlete confirmed them
+  unavailableEquipment: Equipment[]; // equipment the feedback says is missing
+  profile: AthleteProfile;
+  request: TailorRequest;
+  domain: DomainData;
+  onProgress?: (stage: ProgressStage) => void;
+}
+```
+Replace `runTailorPipeline` and `runRefinePipeline` with:
+```ts
+/** Phase 1: the session and today's SUGGESTED conditions; nothing is applied until the athlete confirms. */
+export async function analyzeWorkout(provider: LlmProvider, args: AnalyzeArgs): Promise<WorkoutAnalysisResult> {
+  const ctx = analyzeContext(args.domain);
+  const a = args.input.kind === "paste"
+    ? await analyzePaste(provider, args.input.rawText, args.situation, ctx)
+    : await analyzeManual(provider, args.input.workout, args.situation, ctx);
+  return { original: a.workout, suggested: a.conditions, unavailableEquipment: a.unavailableEquipment, analyzed: a.analyzed };
+}
+
+/** Refine phase 1: the conditions and missing equipment the feedback suggests. */
+export async function analyzeFeedback(provider: LlmProvider, feedback: string, domain: DomainData): Promise<FeedbackAnalysis> {
+  const s = await analyzeSituation(provider, feedback, analyzeContext(domain));
+  return { suggested: s.conditions, unavailableEquipment: s.unavailableEquipment };
+}
+
+export async function runTailorPipeline(provider: LlmProvider, args: PipelineArgs): Promise<PipelineResult> {
+  const progress = args.onProgress ?? (() => {});
+  const { active, refs } = activateConditions(
+    profileConditionRefs(args.profile.injuries), args.confirmed, args.domain.contraindications,
+  );
+  const { result, findings } = await tailorAndValidate(provider, {
+    original: args.original, active, refs, unavailable: args.unavailableEquipment,
+    profile: args.profile, request: args.request, domain: args.domain, previousAttempt: null, progress,
+  });
+  return {
+    original: args.original, conditions: refs, unavailableEquipment: args.unavailableEquipment,
+    tailored: result, findings, feedbackHistory: [], model: provider.model,
+  };
+}
+
+export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs): Promise<PipelineResult> {
+  const progress = args.onProgress ?? (() => {});
+  // `previous` comes back from the client: the stored profile injuries are always re-applied.
+  const { active, refs } = activateConditions(
+    [...profileConditionRefs(args.profile.injuries), ...args.previous.conditions],
+    args.confirmed,
+    args.domain.contraindications,
+  );
+  const unavailable = [...new Set([...args.previous.unavailableEquipment, ...args.unavailableEquipment])];
+  const feedbackHistory = [...args.previous.feedbackHistory, args.feedback];
+  const { result, findings } = await tailorAndValidate(provider, {
+    original: args.previous.original, active, refs, unavailable, profile: args.profile, request: args.request,
+    domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
+  });
+  return {
+    original: args.previous.original, conditions: refs, unavailableEquipment: unavailable,
+    tailored: result, findings, feedbackHistory, model: provider.model,
+  };
+}
+```
+`ProgressStage` keeps `"analyzing"`: the client shows it during phase 1.
+
+Run: `pnpm exec vitest run tests/engine` → PASS.
+
+- [ ] **Step 5: Count quota per kind** — failing test first. In `tests/lib/quota.test.ts` change the store's `countSince` and add a test:
+
+```ts
+    async countSince(userId, kind, since) { return rows.filter((r) => r.userId === userId && r.kind === kind && r.at >= since).length; },
+```
+```ts
+  it("limits each kind separately, so one adaptation (analyze + tailor) counts once against each", async () => {
+    const store = memoryStore();
+    expect((await consumeQuota(store, "u1", "analyze", 1)).allowed).toBe(true);
+    expect((await consumeQuota(store, "u1", "tailor", 1)).allowed).toBe(true);
+    expect((await consumeQuota(store, "u1", "analyze", 1)).allowed).toBe(false);
+  });
+```
+and in the first test replace the second call (`"refine"`) with `"tailor"` so it still exercises one kind up to its limit:
+```ts
+    expect(await consumeQuota(store, "u1", "tailor", 2)).toEqual({ allowed: true, used: 2, limit: 2 });
+```
+Run: `pnpm exec vitest run tests/lib/quota.test.ts` → FAIL (type error / count). Then in `src/lib/quota.ts`:
+```ts
+export type UsageKind = "analyze" | "tailor" | "refine";
+
+export interface QuotaStore {
+  countSince(userId: string, kind: UsageKind, since: Date): Promise<number>;
+  record(userId: string, kind: UsageKind): Promise<void>;
+}
+```
+```ts
+/** Counts runs of this kind in the last 24 h; records this one only when it is allowed. */
+export async function consumeQuota(
+  store: QuotaStore, userId: string, kind: UsageKind, limit: number, now: Date = new Date(),
+): Promise<{ allowed: boolean; used: number; limit: number }> {
+  const used = await store.countSince(userId, kind, new Date(now.getTime() - DAY_MS));
+```
+In `src/lib/quota-store.ts`:
+```ts
+  countSince: (userId, kind, since) => prisma.llmUsage.count({ where: { userId, kind, createdAt: { gte: since } } }),
+```
+In `prisma/schema.prisma` update the comment only (no migration): `kind      String // "analyze" | "tailor" | "refine"`.
+
+Run: `pnpm exec vitest run tests/lib/quota.test.ts` → PASS.
+
+- [ ] **Step 6: API bodies** — failing tests first. Replace `tests/lib/api-schemas.test.ts` with:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { AnalyzeBodySchema, AnalyzeFeedbackBodySchema, RefineBodySchema, SaveBodySchema, TailorBodySchema } from "@/lib/api-schemas";
+import { emptyRequest, type PipelineResult } from "@/lib/engine/types";
+import { fran, identityResult } from "../fixtures/workouts";
+
+const result: PipelineResult = {
+  original: fran(), conditions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  findings: [], feedbackHistory: [], model: "fake",
+};
+const shoulder = { key: "shoulder_impingement", side: "right", severity: "mild", evidence: "sore" };
+
+describe("API bodies", () => {
+  it("accepts a paste and a manual workout to analyze", () => {
+    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "Fran" }, request: emptyRequest() }).success).toBe(true);
+    expect(AnalyzeBodySchema.safeParse({
+      input: { kind: "manual", workout: { name: null, blocks: [{ title: null, format: "amrap", scheme: null, timeDomainMinutes: 10, coachingNotes: null, components: [] }] } },
+      request: emptyRequest(),
+    }).success).toBe(true);
+  });
+
+  it("rejects an empty or oversized paste", () => {
+    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "" }, request: emptyRequest() }).success).toBe(false);
+    expect(AnalyzeBodySchema.safeParse({ input: { kind: "paste", rawText: "x".repeat(20001) }, request: emptyRequest() }).success).toBe(false);
+  });
+
+  it("tailors an analyzed session with the confirmed conditions, including athlete-added ones", () => {
+    const body = (confirmed: unknown[]) => ({ analysis: { original: fran(), unavailableEquipment: [] }, confirmed, request: emptyRequest() });
+    expect(TailorBodySchema.safeParse(body([shoulder, { key: "no_hanging", side: null, severity: "moderate", evidence: null }])).success).toBe(true);
+    expect(TailorBodySchema.safeParse(body([{ ...shoulder, severity: "unbearable" }])).success).toBe(false);
+    expect(TailorBodySchema.safeParse(body(Array.from({ length: 21 }, () => shoulder))).success).toBe(false);
+  });
+
+  it("requires feedback to analyze or refine", () => {
+    expect(AnalyzeFeedbackBodySchema.safeParse({ feedback: "  " }).success).toBe(false);
+    expect(AnalyzeFeedbackBodySchema.safeParse({ feedback: "too easy" }).success).toBe(true);
+    const refine = (feedback: string) => ({ previous: result, feedback, confirmed: [], unavailableEquipment: [], request: emptyRequest() });
+    expect(RefineBodySchema.safeParse(refine("")).success).toBe(false);
+    expect(RefineBodySchema.safeParse(refine("too easy")).success).toBe(true);
+  });
+
+  it("saves a full pipeline result", () => {
+    expect(SaveBodySchema.safeParse({ result, request: emptyRequest() }).success).toBe(true);
+    expect(SaveBodySchema.safeParse({ result: { ...result, model: "" }, request: emptyRequest() }).success).toBe(false);
+  });
+});
+```
+Run → FAIL. Then in `src/lib/api-schemas.ts` replace the imports and the body schemas (keep the size constants and `WorkoutInputSchema`):
+```ts
+import { z } from "zod";
+import { Equipment } from "@/lib/domain/types";
+import {
+  ConfirmedConditionSchema, ManualWorkoutSchema, PipelineResultSchema, TailorRequestSchema, WorkoutAnalysisResultSchema,
+} from "@/lib/engine/types";
+```
+```ts
+const feedback = z.string().trim().min(1).max(2000);
+const confirmed = z.array(ConfirmedConditionSchema).max(20);
+
+export const AnalyzeBodySchema = z.object({ input: WorkoutInputSchema, request: TailorRequestSchema });
+export const AnalyzeFeedbackBodySchema = z.object({ feedback });
+export const TailorBodySchema = z.object({
+  analysis: WorkoutAnalysisResultSchema.pick({ original: true, unavailableEquipment: true }),
+  confirmed,
+  request: TailorRequestSchema,
+});
+export const RefineBodySchema = z.object({
+  previous: PipelineResultSchema,
+  feedback,
+  confirmed,
+  unavailableEquipment: z.array(Equipment),
+  request: TailorRequestSchema,
+});
+export const SaveBodySchema = z.object({ result: PipelineResultSchema, request: TailorRequestSchema });
+```
+Run → PASS.
+
+- [ ] **Step 7: Routes** — in `src/lib/engine-route.ts` split the preamble so both phases share it, and add the JSON analyze handler. Replace everything from `interface EngineRoute<T>` to the end of the file with:
+
+```ts
+interface RouteCheck<T> {
+  schema: z.ZodType<T>;
+  maxBodyChars: number;
+  kind: UsageKind;
+}
+
+type Prepared<T> = { ok: true; userId: string; body: T; provider: LlmProvider } | { ok: false; response: Response };
+
+/** Session, bounded body, validation, provider and quota: shared by every engine endpoint. */
+async function prepare<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<T>> {
+  const userId = await getUserId();
+  if (!userId) return { ok: false, response: jsonError("unauthorized", 401) };
+  const raw = await readJsonBody(req, check.maxBodyChars);
+  if (!raw.ok) return { ok: false, response: jsonError(raw.code, raw.status) };
+  const body = check.schema.safeParse(raw.value);
+  if (!body.success) return { ok: false, response: jsonError("invalid_request", 400) };
+
+  let provider: LlmProvider;
+  try {
+    provider = getProvider();
+  } catch (e) {
+    console.error("engine unavailable", e);
+    return { ok: false, response: jsonError("engine_unavailable", 503) };
+  }
+  const quota = await consumeQuota(prismaQuotaStore, userId, check.kind, dailyLimit());
+  if (!quota.allowed) return { ok: false, response: jsonError("quota_exceeded", 429) };
+  return { ok: true, userId, body: body.data, provider };
+}
+
+interface EngineRoute<T> extends RouteCheck<T> {
+  run: (body: T, ctx: EngineContext) => Promise<PipelineResult>;
+}
+
+/** Phase 2 (tailor, refine): the NDJSON stream; unrecognized movements are queued after the result is sent. */
+export async function handleEngineRequest<T>(req: Request, route: EngineRoute<T>): Promise<Response> {
+  const p = await prepare(req, route);
+  if (!p.ok) return p.response;
+  const [profile, domain] = await Promise.all([loadProfile(p.userId), getDomainData()]);
+  return engineStreamResponse(
+    (onProgress) => route.run(p.body, { provider: p.provider, profile, domain, onProgress }),
+    (result) => recordUnrecognized(prismaUnrecognizedStore, result),
+  );
+}
+
+interface AnalyzeRoute<T, R> {
+  schema: z.ZodType<T>;
+  maxBodyChars: number;
+  run: (body: T, ctx: { provider: LlmProvider; domain: DomainData }) => Promise<R>;
+}
+
+/** Phase 1 (analyze): one model call, plain JSON; counted as "analyze". Never leaks exception text. */
+export async function handleAnalyzeRequest<T, R>(req: Request, route: AnalyzeRoute<T, R>): Promise<Response> {
+  const p = await prepare(req, { schema: route.schema, maxBodyChars: route.maxBodyChars, kind: "analyze" });
+  if (!p.ok) return p.response;
+  try {
+    return NextResponse.json(await route.run(p.body, { provider: p.provider, domain: await getDomainData() }));
+  } catch (e) {
+    console.error("analysis failed", e);
+    return jsonError("engine_failed", 502);
+  }
+}
+```
+and add `import { NextResponse } from "next/server";` to its imports. Update its doc comment to "The shared shape of the engine endpoints".
+
+Create `src/app/api/tailor/analyze/route.ts`:
+```ts
+import { AnalyzeBodySchema, MAX_TAILOR_BODY_CHARS } from "@/lib/api-schemas";
+import { analyzeWorkout } from "@/lib/engine/pipeline";
+import { handleAnalyzeRequest } from "@/lib/engine-route";
+
+export const maxDuration = 60;
+
+export function POST(req: Request) {
+  return handleAnalyzeRequest(req, {
+    schema: AnalyzeBodySchema,
+    maxBodyChars: MAX_TAILOR_BODY_CHARS,
+    run: (body, { provider, domain }) =>
+      analyzeWorkout(provider, { input: body.input, situation: body.request.situation, domain }),
+  });
+}
+```
+Create `src/app/api/tailor/refine/analyze/route.ts`:
+```ts
+import { AnalyzeFeedbackBodySchema, MAX_TAILOR_BODY_CHARS } from "@/lib/api-schemas";
+import { analyzeFeedback } from "@/lib/engine/pipeline";
+import { handleAnalyzeRequest } from "@/lib/engine-route";
+
+export const maxDuration = 60;
+
+export function POST(req: Request) {
+  return handleAnalyzeRequest(req, {
+    schema: AnalyzeFeedbackBodySchema,
+    maxBodyChars: MAX_TAILOR_BODY_CHARS,
+    run: (body, { provider, domain }) => analyzeFeedback(provider, body.feedback, domain),
+  });
+}
+```
+Replace `src/app/api/tailor/route.ts` (the body now carries the analyzed session, so it gets the larger cap):
+```ts
+import { MAX_RESULT_BODY_CHARS, TailorBodySchema } from "@/lib/api-schemas";
+import { runTailorPipeline } from "@/lib/engine/pipeline";
+import { handleEngineRequest } from "@/lib/engine-route";
+
+export const maxDuration = 120;
+
+export function POST(req: Request) {
+  return handleEngineRequest(req, {
+    schema: TailorBodySchema,
+    maxBodyChars: MAX_RESULT_BODY_CHARS,
+    kind: "tailor",
+    run: (body, { provider, ...ctx }) => runTailorPipeline(provider, {
+      original: body.analysis.original, unavailableEquipment: body.analysis.unavailableEquipment,
+      confirmed: body.confirmed, request: body.request, ...ctx,
+    }),
+  });
+}
+```
+In `src/app/api/tailor/refine/route.ts` replace the `run` with:
+```ts
+    run: (body, { provider, ...ctx }) => runRefinePipeline(provider, {
+      previous: body.previous, feedback: body.feedback, confirmed: body.confirmed,
+      unavailableEquipment: body.unavailableEquipment, request: body.request, ...ctx,
+    }),
+```
+Run: `pnpm exec tsc --noEmit` → the only errors left are in `scripts/eval.ts`, `src/lib/eval/grade.ts` and `src/app/tailor/*` (next steps).
+
+- [ ] **Step 8: Create `src/app/tailor/ConfirmConditions.tsx`**
 
 ```tsx
-const field = "rounded border px-2 py-1 text-sm";
-const textOrNull = (v: string) => (v.trim() === "" ? null : v);
-const numberOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
-const repsValue = (v: string): ComponentDraft["reps"] => {
-  if (v.trim() === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : v;
+"use client";
+
+import { useState } from "react";
+import { Severity, Side } from "@/lib/domain/types";
+import type { ConfirmedCondition } from "@/lib/engine/types";
+
+export interface CatalogEntry {
+  key: string;
+  label: string;
+  kind: string; // "injury" | "limitation" | "condition"
+}
+
+interface Props {
+  suggested: ConfirmedCondition[];
+  catalog: CatalogEntry[];
+  busy: boolean;
+  onConfirm: (confirmed: ConfirmedCondition[]) => void;
+  onCancel: () => void;
+}
+
+const SEVERITY_TEXT: Record<Severity, string> = {
+  mild: "Mild: a niggle, you can train almost normally",
+  moderate: "Moderate: pain that limits some movements",
+  acute: "Acute: a recent injury, sharp pain, or told to rest",
 };
 
-export function ManualEntryForm({ value, onChange, movementNames }: Props) {
-  const setBlock = (i: number, patch: Partial<ManualBlock>) =>
-    onChange({ ...value, blocks: value.blocks.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
-  const setComponent = (bi: number, ci: number, patch: Partial<ComponentDraft>) =>
-    setBlock(bi, { components: value.blocks[bi].components.map((c, j) => (j === ci ? { ...c, ...patch } : c)) });
+const field = "rounded border px-2 py-1 text-sm";
+
+/** The athlete confirms what the analyzer read: severity decides what is allowed, so it is never applied unseen. */
+export function ConfirmConditions({ suggested, catalog, busy, onConfirm, onCancel }: Props) {
+  const [items, setItems] = useState<ConfirmedCondition[]>(suggested);
+  const [adding, setAdding] = useState("");
+  const entry = (key: string) => catalog.find((c) => c.key === key);
+  const update = (i: number, patch: Partial<ConfirmedCondition>) =>
+    setItems(items.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   return (
-    <div className="flex flex-col gap-3">
-      <datalist id="manual-movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
-      <input className={field} placeholder="Session name (optional)" value={value.name ?? ""}
-        onChange={(e) => onChange({ ...value, name: textOrNull(e.target.value) })} />
+    <section className="flex flex-col gap-3 rounded border border-amber-300 bg-amber-50 p-3" aria-labelledby="confirm-heading">
+      <h2 id="confirm-heading" className="font-semibold">Is this right?</h2>
+      <p className="text-sm">We read this from what you wrote. Check the side and how bad it is: it decides what you can do today.</p>
 
-      {value.blocks.map((b, bi) => (
-        <div key={bi} className="flex flex-col gap-2 rounded border p-3">
-          <div className="flex flex-wrap gap-2">
-            <input className={field} placeholder={`Block ${bi + 1} title`} value={b.title ?? ""}
-              onChange={(e) => setBlock(bi, { title: textOrNull(e.target.value) })} />
-            <select className={field} value={b.format} onChange={(e) => setBlock(bi, { format: BlockFormat.parse(e.target.value) })}>
-              {BlockFormat.options.map((f) => <option key={f} value={f}>{f.replaceAll("_", " ")}</option>)}
-            </select>
-            <input className={field} placeholder="scheme, e.g. AMRAP 12" value={b.scheme ?? ""}
-              onChange={(e) => setBlock(bi, { scheme: textOrNull(e.target.value) })} />
-            <input className={`${field} w-24`} type="number" min={0} placeholder="min" value={b.timeDomainMinutes ?? ""}
-              onChange={(e) => setBlock(bi, { timeDomainMinutes: numberOrNull(e.target.value) })} />
+      {items.map((c, i) => (
+        <div key={c.key} className="flex flex-col gap-2 rounded border bg-white p-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium">{entry(c.key)?.label ?? c.key}</span>
+            <button type="button" className="text-sm underline" onClick={() => setItems(items.filter((_, j) => j !== i))}>remove</button>
           </div>
-
-          {b.components.map((c, ci) => (
-            <div key={ci} className="flex flex-wrap gap-2">
-              <input className={`${field} grow`} list="manual-movement-names" placeholder="movement" value={c.movement}
-                onChange={(e) => setComponent(bi, ci, { movement: e.target.value })} />
-              <input className={`${field} w-20`} placeholder="reps" value={c.reps ?? ""}
-                onChange={(e) => setComponent(bi, ci, { reps: repsValue(e.target.value) })} />
-              <input className={`${field} w-28`} placeholder="load" value={c.load ?? ""}
-                onChange={(e) => setComponent(bi, ci, { load: textOrNull(e.target.value) })} />
-              <input className={`${field} w-20`} type="number" min={0} placeholder="m" value={c.distanceMeters ?? ""}
-                onChange={(e) => setComponent(bi, ci, { distanceMeters: numberOrNull(e.target.value) })} />
-              <input className={`${field} w-20`} type="number" min={0} placeholder="cal" value={c.calories ?? ""}
-                onChange={(e) => setComponent(bi, ci, { calories: numberOrNull(e.target.value) })} />
-              <button type="button" className="text-sm underline"
-                onClick={() => setBlock(bi, { components: b.components.filter((_, j) => j !== ci) })}>remove</button>
-            </div>
-          ))}
-
-          <textarea className={field} placeholder="Coaching notes (tempo, intensity, scaling)" value={b.coachingNotes ?? ""}
-            onChange={(e) => setBlock(bi, { coachingNotes: textOrNull(e.target.value) })} />
-          <div className="flex gap-3 text-sm">
-            <button type="button" className="underline" onClick={() => setBlock(bi, { components: [...b.components, emptyComponent()] })}>
-              Add movement
-            </button>
-            {value.blocks.length > 1 && (
-              <button type="button" className="underline"
-                onClick={() => onChange({ ...value, blocks: value.blocks.filter((_, j) => j !== bi) })}>Remove block</button>
-            )}
-          </div>
+          {c.evidence && <p className="text-xs text-neutral-600">&ldquo;{c.evidence}&rdquo;</p>}
+          {entry(c.key)?.kind === "injury" ? (
+            <>
+              <label className="flex items-center gap-2 text-sm">Side
+                <select className={field} value={c.side ?? ""} onChange={(e) => update(i, { side: e.target.value === "" ? null : Side.parse(e.target.value) })}>
+                  <option value="">not specific</option>
+                  {Side.options.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+              <fieldset className="flex flex-col gap-1 text-sm">
+                <legend className="sr-only">How bad is it?</legend>
+                {Severity.options.map((s) => (
+                  <label key={s} className="flex items-center gap-2">
+                    <input type="radio" name={`severity-${c.key}`} checked={c.severity === s} onChange={() => update(i, { severity: s })} />
+                    {SEVERITY_TEXT[s]}
+                  </label>
+                ))}
+              </fieldset>
+            </>
+          ) : (
+            <span className="text-sm text-neutral-600">always applies</span>
+          )}
         </div>
       ))}
 
-      <button type="button" className="w-fit rounded border px-3 py-1 text-sm"
-        onClick={() => onChange({ ...value, blocks: [...value.blocks, emptyBlock()] })}>Add block</button>
-    </div>
-  );
-}
-```
+      <div className="flex flex-wrap gap-2">
+        <select className={field} value={adding} onChange={(e) => setAdding(e.target.value)}>
+          <option value="">add something we missed…</option>
+          {catalog.filter((c) => !items.some((x) => x.key === c.key)).map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+        <button type="button" className="rounded border px-3 py-1 text-sm" disabled={!adding} onClick={() => {
+          setItems([...items, { key: adding, side: null, severity: "moderate", evidence: null }]);
+          setAdding("");
+        }}>Add</button>
+      </div>
 
-- [ ] **Step 2: Manual check**
-
-`/tailor` → "Enter manually": one strength block (Back Squat, 5x5, 100 kg) and one AMRAP block (T2B 10, Burpee 10). Submit with "no pull-up bar today". Expected: the original shows both blocks with a stimulus chip each; the tailored version has no Toes-to-Bar. Leaving a movement name empty shows "Give every movement a name." without calling the API.
-
-- [ ] **Step 3: Verify and commit**
-
-Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
-
-```bash
-git add -A
-git commit -m "feat: manual structured workout entry"
-```
-
----
-
-### Task U6: History page
-
-**Files:**
-- Create: `src/app/history/page.tsx`
-
-**Interfaces:**
-- Consumes: `prisma` (S1), `getUserId` (S2), `WorkoutView` (U4), `StructuredWorkoutSchema`, `TailoringResultSchema` (E1).
-
-- [ ] **Step 1: Implement `src/app/history/page.tsx`**
-
-```tsx
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { z } from "zod";
-import { WorkoutView } from "@/components/WorkoutView";
-import { prisma } from "@/lib/db";
-import { StructuredWorkoutSchema, TailoringResultSchema } from "@/lib/engine/types";
-import { getUserId } from "@/lib/session";
-
-export default async function HistoryPage() {
-  const userId = await getUserId();
-  if (!userId) redirect("/signin");
-  const rows = await prisma.tailoredWorkout.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 50 });
-
-  if (rows.length === 0) {
-    return <p>Nothing saved yet. <Link className="underline" href="/tailor">Tailor a workout</Link>.</p>;
-  }
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h1 className="text-xl font-semibold">History</h1>
-      {rows.map((row) => {
-        const tailored = TailoringResultSchema.safeParse(row.tailored);
-        const original = StructuredWorkoutSchema.safeParse(row.original);
-        const feedback = z.array(z.string()).safeParse(row.feedbackHistory);
-        const title = (tailored.success && tailored.data.name) || (original.success && original.data.name) || "Workout";
-        return (
-          <details key={row.id} className="rounded border p-3">
-            <summary className="cursor-pointer">
-              <span className="font-medium">{title}</span>{" "}
-              <span className="text-sm text-neutral-500">{row.createdAt.toLocaleDateString()}</span>
-            </summary>
-            {tailored.success ? (
-              <div className="mt-3 flex flex-col gap-3">
-                <WorkoutView heading="Tailored" name={null} blocks={tailored.data.blocks} />
-                <p className="text-sm">{tailored.data.rationale}</p>
-                {tailored.data.changes.length > 0 && (
-                  <ul className="list-disc pl-5 text-sm">
-                    {tailored.data.changes.map((c, i) => <li key={i}>{c.original} → {c.modified}: {c.reason}</li>)}
-                  </ul>
-                )}
-                {feedback.success && feedback.data.length > 0 && (
-                  <p className="text-xs text-neutral-500">Refined with: {feedback.data.join(" · ")}</p>
-                )}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-red-700">This entry could not be read.</p>
-            )}
-          </details>
-        );
-      })}
+      <div className="flex gap-2">
+        <button type="button" className="rounded bg-black px-4 py-1 text-sm text-white disabled:opacity-50" disabled={busy} onClick={() => onConfirm(items)}>
+          Continue
+        </button>
+        <button type="button" className="rounded border px-3 py-1 text-sm" onClick={onCancel}>Back</button>
+      </div>
     </section>
   );
 }
 ```
 
-- [ ] **Step 2: Manual check**
+- [ ] **Step 9: Two-phase `TailorClient`**
 
-After saving a result in U4, `/history` lists it; expanding it shows the tailored blocks, the changes and the refine feedback.
+In `src/app/tailor/page.tsx` pass the catalog instead of the labels:
+```tsx
+      <TailorClient
+        movementNames={domain.movements.map((m) => m.name)}
+        equipmentOptions={[...Equipment.options]}
+        catalog={domain.contraindications.map((c) => ({ key: c.key, label: c.label, kind: c.kind }))}
+      />
+```
+In `src/app/tailor/TailorClient.tsx`:
 
-- [ ] **Step 3: Verify and commit**
+Imports and props:
+```tsx
+import { useState } from "react";
+import type { Equipment } from "@/lib/domain/types";
+import type { ProgressStage } from "@/lib/engine/pipeline";
+import {
+  ManualWorkoutSchema,
+  type ConfirmedCondition, type FeedbackAnalysis, type ManualWorkout, type PipelineResult, type TailorRequest,
+  type WorkoutAnalysisResult,
+} from "@/lib/engine/types";
+import { readEngineOutcome } from "@/lib/engine-events";
+import { ConfirmConditions, type CatalogEntry } from "./ConfirmConditions";
+import { ManualEntryForm, emptyManualWorkout } from "./ManualEntryForm";
+import { ResultView } from "./ResultView";
 
+interface Props {
+  movementNames: string[];
+  equipmentOptions: Equipment[];
+  catalog: CatalogEntry[];
+}
+
+// What phase 2 needs once the athlete has confirmed today's conditions.
+type Pending =
+  | { kind: "tailor"; analysis: WorkoutAnalysisResult; request: TailorRequest; suggested: ConfirmedCondition[] }
+  | { kind: "refine"; previous: PipelineResult; feedback: string; unavailableEquipment: Equipment[]; request: TailorRequest; suggested: ConfirmedCondition[] };
+```
+In the component, replace the signature line and add state:
+```tsx
+export function TailorClient({ movementNames, equipmentOptions, catalog }: Props) {
+  const conditionLabels = Object.fromEntries(catalog.map((c) => [c.key, c.label]));
+```
+```tsx
+  const [pending, setPending] = useState<Pending | null>(null);
+```
+Replace `runEngine`, `submit` and `refine` with:
+```tsx
+  /** Phase-1 call: JSON or a shown error code. */
+  async function postJson<T>(url: string, body: unknown): Promise<T | null> {
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) return (await res.json()) as T;
+      const { error: code } = await res.json().catch(() => ({ error: "engine_failed" }));
+      setError(ERROR_TEXT[code] ?? ERROR_TEXT.engine_failed);
+    } catch {
+      setError(ERROR_TEXT.engine_failed);
+    }
+    return null;
+  }
+
+  // The request is stored only with the result it produced, so Save always persists a matching pair.
+  async function runEngine(url: string, body: unknown, req: TailorRequest) {
+    setError(null);
+    setSaved(false);
+    setStage("tailoring");
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const { error: code } = await res.json().catch(() => ({ error: "engine_failed" }));
+        setError(ERROR_TEXT[code] ?? ERROR_TEXT.engine_failed);
+        return;
+      }
+      const outcome = await readEngineOutcome(res, setStage);
+      if (outcome.kind === "result") {
+        setResult(outcome.result);
+        setRequest(req);
+        setFeedback("");
+      } else setError(ERROR_TEXT[outcome.error]);
+    } catch {
+      setError(ERROR_TEXT.engine_failed);
+    } finally {
+      setStage(null);
+    }
+  }
+
+  /** Phase 2 with the conditions the athlete confirmed (none when nothing was suggested). */
+  async function proceed(p: Pending, confirmed: ConfirmedCondition[]) {
+    setPending(null);
+    if (p.kind === "tailor") {
+      const { original, unavailableEquipment } = p.analysis;
+      await runEngine("/api/tailor", { analysis: { original, unavailableEquipment }, confirmed, request: p.request }, p.request);
+    } else {
+      await runEngine("/api/tailor/refine", {
+        previous: p.previous, feedback: p.feedback, confirmed, unavailableEquipment: p.unavailableEquipment, request: p.request,
+      }, p.request);
+    }
+  }
+
+  /** Confirmation only when the analyzer suggested a condition; otherwise phase 2 starts at once. */
+  async function confirmOrProceed(p: Pending) {
+    if (p.suggested.length > 0) {
+      setStage(null);
+      setPending(p);
+    } else await proceed(p, []);
+  }
+
+  async function submit() {
+    const req = buildRequest();
+    let input;
+    if (mode === "paste") {
+      if (!rawText.trim()) return setError("Paste a workout first.");
+      input = { kind: "paste", rawText };
+    } else {
+      const parsed = ManualWorkoutSchema.safeParse(manual);
+      if (!parsed.success) return setError("Give every movement a name.");
+      input = { kind: "manual", workout: parsed.data };
+    }
+    // A new workout replaces the old result even if it fails: never leave a stale result to save.
+    setResult(null);
+    setRequest(null);
+    setPending(null);
+    setError(null);
+    setStage("analyzing");
+    const analysis = await postJson<WorkoutAnalysisResult>("/api/tailor/analyze", { input, request: req });
+    if (!analysis) return setStage(null);
+    await confirmOrProceed({ kind: "tailor", analysis, request: req, suggested: analysis.suggested });
+  }
+
+  async function refine() {
+    if (!result || !feedback.trim()) return;
+    // Refine with the form as it is now (a time cap or equipment set after the first run counts).
+    const req = buildRequest();
+    const text = feedback.trim();
+    setError(null);
+    setStage("analyzing");
+    const a = await postJson<FeedbackAnalysis>("/api/tailor/refine/analyze", { feedback: text });
+    if (!a) return setStage(null);
+    await confirmOrProceed({
+      kind: "refine", previous: result, feedback: text, unavailableEquipment: a.unavailableEquipment, request: req, suggested: a.suggested,
+    });
+  }
+```
+Change the two buttons' handlers to `onClick={() => void submit()}` and `onClick={() => void refine()}`, and render the confirmation right after the error line:
+```tsx
+      {pending && (
+        <ConfirmConditions key={pending.kind + pending.suggested.map((s) => s.key).join(",")}
+          suggested={pending.suggested} catalog={catalog} busy={busy}
+          onConfirm={(confirmed) => void proceed(pending, confirmed)} onCancel={() => setPending(null)} />
+      )}
+```
+
+Run: `pnpm exec tsc --noEmit`, `pnpm lint` → only the eval errors remain.
+
+- [ ] **Step 10: Eval plays the athlete** — failing test first. Append to `tests/eval/grade.test.ts` inside `describe("eval grading")`:
+
+```ts
+  it("grades detection on the suggestions and accepts the conditions a case confirms", () => {
+    const c = EvalCaseSchema.parse({
+      id: "confirm", description: "x", input: { kind: "paste", rawText: "x" },
+      confirm: [{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }],
+      expect: { mustDetect: ["shoulder_impingement"] },
+    });
+    expect(resolveCase(c).confirm).toEqual([{ key: "shoulder_impingement", side: "right", severity: "moderate", evidence: null }]);
+    expect(gradeCase(c, { kind: "result", result: result(), suggested: [] }).failures).toEqual(["did not detect shoulder_impingement"]);
+    expect(gradeCase(c, { kind: "result", result: result(), suggested: ["shoulder_impingement"] }).passed).toBe(true);
+  });
+```
+and in the defaults test add `expect(resolveCase(c).confirm).toBeNull();`.
+Run → FAIL. Then in `src/lib/eval/grade.ts`:
+- import `ConfirmedConditionSchema` and `type ConfirmedCondition` from `@/lib/engine/types`;
+- add to `EvalCaseSchema` (after `request`):
+```ts
+  // The conditions the athlete would confirm; null = accept the analyzer's suggestions as read.
+  confirm: z.array(ConfirmedConditionSchema).nullable().default(null),
+```
+- `EvalOutcome`'s result variant becomes `{ kind: "result"; result: PipelineResult; suggested?: string[] }` (the suggested condition keys);
+- `resolveCase` returns `confirm: c.confirm` as well (`confirm: ConfirmedCondition[] | null` in its return type);
+- in `gradeCase` replace the `detected` line with:
+```ts
+  // Detection is the analyzer's job: graded on its suggestions, whatever the athlete confirmed.
+  const detected = new Set(outcome.suggested ?? r.conditions.map((x) => x.key));
+```
+In `scripts/eval.ts` import `analyzeWorkout` and replace the `try` body with:
+```ts
+      const { input, profile, request, confirm } = resolveCase(c);
+      const analysis = await analyzeWorkout(provider, { input, situation: request.situation, domain });
+      const result = await runTailorPipeline(provider, {
+        original: analysis.original, confirmed: confirm ?? analysis.suggested,
+        unavailableEquipment: analysis.unavailableEquipment, profile, request, domain,
+      });
+      outcome = { kind: "result", result, suggested: analysis.suggested.map((s) => s.key) };
+```
 Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
+
+- [ ] **Step 11: Eval regression and severity pinning**
+
+Run `pnpm eval` → 14/14 as before (the harness confirms the suggestions as read, so behavior is unchanged). Then pin the severity of the two shoulder cases so they grade the tailor, not the analyzer's reading: add to `evals/cases/01-fran-shoulder-today.json` and `evals/cases/13-fran-shoulder-mild-knee-dumbbells.json`
+```json
+  "confirm": [{ "key": "shoulder_impingement", "side": "right", "severity": "moderate", "evidence": null }],
+```
+and rerun both → PASS.
+
+- [ ] **Step 12: Manual check** (signed in, `pnpm dev`, 375 px)
+
+1. Paste Fran, situation "sore right shoulder", Tailor → "Is this right?" shows Shoulder impingement with the evidence, side right and a pre-selected severity. Pick **Moderate**, Continue → no Thruster, no overhead press.
+2. Same paste, pick **Mild** → a caution badge on any overhead work.
+3. Remove the condition and Continue → the result lists no shoulder condition.
+4. Add "Unable to hang from a bar or rings" from the select → shows "always applies"; the result has no pull-ups.
+5. Empty situation → no confirmation step; the result appears directly.
+6. Refine "my left knee hurts too" → a confirmation for knee pain; Continue → the result keeps the shoulder and adds the knee.
+7. `LlmUsage` gained one `analyze` and one `tailor` (or `refine`) row per run.
+
+- [ ] **Step 13: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: history of saved tailored workouts"
+git commit -m "feat: athlete-confirmed conditions — analyze, confirm, then tailor"
 ```
+
+---
+
+### Task U4c: Restrictions in the athlete's own scope (replaces U4b's confirmation)
+
+U4b mapped "me duele el hombro, no puedo hacer snatch" to `shoulder_impingement` (acute) and the athlete had to confirm it; the catalog entry then also banned toes-to-bar, which the athlete never mentioned. Today's pain and limits become **restrictions** that ban exactly what the athlete named; the athlete is asked only when the scope is genuinely unknown (a painful site with nothing named) or the best replacement loads the painful site the same way. See the spec amendment U4c (*Two phases*, *Clarify*, *Active conditions*).
+
+Behaviour (the user's three cases, session `3 Power Snatch / 5 Bar-facing Burpee / 7 Toes-to-Bar`):
+1. "me duele el hombro, no puedo hacer snatch" → snatch variants banned, Power Clean (best candidate, no shoulder load) prescribed, Toes-to-Bar kept; no question. Were the best candidate a Push Press (shoulder overhead + ballistic, shared with the snatch), the athlete would pick the replacement, the first candidate sharing nothing preselected.
+2. "no puedo hacer snatch" → same ban, best candidate by stimulus, no question; refine corrects it.
+3. "me duele el hombro" → question: "Arms overhead or explosive — Power Snatch" / "Hanging from a bar or kipping — Toes-to-Bar" / everything that loads it / something else / I can do everything.
+
+**Files:**
+- Modify: `src/lib/engine/types.ts`, `src/lib/engine/analyze.ts`, `src/lib/engine/conditions.ts`, `src/lib/engine/pipeline.ts`, `src/lib/engine/tailor.ts`, `src/lib/api-schemas.ts`, `src/lib/engine-route.ts`, the four engine routes, `src/app/api/tailor/save/route.ts`, `prisma/schema.prisma` (+ migration `restrictions`), `src/app/tailor/TailorClient.tsx`, `src/app/tailor/ResultView.tsx`, `data/movements.json` (Power Snatch substitutes), `src/lib/eval/grade.ts`, `scripts/eval.ts`, `evals/cases/*.json`
+- Create: `src/lib/engine/clarify.ts`, `src/app/tailor/ClarifyStep.tsx`, `evals/cases/15-snatch-shoulder-keeps-toes-to-bar.json`
+- Delete: `src/app/tailor/ConfirmConditions.tsx` (its `CatalogEntry` type moves to `ResultView.tsx`)
+- Test: `tests/engine/clarify.test.ts` (new), `tests/engine/conditions.test.ts`, `tests/engine/analyze.test.ts`, `tests/engine/pipeline.test.ts`, `tests/engine/tailor.test.ts`, `tests/lib/api-schemas.test.ts`, `tests/eval/grade.test.ts`, `tests/domain/data.test.ts`
+
+**Interfaces:**
+- `@/lib/engine/types`:
+  - `RestrictionDraftSchema` (analyzer output) `{ site: Site | null, side: Side | null, movements: string[], mechanisms: StressMechanism[], positions: Position[], evidence: string }`; `RestrictionSchema` = draft + `replacements: ReplacementChoice[]` (default `[]`); `ReplacementChoiceSchema` `{ blockIndex, componentIndex, replacement }`.
+  - `SituationAnalysisSchema` gains `restrictions: RestrictionDraft[]`; its `conditions` only ever hold `kind: condition` keys (others dropped in `clean`).
+  - `ClarifyQuestion` = `{ kind: "site", restriction, site, side, evidence, options: { label, mechanisms, movements }[] }` | `{ kind: "replacement", restriction, blockIndex, componentIndex, movement, site, options: { name, shared: StressMechanism[] }[], preselected }`.
+  - `WorkoutAnalysisResult` `{ original, suggested, restrictions: Restriction[], questions, unavailableEquipment, analyzed }`; `FeedbackAnalysis` `{ suggested, restrictions, questions, unavailableEquipment }`.
+  - `PipelineResultSchema` gains `restrictions: Restriction[]` (default `[]`, so older saved results parse).
+- `@/lib/engine/conditions`: `restrictionConditions(restrictions, offset = 0): ActiveCondition[]` — one synthetic `limitation` `today_<offset+i>` per restriction that bans something; `hasScope(r)`.
+- `@/lib/engine/clarify`: `siteOptions(original, site, resolve)`, `buildQuestions({ original, restrictions, base: ActiveCondition[], equipment, movements })`, `applyAnswers(restrictions, answers)`; `ClarifyAnswer` = `{ kind: "site", restriction, mechanisms: StressMechanism[] | "all" | "none" }` | `{ kind: "replacement", restriction, blockIndex, componentIndex, replacement }`. `MECHANISM_TEXT: Record<StressMechanism, string>`.
+- `@/lib/engine/pipeline`: `analyzeWorkout(provider, { input, request, profile, domain })`, `analyzeFeedback(provider, { feedback, session, request, profile, domain })` where `session = { original, conditions, restrictions, unavailableEquipment }`; `PipelineArgs` and `RefineArgs` gain `restrictions: Restriction[]`; the plan forces each replacement as that component's only candidate.
+- `@/lib/api-schemas`: `AnalyzeFeedbackBodySchema = { feedback, session, request }`; Tailor/Refine bodies gain `restrictions` (max 20).
+- `handleAnalyzeRequest` passes `profile` to `run`.
+- `ClarifyStep({ questions, busy, onAnswer(answers), onFreeText(restriction, text), onCancel })`.
+- Eval: `expect.mustRestrict: Site[]`, `expect.mustKeep: string[]`; the harness answers site questions "all" and takes preselected replacements.
+
+- [ ] **Step 1: Failing tests for restriction activation** (`tests/engine/conditions.test.ts`): a restriction `{ movements: ["Power Snatch"] }` makes Power Snatch `avoid` and Toes-to-Bar `ok`; `{ site: "shoulder", mechanisms: ["overhead"] }` bans Push Press, not Pull-up; `{ site: null, mechanisms: ["overhead"] }` bans overhead at any site; `{ positions: ["hanging"] }` bans Toes-to-Bar; a site-only restriction activates nothing; keys are `today_<offset+i>`; side `right` gives the unilateral healthy-side exemption.
+- [ ] **Step 2: Implement** `restrictionConditions` / `hasScope` in `conditions.ts`; run the tests.
+- [ ] **Step 3: Failing tests for clarify** (`tests/engine/clarify.test.ts`, snatch / burpee / toes-to-bar session): `siteOptions(shoulder)` → two options, Power Snatch `[overhead, ballistic]` and Toes-to-Bar `[traction, kipping]`, burpee absent; no option when nothing loads the site; `buildQuestions` asks a site question for a site-only restriction, none for `{ site: shoulder, movements: [Power Snatch] }` with Power Clean first, and a replacement question (preselecting the first candidate that shares nothing) when the best candidate shares a shoulder mechanism (Dumbbell Snatch when the barbell is missing); no replacement question when the restriction has no site; `applyAnswers` maps `all` to every mechanism, `none` to context only, a mechanism list to the restriction, and a replacement to `restriction.replacements`.
+- [ ] **Step 4: Implement** `clarify.ts` (pure; client-safe imports only) and the types; run the tests.
+- [ ] **Step 5: Analyzer** — failing tests in `tests/engine/analyze.test.ts`: restrictions are parsed and their movement names resolved to canonical (unknown dropped), conditions other than `kind: condition` are dropped, the situation-only call carries the movement library. Then update `SITUATION_RULES`: restrictions (site/side/movements/mechanisms/positions/evidence; never add what was not named; pain alone → empty lists; "snatch" lists every library snatch variant), conditions only from the non-pain catalog; `analyzeSituation` sends the library names.
+- [ ] **Step 6: Pipeline and tailor prompt** — failing tests: the phase-1 functions return questions; `runTailorPipeline` with `{ movements: ["Power Snatch"] }` plans Power Snatch MUST CHANGE and Toes-to-Bar OK; a replacement becomes the only candidate (`chosen by the athlete`); the prompt lists TODAY'S RESTRICTIONS with their keys; the SYSTEM rule forbids changing a movement for pain the plan does not mark; refine keeps the previous restrictions and replacements; the result carries `restrictions`. Implement.
+- [ ] **Step 7: API** — bodies and routes as in *Interfaces*; `handleAnalyzeRequest` loads the profile; save writes `restrictions`. Schema: `restrictions Json @default("[]")` on `TailoredWorkout`; `pnpm prisma migrate dev --name restrictions` (dev branch; the VPN must be off).
+- [ ] **Step 8: UI** — `ClarifyStep` replaces `ConfirmConditions`: per site question checkboxes (label + movements), "Everything that loads my <site>", "I can do everything", and a "Something else…" text box that posts to `/api/tailor/refine/analyze` once; per replacement question radios with "also loads your <site>: <mechanisms>". Free text replaces that restriction by the re-analysis (a site still unnamed bans every load on it) and shows its replacement questions, if any. `ResultView` shows each restriction as a chip: "Shoulder (right) · no Power Snatch · today", "… · overhead", "… · context only".
+- [ ] **Step 9: Data** — Power Snatch substitutes `["Power Clean", "Hang Power Snatch", "Dumbbell Snatch", "Kettlebell Swing"]` with a data test.
+- [ ] **Step 10: Eval** — `mustRestrict`, `mustKeep`, the harness's answers; cases 01, 03, 09, 11, 13 move from `mustDetect` injuries to `mustRestrict` (case 01 no longer forbids Pull-up: overhead only), drop `confirm`; new case 15. Run `pnpm eval`.
+- [ ] **Step 11: Verify** — `pnpm test`, `pnpm tsc --noEmit`, `pnpm lint`; browser: the three sentences above on the snatch session; refine "my knee hurts too" asks about the knee only if the session loads it.
+- [ ] **Step 12: Commit** — `feat: restrictions in the athlete's own scope, clarify only when unclear`
+
+---
+
+### Task U5: Manual structured entry — CANCELLED (2026-10-07)
+
+Coaches publish workouts as free text, so the paste is the only ingestion path. The manual path was removed instead
+of completed: the "Enter manually" toggle and `ManualEntryForm`, `analyzeManual` and its schemas, the manual variant
+of the analyze body (now `{ rawText, request }`) and of eval cases (now a top-level `rawText`), and the block
+renderers only it used.
+
+---
+
+### Task U6: History page — CANCELLED (2026-10-07)
+
+Dropped together with the pause of this part of the project (focus moves to the coach/athlete programming side).
+"Save to history" still stores `TailoredWorkout` rows; the History links in the header and on the home page were
+removed, since no page reads them.
 
 ---
 
@@ -6232,16 +7310,16 @@ git commit -m "feat: history of saved tailored workouts"
 
 - [ ] **Step 1: Rewrite `README.md`** with these sections, each short and concrete:
   1. **What it is** — one paragraph from the spec's *Problem*.
-  2. **Prerequisites** — Node 20+, pnpm, Postgres (local or Neon), a Gemini API key, a Google OAuth client.
-  3. **Setup** — `pnpm install` (runs `prisma generate`), copy `.env.example` to `.env` and fill it, `pnpm db:migrate`, `pnpm dev`. No seed step: domain data ships in `data/`.
+  2. **Prerequisites** — Node 20+, pnpm, a Neon project with a `dev` branch for local work, a Gemini API key, a Google OAuth client.
+  3. **Setup** — `pnpm install` (runs `prisma generate`), copy `.env.example` to `.env` and fill it (`DATABASE_URL` = pooled and `DIRECT_URL` = direct connection string of the Neon `dev` branch), `pnpm db:migrate`, `pnpm dev`. No seed step: domain data ships in `data/`.
   4. **Commands** — `pnpm test` (deterministic, no network/DB), `pnpm eval [caseId]`, `pnpm coverage`, `pnpm lint`, `pnpm build`, `pnpm db:migrate`, `pnpm db:deploy`, `pnpm db:studio`.
   5. **Architecture** — the pipeline diagram from the spec and the boundary rule.
   6. **Domain data** — where it lives, that it is edited through scripts using `scripts/lib/domain-json.mjs`, and that `tests/domain` guards it.
   7. **Safety** — fail-closed validation; not medical advice.
   8. **Private corpus** — `data/corpus/` and `reports/` are gitignored because the repo is public.
-  9. **Deploy (Vercel + Neon)** — create the Neon database; set every `.env.example` variable in Vercel (with `BETTER_AUTH_URL` = the production URL); add `https://<domain>/api/auth/callback/google` to the Google client; set the build command to `pnpm db:deploy && pnpm build`.
+  9. **Deploy (Vercel + Neon)** — use the Neon `production` branch; set every `.env.example` variable in Vercel (with `DATABASE_URL` / `DIRECT_URL` = the `production` branch's pooled / direct connection strings and `BETTER_AUTH_URL` = the production URL); add `https://<domain>/api/auth/callback/google` to the Google client; set the build command to `pnpm db:deploy && pnpm build`.
 
-- [ ] **Step 2: Check `.env.example`** lists exactly: `DATABASE_URL`, `AI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DAILY_ENGINE_LIMIT` — and no `AUTH_SECRET` or `EMAIL_*` leftovers.
+- [ ] **Step 2: Check `.env.example`** lists exactly: `DATABASE_URL`, `DIRECT_URL`, `AI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DAILY_ENGINE_LIMIT` — and no `AUTH_SECRET` or `EMAIL_*` leftovers.
 
 - [ ] **Step 3: Full verification**
 
@@ -6292,7 +7370,7 @@ git commit -m "docs: README, deployment notes and v1 verification"
 | Prisma migrations; profile document; saved results; quota ledger + 429 | S1, U2, U3 |
 | Save exactly what was reviewed | U3 |
 | Structured profile (sex, scaling level, injuries with side/severity, benchmarks, equipment, goals, availability) | E1, U1 |
-| Phone-first UI; disclaimer; caution badges | S2, U4, U5, U6 |
+| Phone-first UI; disclaimer; caution badges | S2, U4 |
 | Public repo: corpus and reports gitignored | E9, E10 |
 | Hosting on Vercel + Neon | F1 |
 

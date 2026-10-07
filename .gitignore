@@ -42,3 +42,7 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# private corpus (real, often paid programming) and generated reports — the repo is public
+/data/corpus/
+/reports/
