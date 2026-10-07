@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
+/* The UI is designed light-only for v1. color-scheme keeps native controls (select popups,
+   checkboxes, date pickers) light as well, even when the OS is in dark mode. */
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -8,15 +11,6 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

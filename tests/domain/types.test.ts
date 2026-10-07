@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { MovementSchema, InjuryContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
-import { matchesContraindication } from "@/lib/domain/matching";
+import { MovementSchema, ContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
+import { matchesContraindication } from "@/lib/domain/assess";
 
 describe("domain schemas", () => {
   it("validates a movement with patterns, positions, site stresses, and equipment", () => {
@@ -156,13 +156,13 @@ describe("domain schemas", () => {
     ).toThrow();
   });
 
-  it("validates an injury contraindication and stimulus def", () => {
+  it("validates a contraindication and stimulus def", () => {
     expect(
-      InjuryContraindicationSchema.parse({
-        injuryKey: "shoulder_impingement", label: "Shoulder impingement",
-        avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"] }],
-        avoidPositions: [], avoidMovements: [], notes: null,
-      }).injuryKey
+      ContraindicationSchema.parse({
+        key: "shoulder_impingement", label: "Shoulder impingement", kind: "injury",
+        rules: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"], tier: "avoid" }],
+        positionRules: [], avoidMovements: [], notes: null,
+      }).key
     ).toBe("shoulder_impingement");
     expect(
       StimulusDefSchema.parse({ key: "aerobic_capacity", label: "Aerobic capacity", description: "Sustained..." }).key
@@ -171,14 +171,14 @@ describe("domain schemas", () => {
 });
 
 describe("matchesContraindication", () => {
-  const overheadInjury = InjuryContraindicationSchema.parse({
-    injuryKey: "shoulder_impingement", label: "Shoulder impingement",
-    avoidStresses: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"] }],
-    avoidPositions: [], avoidMovements: ["Bench Press"], notes: null,
+  const overheadInjury = ContraindicationSchema.parse({
+    key: "shoulder_impingement", label: "Shoulder impingement", kind: "injury",
+    rules: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"], tier: "avoid" }],
+    positionRules: [], avoidMovements: ["Bench Press"], notes: null,
   });
-  const noInversion = InjuryContraindicationSchema.parse({
-    injuryKey: "no_inversion", label: "Unable to go inverted",
-    avoidStresses: [], avoidPositions: ["inverted"], avoidMovements: [], notes: null,
+  const noInversion = ContraindicationSchema.parse({
+    key: "no_inversion", label: "Unable to go inverted", kind: "limitation",
+    rules: [], positionRules: [{ position: "inverted", tier: "avoid" }], avoidMovements: [], notes: null,
   });
   const press = MovementSchema.parse({
     name: "Shoulder Press", patterns: ["vertical_push"], positions: [],

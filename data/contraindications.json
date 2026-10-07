@@ -1,0 +1,5 @@
+[
+  {"key":"sore_shoulder","label":"Sore shoulder","kind":"injury","rules":[{"site":"shoulder","mechanisms":["overhead"],"tier":"avoid"}],"positionRules":[],"avoidMovements":[],"notes":null},
+  {"key":"sore_knee","label":"Sore knee","kind":"injury","rules":[{"site":"knee","mechanisms":["deep_flexion"],"tier":"avoid"},{"site":"knee","mechanisms":["impact"],"tier":"caution"}],"positionRules":[],"avoidMovements":[],"notes":null},
+  {"key":"sore_lower_back","label":"Sore lower back","kind":"injury","rules":[{"site":"lumbar","mechanisms":["compression","ballistic"],"tier":"avoid"}],"positionRules":[],"avoidMovements":[],"notes":null}
+]
