@@ -20,7 +20,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {user && (
               <>
                 <Link href="/tailor">Tailor</Link>
-                <Link href="/history">History</Link>
                 <Link href="/profile">Profile</Link>
                 <span className="ml-auto"><SignOutButton /></span>
               </>

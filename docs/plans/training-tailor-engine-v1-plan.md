@@ -28,9 +28,11 @@
 
 Revision 1 of this plan delivered Phase 0 (scaffold, Vitest), Phase 1 (Prisma 7 + driver adapter; its schema is **replaced** in Task S1) and the domain catalog (types, matching, 111 movements, 18 contraindications, 7 stimulus tags — 85 tests green at `41faad1`). Revision 2 restarts at **Task D1**. Completed tasks are not repeated here: the code is the source of truth.
 
+**Paused (2026-10-07)** on `feat/engine-v1` after U4c: D1–E10, S1–S2 and U1–U4c are done; U5 and U6 are cancelled; F1 (README, deploy notes, full verification) is pending. Known open items: Gemini latency is not controlled (single calls have taken over 2 min, beyond the routes' `maxDuration`; a per-attempt `httpOptions.timeout` must not be used, since the SDK sends it to Gemini as `X-Server-Timeout`), deterministic `changes` generation, and saved results that no page reads yet.
+
 ## Execution order
 
-`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U4b → U4c → U6` (API, unrecognized-movement queue, UI, athlete-confirmed conditions, restrictions; U5 cancelled) → `F1` (README, verification).
+`D1 → D2 → D3 → D4 → D5` (domain data v2) → `E1 … E9` (engine, eval) → `E10` (corpus coverage pass; needs the user's corpus) → `S1 → S2` (database, auth) → `U1 → U2 → U3 → U3b → U4 → U4b → U4c` (API, unrecognized-movement queue, UI, athlete-confirmed conditions, restrictions; U5 and U6 cancelled) → `F1` (README, verification).
 
 The engine and its evaluation come before auth and UI on purpose: the LLM loop is validated end-to-end (`pnpm eval`) before any screen exists.
 
@@ -7291,84 +7293,11 @@ renderers only it used.
 
 ---
 
-### Task U6: History page
+### Task U6: History page — CANCELLED (2026-10-07)
 
-**Files:**
-- Create: `src/app/history/page.tsx`
-
-**Interfaces:**
-- Consumes: `prisma` (S1), `getUserId` (S2), `WorkoutView` (U4), `StructuredWorkoutSchema`, `TailoringResultSchema` (E1).
-
-- [ ] **Step 1: Implement `src/app/history/page.tsx`**
-
-```tsx
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { z } from "zod";
-import { WorkoutView } from "@/components/WorkoutView";
-import { prisma } from "@/lib/db";
-import { StructuredWorkoutSchema, TailoringResultSchema } from "@/lib/engine/types";
-import { getUserId } from "@/lib/session";
-
-export default async function HistoryPage() {
-  const userId = await getUserId();
-  if (!userId) redirect("/signin");
-  const rows = await prisma.tailoredWorkout.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 50 });
-
-  if (rows.length === 0) {
-    return <p>Nothing saved yet. <Link className="underline" href="/tailor">Tailor a workout</Link>.</p>;
-  }
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h1 className="text-xl font-semibold">History</h1>
-      {rows.map((row) => {
-        const tailored = TailoringResultSchema.safeParse(row.tailored);
-        const original = StructuredWorkoutSchema.safeParse(row.original);
-        const feedback = z.array(z.string()).safeParse(row.feedbackHistory);
-        const title = (tailored.success && tailored.data.name) || (original.success && original.data.name) || "Workout";
-        return (
-          <details key={row.id} className="rounded border p-3">
-            <summary className="cursor-pointer">
-              <span className="font-medium">{title}</span>{" "}
-              <span className="text-sm text-neutral-500">{row.createdAt.toLocaleDateString()}</span>
-            </summary>
-            {tailored.success ? (
-              <div className="mt-3 flex flex-col gap-3">
-                <WorkoutView heading="Tailored" name={null} blocks={tailored.data.blocks} />
-                <p className="text-sm">{tailored.data.rationale}</p>
-                {tailored.data.changes.length > 0 && (
-                  <ul className="list-disc pl-5 text-sm">
-                    {tailored.data.changes.map((c, i) => <li key={i}>{c.original} → {c.modified}: {c.reason}</li>)}
-                  </ul>
-                )}
-                {feedback.success && feedback.data.length > 0 && (
-                  <p className="text-xs text-neutral-500">Refined with: {feedback.data.join(" · ")}</p>
-                )}
-              </div>
-            ) : (
-              <p className="mt-2 text-sm text-red-700">This entry could not be read.</p>
-            )}
-          </details>
-        );
-      })}
-    </section>
-  );
-}
-```
-
-- [ ] **Step 2: Manual check**
-
-After saving a result in U4, `/history` lists it; expanding it shows the tailored blocks, the changes and the refine feedback.
-
-- [ ] **Step 3: Verify and commit**
-
-Run: `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test` → clean.
-
-```bash
-git add -A
-git commit -m "feat: history of saved tailored workouts"
-```
+Dropped together with the pause of this part of the project (focus moves to the coach/athlete programming side).
+"Save to history" still stores `TailoredWorkout` rows; the History links in the header and on the home page were
+removed, since no page reads them.
 
 ---
 
@@ -7441,7 +7370,7 @@ git commit -m "docs: README, deployment notes and v1 verification"
 | Prisma migrations; profile document; saved results; quota ledger + 429 | S1, U2, U3 |
 | Save exactly what was reviewed | U3 |
 | Structured profile (sex, scaling level, injuries with side/severity, benchmarks, equipment, goals, availability) | E1, U1 |
-| Phone-first UI; disclaimer; caution badges | S2, U4, U6 |
+| Phone-first UI; disclaimer; caution badges | S2, U4 |
 | Public repo: corpus and reports gitignored | E9, E10 |
 | Hosting on Vercel + Neon | F1 |
 

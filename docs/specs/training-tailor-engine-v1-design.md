@@ -17,6 +17,10 @@
 >
 > Amendment (2026-10-07): structured manual entry is dropped. Coaches publish workouts as
 > free text, so the paste is the only ingestion path (task U5 cancelled).
+>
+> Amendment (2026-10-07): the history page is dropped (task U6 cancelled) and this part of
+> the project is paused to focus on the coach/athlete programming side. Saved results are
+> still stored (`TailoredWorkout`); nothing reads them yet.
 
 ## Problem
 

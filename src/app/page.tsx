@@ -4,7 +4,6 @@ import { getSessionUser } from "@/lib/session";
 const SECTIONS = [
   { href: "/tailor", title: "Tailor a workout", text: "Paste today's session and say how you are." },
   { href: "/profile", title: "Profile", text: "Injuries, equipment, benchmarks, goals." },
-  { href: "/history", title: "History", text: "Your saved tailored workouts." },
 ];
 
 export default async function Home() {
