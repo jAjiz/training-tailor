@@ -8,10 +8,11 @@ import {
   type CollisionDetection, type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { cx } from "@/components/ui/cx";
 import { applyMove, dayDropId, isDayDropId, locate, resolveDrop, type Board } from "@/lib/training/board";
 import type { ErrorCode } from "@/lib/training/errors";
 import { moveBlockAction } from "../../../block-actions";
-import { DayTools } from "./DayTools";
+import { AddBlock, DayMenu } from "./DayTools";
 import { PlannerBlock } from "./PlannerBlock";
 import type { PlannerBlockData, PlannerContext } from "./types";
 
@@ -36,14 +37,22 @@ function boardOf(days: Day[], blocks: PlannerBlockData[]): Board {
 }
 
 function DayColumn({ day, ids, byId, ctx }: { day: Day; ids: string[]; byId: Map<string, PlannerBlockData>; ctx: PlannerContext }) {
+  const t = useTranslations("planner");
   const { setNodeRef, isOver } = useDroppable({ id: dayDropId(day.dayIndex), disabled: ctx.readOnly });
   return (
-    <div ref={setNodeRef} className={`flex min-h-24 min-w-0 flex-col gap-2 rounded p-1 ${isOver ? "bg-neutral-100" : ""}`}>
-      <h2 className="text-sm font-medium first-letter:uppercase">{day.label}</h2>
+    <div ref={setNodeRef} className={cx("flex min-h-40 min-w-0 flex-col gap-2 rounded-2xl p-1.5 transition-colors", isOver && "bg-surface-2")}>
+      <div className="flex min-h-9 items-center gap-2 pl-1.5">
+        <h2 className="inline-block truncate text-sm font-bold first-letter:uppercase">{day.label}</h2>
+        <span className="rounded-full bg-surface-2 px-2 text-xs font-semibold text-muted">
+          <span aria-hidden>{ids.length}</span>
+          <span className="sr-only">{t("blockCount", { count: ids.length })}</span>
+        </span>
+        <DayMenu dayIndex={day.dayIndex} ctx={ctx} />
+      </div>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         {ids.map((id) => <PlannerBlock key={id} block={byId.get(id) as PlannerBlockData} ctx={ctx} />)}
       </SortableContext>
-      <DayTools dayIndex={day.dayIndex} ctx={ctx} />
+      <AddBlock dayIndex={day.dayIndex} ctx={ctx} />
     </div>
   );
 }
@@ -86,9 +95,11 @@ export function WeekBoard({ days, blocks, ctx }: { days: Day[]; blocks: PlannerB
   return (
     // A fixed id keeps dnd-kit's generated aria ids identical on the server and the client.
     <DndContext id={`planner-${ctx.programId}`} sensors={sensors} collisionDetection={collision} onDragEnd={onDragEnd}>
-      {error && <p className="text-sm text-red-700">{te(error)}</p>}
-      <div className="grid grid-cols-7 gap-3">
-        {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx} />)}
+      {error && <p role="alert" className="text-sm text-danger">{te(error)}</p>}
+      <div className="-mx-6 overflow-x-auto px-6 pb-2">
+        <div className="grid min-w-[1050px] grid-cols-7 gap-2">
+          {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx} />)}
+        </div>
       </div>
     </DndContext>
   );
