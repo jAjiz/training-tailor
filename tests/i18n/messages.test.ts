@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import es from "@/i18n/messages/es.json";
 import en from "@/i18n/messages/en.json";
+import { MovementPattern } from "@/lib/domain/types";
 import { ERROR_CODES } from "@/lib/training/errors";
 
 function keys(obj: object, prefix = ""): string[] {
@@ -24,5 +25,10 @@ describe("messages", () => {
   it("translates every error code", () => {
     const errors = es.errors as Record<string, string>;
     for (const code of ERROR_CODES) expect(errors[code], code).toBeTruthy();
+  });
+
+  it("labels every movement pattern", () => {
+    const patterns = es.patterns as Record<string, string>;
+    for (const p of MovementPattern.options) expect(patterns[p], p).toBeTruthy();
   });
 });
