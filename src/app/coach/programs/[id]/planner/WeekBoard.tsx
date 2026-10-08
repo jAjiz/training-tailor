@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
-  DndContext, KeyboardSensor, PointerSensor, closestCorners, useDroppable, useSensor, useSensors, type DragEndEvent,
+  DndContext, KeyboardSensor, PointerSensor, closestCorners, pointerWithin, useDroppable, useSensor, useSensors,
+  type CollisionDetection, type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { applyMove, dayDropId, locate, resolveDrop, type Board } from "@/lib/training/board";
+import { applyMove, dayDropId, isDayDropId, locate, resolveDrop, type Board } from "@/lib/training/board";
 import type { ErrorCode } from "@/lib/training/errors";
 import { moveBlockAction } from "../../../block-actions";
 import { DayTools } from "./DayTools";
@@ -15,6 +16,17 @@ import { PlannerBlock } from "./PlannerBlock";
 import type { PlannerBlockData, PlannerContext } from "./types";
 
 type Day = { dayIndex: number; label: string };
+
+/**
+ * What is under the pointer wins (a block before its day column); the keyboard has no pointer and falls back
+ * to the closest corners. Plain closestCorners misses empty days: their columns stretch to the grid's height.
+ */
+const collision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  if (hits.length === 0) return closestCorners(args);
+  const blocks = hits.filter((c) => !isDayDropId(String(c.id)));
+  return blocks.length > 0 ? blocks : hits;
+};
 
 function boardOf(days: Day[], blocks: PlannerBlockData[]): Board {
   return Object.fromEntries(days.map((d) => [
@@ -73,7 +85,7 @@ export function WeekBoard({ days, blocks, ctx }: { days: Day[]; blocks: PlannerB
 
   return (
     // A fixed id keeps dnd-kit's generated aria ids identical on the server and the client.
-    <DndContext id={`planner-${ctx.programId}`} sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
+    <DndContext id={`planner-${ctx.programId}`} sensors={sensors} collisionDetection={collision} onDragEnd={onDragEnd}>
       {error && <p className="text-sm text-red-700">{te(error)}</p>}
       <div className="grid grid-cols-7 gap-3">
         {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx} />)}

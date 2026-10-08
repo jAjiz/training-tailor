@@ -5,6 +5,7 @@ export type Slot = { day: number; index: number };
 const DAY_DROP = /^day-(\d+)$/;
 
 export const dayDropId = (dayIndex: number) => `day-${dayIndex}`;
+export const isDayDropId = (id: string) => DAY_DROP.test(id);
 
 export function locate(board: Board, id: string): Slot | null {
   for (const [day, ids] of Object.entries(board)) {

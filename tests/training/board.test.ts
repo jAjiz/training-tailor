@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyMove, dayDropId, locate, resolveDrop, type Board } from "@/lib/training/board";
+import { applyMove, dayDropId, isDayDropId, locate, resolveDrop, type Board } from "@/lib/training/board";
 
 const board: Board = { 0: ["a", "b", "c"], 1: ["x"], 2: [] };
 
@@ -28,6 +28,11 @@ describe("planner board", () => {
   it("appends when dropped on a day column, including an empty one", () => {
     expect(applyMove(board, "b", resolveDrop(board, "b", dayDropId(2))!)[2]).toEqual(["b"]);
     expect(resolveDrop(board, "a", dayDropId(0))).toEqual({ day: 0, index: 2 });
+  });
+
+  it("tells day columns from blocks", () => {
+    expect(isDayDropId(dayDropId(3))).toBe(true);
+    expect(isDayDropId("cmuzg6wng0004")).toBe(false);
   });
 
   it("ignores unknown items and never mutates the input", () => {
