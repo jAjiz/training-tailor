@@ -16,20 +16,27 @@
     "db:studio": "prisma studio",
     "eval": "tsx scripts/eval.ts",
     "coverage": "tsx scripts/coverage.ts",
-    "review:movements": "tsx scripts/review-movements.ts"
+    "review:movements": "tsx scripts/review-movements.ts",
+    "coach:approve": "tsx scripts/approve-coach.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@google/genai": "^2.25.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "better-auth": "^1.7.7",
     "next": "16.2.9",
+    "next-intl": "^4.14.9",
     "pg": "^8.21.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

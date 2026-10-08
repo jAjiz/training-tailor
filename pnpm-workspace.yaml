@@ -1,8 +1,14 @@
 allowBuilds:
   '@google/genai': false
+  '@parcel/watcher': false
   '@prisma/engines': true
+  '@swc/core': false
   esbuild: true
   prisma: true
   protobufjs: false
   sharp: true
   unrs-resolver: true
+# @swc/core (pulled in by the next-intl plugin) >= 1.16.13 refuses to load its native binding when
+# the cache directory's ACL grants write access to other principals, which fails on Windows dev machines.
+overrides:
+  '@swc/core': 1.16.2

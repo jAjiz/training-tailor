@@ -1,0 +1,210 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "close": "Close",
+    "saving": "Saving…"
+  },
+  "auth": {
+    "continueWithGoogle": "Continue with Google",
+    "redirecting": "Redirecting…",
+    "failed": "Google sign-in failed. Try again.",
+    "signOut": "Sign out",
+    "athleteTitle": "Sign in",
+    "athleteIntro": "Follow your coach's programming, log your results and compare them.",
+    "coachTitle": "Sign in as a coach",
+    "coachIntro": "Write and publish your programs. Coach accounts are approved manually."
+  },
+  "nav": {
+    "today": "Today",
+    "me": "Me",
+    "programs": "My programs"
+  },
+  "errors": {
+    "unauthorized": "Your session expired. Sign in again.",
+    "not_found": "Not found.",
+    "invalid_request": "Check the form: a field is not valid.",
+    "coach_pending": "Your coach account is not approved yet.",
+    "program_archived": "The program is archived and cannot be changed.",
+    "start_date_locked": "The start date cannot change: some weeks are already published.",
+    "weeks_out_of_range": "Some blocks fall outside the new length. Delete them before shortening the program.",
+    "day_out_of_range": "That day is outside the program.",
+    "scoring_locked": "This block already has results: its scoring cannot change.",
+    "invite_invalid": "This invitation link is not valid.",
+    "enrollment_removed": "Your coach removed you from this program.",
+    "not_loggable": "You cannot log this block yet.",
+    "invalid_score": "The result is not valid for this block.",
+    "own_result": "You cannot fist bump your own result.",
+    "internal": "Something went wrong. Try again."
+  },
+  "onboarding": {
+    "preparing": "Setting up your account…",
+    "retry": "Retry"
+  },
+  "me": {
+    "title": "Me",
+    "displayName": "Display name",
+    "timezone": "Time zone",
+    "language": "Language",
+    "saved": "Saved",
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "coachPending": {
+    "title": "Account awaiting approval",
+    "pending": "We received your request. You can create programs once your account is approved.",
+    "suspended": "Your coach account is suspended. Contact us if you think this is a mistake."
+  },
+  "programs": {
+    "title": "My programs",
+    "new": "New program",
+    "empty": "You have no programs yet.",
+    "athletes": "{count, plural, =0 {No athletes} one {# athlete} other {# athletes}}",
+    "archived": "Archived",
+    "kind": "Kind",
+    "kinds": {
+      "continuous": "Continuous",
+      "closed": "Closed"
+    },
+    "kindHelp": {
+      "continuous": "Real dates: you publish week by week and there is a leaderboard.",
+      "closed": "N weeks that each athlete starts when they join. No leaderboard."
+    },
+    "name": "Name",
+    "description": "Description",
+    "startDate": "Starts on Monday",
+    "weeks": "Weeks",
+    "create": "Create program",
+    "settings": "Settings",
+    "planner": "Planner",
+    "roster": "Athletes",
+    "archive": "Archive program",
+    "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
+    "startDateLockedHint": "The start date cannot change because some weeks are already published."
+  },
+  "block": {
+    "coachingTips": "Coaching tips",
+    "video": "Watch video",
+    "timeCap": "Time cap {minutes} min",
+    "scoring": {
+      "none": "No score",
+      "for_time": "For time",
+      "amrap": "AMRAP (rounds + reps)",
+      "reps": "Reps",
+      "load": "Load (kg)",
+      "calories": "Calories",
+      "distance": "Distance (m)",
+      "max_time": "Time (more is better)"
+    }
+  },
+  "patterns": {
+    "squat": "Squats",
+    "hinge": "Hinges",
+    "lunge": "Lunges",
+    "vertical_push": "Vertical pushes",
+    "horizontal_push": "Horizontal pushes",
+    "vertical_pull": "Vertical pulls",
+    "horizontal_pull": "Horizontal pulls",
+    "core": "Core",
+    "carry": "Carries",
+    "hold": "Holds",
+    "olympic": "Olympic lifts",
+    "jump": "Jumps",
+    "monostructural": "Monostructural"
+  },
+  "planner": {
+    "week": "Week {week}",
+    "dayLabel": "Week {week} · Day {day}",
+    "prevWeek": "← Previous week",
+    "nextWeek": "Next week →",
+    "weekPublished": "Week published",
+    "weekDraft": "Week in draft",
+    "publishWeek": "Publish week",
+    "unpublishWeek": "Unpublish",
+    "programPublished": "Program published",
+    "programDraft": "Program in draft",
+    "publishProgram": "Publish program",
+    "unpublishProgram": "Unpublish",
+    "addBlock": "+ Block",
+    "dragHandle": "Drag to move",
+    "duplicate": "Duplicate…",
+    "duplicateDay": "Duplicate day…",
+    "duplicateWeek": "Duplicate week…",
+    "targetWeek": "Week",
+    "targetDay": "Day",
+    "copy": "Copy",
+    "deleteConfirm": "Delete this block?",
+    "deleteConfirmResults": "This block has {count, plural, one {# result} other {# results}} that will be deleted. Continue?",
+    "results": "{count, plural, one {# result} other {# results}}",
+    "archivedNotice": "Archived program: read-only."
+  },
+  "editor": {
+    "newBlock": "New block",
+    "editBlock": "Edit block",
+    "kinds": {
+      "custom": "Workout",
+      "barbell": "Barbell Set"
+    },
+    "title": "Title",
+    "description": "Description",
+    "scoring": "Scoring",
+    "timeCap": "Time cap (min)",
+    "movement": "Movement",
+    "sets": "Sets",
+    "reps": "Reps",
+    "percent": "% 1RM",
+    "kg": "kg",
+    "addSet": "+ Set",
+    "removeSet": "Remove",
+    "instructions": "Instructions",
+    "coachingTips": "Coaching tips",
+    "videoUrl": "Video link",
+    "color": "Color",
+    "scoringLockedHint": "This block already has results: its kind and scoring cannot change."
+  },
+  "join": {
+    "invalid": "This invitation link is not valid or has expired.",
+    "by": "Program by {coach}",
+    "signInToJoin": "Sign in with Google to join.",
+    "needsProfile": "Complete your athlete profile to join.",
+    "continue": "Continue",
+    "join": "Join the program",
+    "removed": "Your coach removed you from this program."
+  },
+  "roster": {
+    "title": "Athletes",
+    "inviteLink": "Invitation link",
+    "copy": "Copy",
+    "copied": "Copied",
+    "regenerate": "Generate a new link",
+    "regenerateConfirm": "The current link will stop working. Continue?",
+    "empty": "No athletes yet. Share the invitation link.",
+    "joined": "Since {date}",
+    "removedBadge": "Removed",
+    "remove": "Remove",
+    "restore": "Restore",
+    "removeConfirm": "Remove this athlete from the program? Their results are kept.",
+    "results": "Results",
+    "notPublishedHint": "The link only works once the program is published."
+  },
+  "today": {
+    "noPrograms": "You do not follow any program yet. Ask your coach for their invitation link.",
+    "program": "Program",
+    "today": "Today",
+    "startsOn": "This program starts on {date}.",
+    "finished": "Program finished. Your history is still available.",
+    "nothing": "Nothing published for this day.",
+    "calendar": "Calendar",
+    "dayOfProgram": "Week {week} · Day {day}"
+  },
+  "calendar": {
+    "title": "Calendar",
+    "prevMonth": "← Previous month",
+    "nextMonth": "Next month →"
+  }
+}
