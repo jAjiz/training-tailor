@@ -43,6 +43,7 @@ on mobile; i18n changes beyond the labels the new UI needs (tab bar, menus, aria
 | `foreground` | `#111111` | `#f5f5f5` | Body text |
 | `muted` | `#666666` | `#a3a3a3` | Secondary text, inactive tabs |
 | `primary` / `on-primary` | `#111111` / `#ffffff` | `#f5f5f5` / `#111111` | Primary button, active pill |
+| `raised` | `#ffffff` | `#555555` | Selected segment of a `Segmented` |
 | `chrome` / `on-chrome` | `#000000` / `#ffffff` | `#000000` / `#ffffff` | Athlete header (black in both themes) |
 | `danger`, `success` | red-600, green-700 | red-400, green-400 | Errors, destructive actions, published state |
 
@@ -80,7 +81,9 @@ comes in through props, so they are testable without providers.
   classes. Forwards the rest of the native props.
 - **`Card`**: `surface`, 16 px radius, `border`. Prop `stripe` adds the left block stripe (reads
   `--block-stripe`, so the caller sets `data-color`).
-- **`Field`**: label, control, optional hint and error, wired with `htmlFor`/`aria-describedby`.
+- **`Field`**: a `<label>` wrapping the label text and the control (implicit association, as the
+  current forms do, so server and client components need no ids), plus optional hint and error
+  (`role="alert"`) below it.
 - **`Input`, `Textarea`, `Select`**: filled `surface-2`, no visible border until focus (focus ring
   in `foreground`), 12 px radius. Plain wrappers over the native elements.
 - **`Segmented`**: `role="radiogroup"` of `role="radio"` buttons; arrow keys move and select,
@@ -95,6 +98,8 @@ comes in through props, so they are testable without providers.
   on Esc, on outside click and after choosing an item; `aria-haspopup`/`aria-expanded` on the
   trigger; arrow keys move between items.
 - **`IconButton`**: square ghost button around a lucide icon; `aria-label` is required.
+- **`EmptyState`**: a centered `Card` with `muted` text for empty and status messages.
+- **`Avatar`**: the user's image, or their initials on `surface-2` when there is none.
 - **`Pill`**: rounded chip for states (Published / Draft, Continuous / Closed). Tones `neutral`,
   `success`, `inverted` (active nav item).
 - **`ColorSwatches`**: the seven block colors as circles with a ring on the selected one;
@@ -140,8 +145,9 @@ comes in through props, so they are testable without providers.
 ### Coach (desktop)
 
 - **My programs (`/coach`)**: page title plus a `primary` "New program" button; grid of program
-  `Card`s with name, kind `Pill`, publication state and athlete count; archived programs in a
-  separate muted section as today.
+  `Card`s with name, kind `Pill` and athlete count; archived programs dimmed with an "Archived"
+  `Pill`. (Publication state is not shown: the list query does not load it, and changing queries
+  is out of scope.)
 - **Program header** (shared by planner, athletes and settings): program name; pill tabs
   Planner / Athletes / Settings (replace the underlined links).
 - **Planner**:
