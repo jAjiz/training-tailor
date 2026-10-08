@@ -6,7 +6,7 @@
 
 **Architecture:** The existing Next.js 16 app gains two zones: `src/app/coach/*` (desktop) and the `(athlete)` route group at the root (phone). Business logic lives in `src/lib/training/`: pure modules (`dates`, `schemas`, `barbell`, `access`, `scoring`, `leaderboard`, `prs`) plus Prisma-backed services (`services/*.ts`) that take the Prisma client as their first argument. Pages are Server Components that read through the services; writes are Server Actions that parse input with Zod, check the account, call a service and return `ActionResult`.
 
-**Tech Stack:** Next.js 16 (App Router), React 19, TypeScript 5, Tailwind 4, Zod 4, Prisma 7 + `@prisma/adapter-pg`, Better Auth (Google), next-intl 4, Vitest 4, PGlite + `@electric-sql/pglite-socket` (tests only), pnpm.
+**Tech Stack:** Next.js 16 (App Router), React 19, TypeScript 5, Tailwind 4, Zod 4, Prisma 7 + `@prisma/adapter-pg`, Better Auth (Google), next-intl 4, dnd-kit (`@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`), Vitest 4, PGlite + `@electric-sql/pglite-socket` (tests only), pnpm.
 
 **Spec:** `docs/specs/training-tailor-coaching-design.md` (revision 1). Read it before any task: every rule here argues from it.
 
@@ -54,6 +54,7 @@ src/lib/training/
   schemas.ts       Zod inputs, Scoring, BlockColor, Locale, parse()
   barbell.ts       liftCatalog, isLiftMovement, percentToKg, describeSets
   block-draft.ts   planner editor draft <-> BlockInput
+  board.ts         planner drag and drop: where a drop lands, optimistic move
   access.ts        athleteTimeline, hasLeaderboard
   scoring.ts       score schemas, evaluateScore, formatScore            (phase 2)
   leaderboard.ts   rank                                                   (phase 2)
@@ -3223,7 +3224,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `createBlock(db, coachId, programId, dayIndex, input: BlockInputValue): Promise<Block>` — appended at the end of the day
   - `updateBlock(db, coachId, blockId, input: BlockInputValue): Promise<Block>` — `scoring_locked` when results exist and kind or scoring changes
   - `deleteBlock(db, coachId, blockId): Promise<void>` — renumbers the day
-  - `moveBlock(db, coachId, blockId, direction: "up" | "down"): Promise<void>`
+  - `moveBlock(db, coachId, blockId, toDayIndex: number, toPosition: number): Promise<void>` — moves within the day or to another day; `toPosition` is the final index in the target day, clamped to its length; both days are renumbered in one transaction
   - `duplicateBlock(db, coachId, blockId, targetDayIndex): Promise<void>`
   - `duplicateDay(db, coachId, programId, fromDay, toDay): Promise<void>`
   - `duplicateWeek(db, coachId, programId, fromWeek, toWeek): Promise<void>`
@@ -3317,15 +3318,20 @@ describe("blocks", () => {
     expect(await titles(program.id, 0)).toEqual(["0:B", "1:C"]);
   });
 
-  it("moves blocks up and down within their day", async () => {
+  it("moves blocks within their day and to another day, renumbering both", async () => {
     const { coach, program } = await setup();
     const a = await createBlock(tdb.prisma, coach.id, program.id, 0, custom("A"));
     const b = await createBlock(tdb.prisma, coach.id, program.id, 0, custom("B"));
-    await moveBlock(tdb.prisma, coach.id, b.id, "up");
-    expect(await titles(program.id, 0)).toEqual(["0:B", "1:A"]);
-    await moveBlock(tdb.prisma, coach.id, b.id, "up"); // already first: no-op
-    await moveBlock(tdb.prisma, coach.id, a.id, "down"); // already last: no-op
-    expect(await titles(program.id, 0)).toEqual(["0:B", "1:A"]);
+    await createBlock(tdb.prisma, coach.id, program.id, 0, custom("C"));
+    await createBlock(tdb.prisma, coach.id, program.id, 1, custom("X"));
+    await moveBlock(tdb.prisma, coach.id, a.id, 0, 2);
+    expect(await titles(program.id, 0)).toEqual(["0:B", "1:C", "2:A"]);
+    await moveBlock(tdb.prisma, coach.id, b.id, 1, 0);
+    expect(await titles(program.id, 0)).toEqual(["0:C", "1:A"]);
+    expect(await titles(program.id, 1)).toEqual(["0:B", "1:X"]);
+    await moveBlock(tdb.prisma, coach.id, a.id, 1, 99); // clamped to the end
+    expect(await titles(program.id, 1)).toEqual(["0:B", "1:X", "2:A"]);
+    expect(await titles(program.id, 0)).toEqual(["0:C"]);
   });
 
   it("appends duplicated blocks, days and weeks to their target", async () => {
@@ -3348,12 +3354,13 @@ describe("blocks", () => {
     expect((await listWeekBlocks(tdb.prisma, program.id, 2)).length).toBe(7);
   });
 
-  it("refuses to duplicate past the end of a closed program", async () => {
+  it("refuses to duplicate or move past the end of a closed program", async () => {
     const coach = await makeCoach(tdb.prisma);
     const closed = await makeClosed(tdb.prisma, coach.id, 2);
     const b = await makeCustomBlock(tdb.prisma, closed.id, 0);
     await expect(duplicateWeek(tdb.prisma, coach.id, closed.id, 0, 2)).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(duplicateBlock(tdb.prisma, coach.id, b.id, 14)).rejects.toMatchObject({ code: "day_out_of_range" });
+    await expect(moveBlock(tdb.prisma, coach.id, b.id, 14, 0)).rejects.toMatchObject({ code: "day_out_of_range" });
   });
 });
 ```
@@ -3474,15 +3481,25 @@ export async function deleteBlock(db: Db, coachId: string, blockId: string) {
   ]);
 }
 
-export async function moveBlock(db: Db, coachId: string, blockId: string, direction: "up" | "down") {
+/** Drag and drop: `toPosition` is the block's final index in the target day (clamped). */
+export async function moveBlock(db: Db, coachId: string, blockId: string, toDayIndex: number, toPosition: number) {
   const block = await getOwnedBlock(db, coachId, blockId);
-  const target = block.position + (direction === "up" ? -1 : 1);
-  const other = await db.block.findFirst({ where: { programId: block.programId, dayIndex: block.dayIndex, position: target } });
-  if (!other) return;
-  await db.$transaction([
-    db.block.update({ where: { id: other.id }, data: { position: block.position } }),
-    db.block.update({ where: { id: block.id }, data: { position: target } }),
-  ]);
+  assertDay(block.program, toDayIndex);
+  const { programId } = block;
+  await db.$transaction(async (tx) => {
+    // Close the gap in the source day, then open one in the target day.
+    await tx.block.updateMany({
+      where: { programId, dayIndex: block.dayIndex, position: { gt: block.position } },
+      data: { position: { decrement: 1 } },
+    });
+    const others = await tx.block.count({ where: { programId, dayIndex: toDayIndex, id: { not: blockId } } });
+    const position = Math.max(0, Math.min(toPosition, others));
+    await tx.block.updateMany({
+      where: { programId, dayIndex: toDayIndex, id: { not: blockId }, position: { gte: position } },
+      data: { position: { increment: 1 } },
+    });
+    await tx.block.update({ where: { id: blockId }, data: { dayIndex: toDayIndex, position } });
+  });
 }
 
 export async function duplicateBlock(db: Db, coachId: string, blockId: string, targetDayIndex: number) {
@@ -3538,16 +3555,19 @@ Expected: PASS.
 
 ```bash
 git add src/lib/training/services/catalog.ts src/lib/training/services/blocks.ts tests/training/services/blocks.test.ts
-git commit -m "feat: blocks service (create, edit with scoring lock, delete, reorder, duplicate block/day/week)
+git commit -m "feat: blocks service (create, edit with scoring lock, delete, move by drag and drop, duplicate block/day/week)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 10: Weekly planner (coach)
+### Task 10: Weekly planner (coach) with drag and drop
 
 **Files:**
+- Modify: `package.json` (dependencies `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`)
+- Create: `src/lib/training/board.ts`
+- Test: `tests/training/board.test.ts`
 - Create: `src/components/training/colors.ts`
 - Create: `src/components/training/BlockCard.tsx`
 - Create: `src/app/coach/block-actions.ts`
@@ -3558,6 +3578,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Create: `src/app/coach/programs/[id]/planner/CopyForm.tsx`
 - Create: `src/app/coach/programs/[id]/planner/DayTools.tsx`
 - Create: `src/app/coach/programs/[id]/planner/WeekTools.tsx`
+- Create: `src/app/coach/programs/[id]/planner/WeekBoard.tsx`
 - Modify: `src/i18n/messages/es.json`, `en.json` (namespaces `block`, `patterns`, `planner`, `editor`)
 - Modify: `tests/i18n/messages.test.ts` (every movement pattern has a label)
 
@@ -3566,7 +3587,110 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Produces:
   - `BLOCK_BORDER: Record<BlockColor, string>`, `BLOCK_SWATCH: Record<BlockColor, string>` (`src/components/training/colors.ts`)
   - `<BlockCard block: CardBlock oneRm?: number | null>{footer}</BlockCard>` with `CardBlock = { kind: string; title: string | null; color: string; description: string | null; scoring: string | null; timeCapSeconds: number | null; movement: string | null; sets: BarbellSet[] | null; instructions: string | null; coachingTips: string | null; videoUrl: string | null }` — reused by the athlete day view (Task 12)
-  - Block actions: `createBlockAction`, `updateBlockAction`, `deleteBlockAction`, `moveBlockAction`, `duplicateBlockAction`, `duplicateDayAction`, `duplicateWeekAction`, all `Promise<ActionResult>`
+  - Block actions: `createBlockAction`, `updateBlockAction`, `deleteBlockAction`, `moveBlockAction({ blockId, toDayIndex, toPosition })`, `duplicateBlockAction`, `duplicateDayAction`, `duplicateWeekAction`, all `Promise<ActionResult>`
+  - `board.ts`: `type Board = Record<number, string[]>` (dayIndex → block ids in order), `type Slot = { day: number; index: number }`, `dayDropId(dayIndex): string`, `locate(board, id): Slot | null`, `resolveDrop(board, activeId, overId): Slot | null`, `applyMove(board, activeId, to: Slot): Board`
+  - `<WeekBoard days: { dayIndex: number; label: string }[] blocks: PlannerBlockData[] ctx: PlannerContext />` — the 7 day columns, sortable within and across days
+
+Drag and drop uses dnd-kit: each day column is a droppable holding a `SortableContext`; each block is a `useSortable` item dragged by a handle (so its buttons and text stay usable), with pointer and keyboard sensors. On drop the board moves the block optimistically, calls `moveBlockAction`, and rolls back with an error message if the server refuses.
+
+- [ ] **Step 0a: Install dnd-kit**
+
+```bash
+pnpm add @dnd-kit/core@^6.3.1 @dnd-kit/sortable@^10.0.0 @dnd-kit/utilities@^3.2.2
+```
+
+- [ ] **Step 0b: Write the failing board test**
+
+`tests/training/board.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { applyMove, dayDropId, locate, resolveDrop, type Board } from "@/lib/training/board";
+
+const board: Board = { 0: ["a", "b", "c"], 1: ["x"], 2: [] };
+
+describe("planner board", () => {
+  it("locates blocks", () => {
+    expect(locate(board, "c")).toEqual({ day: 0, index: 2 });
+    expect(locate(board, "zzz")).toBeNull();
+  });
+
+  it("reorders within a day like arrayMove", () => {
+    const down = resolveDrop(board, "a", "c")!;
+    expect(down).toEqual({ day: 0, index: 2 });
+    expect(applyMove(board, "a", down)[0]).toEqual(["b", "c", "a"]);
+    const up = resolveDrop(board, "c", "a")!;
+    expect(applyMove(board, "c", up)[0]).toEqual(["c", "a", "b"]);
+  });
+
+  it("moves to another day before the block it is dropped on", () => {
+    const to = resolveDrop(board, "b", "x")!;
+    expect(to).toEqual({ day: 1, index: 0 });
+    const next = applyMove(board, "b", to);
+    expect(next[0]).toEqual(["a", "c"]);
+    expect(next[1]).toEqual(["b", "x"]);
+  });
+
+  it("appends when dropped on a day column, including an empty one", () => {
+    expect(applyMove(board, "b", resolveDrop(board, "b", dayDropId(2))!)[2]).toEqual(["b"]);
+    expect(resolveDrop(board, "a", dayDropId(0))).toEqual({ day: 0, index: 2 });
+  });
+
+  it("ignores unknown items and never mutates the input", () => {
+    expect(resolveDrop(board, "zzz", "a")).toBeNull();
+    applyMove(board, "a", { day: 1, index: 0 });
+    expect(board[0]).toEqual(["a", "b", "c"]);
+  });
+});
+```
+
+Run: `pnpm test tests/training/board.test.ts` — expected FAIL, module not found.
+
+- [ ] **Step 0c: Implement `board.ts`**
+
+`src/lib/training/board.ts`:
+
+```ts
+/** Planner drag and drop: day columns of block ids, and where a drop lands. */
+export type Board = Record<number, string[]>;
+export type Slot = { day: number; index: number };
+
+const DAY_DROP = /^day-(\d+)$/;
+
+export const dayDropId = (dayIndex: number) => `day-${dayIndex}`;
+
+export function locate(board: Board, id: string): Slot | null {
+  for (const [day, ids] of Object.entries(board)) {
+    const index = ids.indexOf(id);
+    if (index !== -1) return { day: Number(day), index };
+  }
+  return null;
+}
+
+/** Dropped on a block: take its slot. Dropped on a day column: go to the end of that day. */
+export function resolveDrop(board: Board, activeId: string, overId: string): Slot | null {
+  if (!locate(board, activeId)) return null;
+  const match = DAY_DROP.exec(overId);
+  if (match) {
+    const day = Number(match[1]);
+    return { day, index: (board[day] ?? []).filter((id) => id !== activeId).length };
+  }
+  return locate(board, overId);
+}
+
+/** Removes the block from its day and inserts it at `to` (clamped); returns a new board. */
+export function applyMove(board: Board, activeId: string, to: Slot): Board {
+  const next: Board = Object.fromEntries(
+    Object.entries(board).map(([day, ids]) => [day, ids.filter((id) => id !== activeId)]),
+  );
+  const target = [...(next[to.day] ?? [])];
+  target.splice(Math.max(0, Math.min(to.index, target.length)), 0, activeId);
+  next[to.day] = target;
+  return next;
+}
+```
+
+Run: `pnpm test tests/training/board.test.ts` — expected PASS.
 
 - [ ] **Step 1: Add the messages**
 
@@ -3617,8 +3741,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     "publishProgram": "Publicar programa",
     "unpublishProgram": "Despublicar",
     "addBlock": "+ Bloque",
-    "moveUp": "Subir",
-    "moveDown": "Bajar",
+    "dragHandle": "Arrastrar para mover",
     "duplicate": "Duplicar…",
     "duplicateDay": "Duplicar día…",
     "duplicateWeek": "Duplicar semana…",
@@ -3700,8 +3823,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     "publishProgram": "Publish program",
     "unpublishProgram": "Unpublish",
     "addBlock": "+ Block",
-    "moveUp": "Up",
-    "moveDown": "Down",
+    "dragHandle": "Drag to move",
     "duplicate": "Duplicate…",
     "duplicateDay": "Duplicate day…",
     "duplicateWeek": "Duplicate week…",
@@ -3890,8 +4012,9 @@ export async function deleteBlockAction(blockId: unknown) {
 
 export async function moveBlockAction(raw: unknown) {
   return coachAction(async (coachId) => {
-    const { blockId, direction } = parse(z.object({ blockId: Id, direction: z.enum(["up", "down"]) }), raw);
-    await moveBlock(prisma, coachId, blockId, direction);
+    const { blockId, toDayIndex, toPosition } = parse(
+      z.object({ blockId: Id, toDayIndex: Day, toPosition: z.number().int().min(0).max(1000) }), raw);
+    await moveBlock(prisma, coachId, blockId, toDayIndex, toPosition);
   });
 }
 
@@ -4185,9 +4308,11 @@ export function BlockEditor(props: Props) {
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { BlockCard } from "@/components/training/BlockCard";
 import type { ActionResult, ErrorCode } from "@/lib/training/errors";
-import { deleteBlockAction, duplicateBlockAction, moveBlockAction } from "../../../block-actions";
+import { deleteBlockAction, duplicateBlockAction } from "../../../block-actions";
 import { BlockEditor } from "./BlockEditor";
 import { CopyForm } from "./CopyForm";
 import type { PlannerBlockData, PlannerContext } from "./types";
@@ -4197,6 +4322,7 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<ErrorCode | null>(null);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id, disabled: ctx.readOnly });
 
   async function run(action: Promise<ActionResult>) {
     const r = await action;
@@ -4213,13 +4339,13 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
 
   return (
     <>
+      <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={isDragging ? "relative z-10 opacity-60" : ""}>
       <BlockCard block={block}>
         {block.resultCount > 0 && <p className="text-xs text-neutral-500">{t("planner.results", { count: block.resultCount })}</p>}
         {!ctx.readOnly && (
           <div className="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2 text-xs">
+            <button type="button" {...attributes} {...listeners} aria-label={t("planner.dragHandle")} className="cursor-grab touch-none px-1 text-neutral-500">⠿</button>
             <button onClick={() => setEditing(true)} className="underline">{t("common.edit")}</button>
-            <button onClick={() => run(moveBlockAction({ blockId: block.id, direction: "up" }))} aria-label={t("planner.moveUp")}>↑</button>
-            <button onClick={() => run(moveBlockAction({ blockId: block.id, direction: "down" }))} aria-label={t("planner.moveDown")}>↓</button>
             <CopyForm label={t("planner.duplicate")} withDay defaultWeek={ctx.weekIndex} maxWeek={ctx.maxWeek}
               onCopy={(week, day) => duplicateBlockAction({ blockId: block.id, targetDayIndex: week * 7 + (day ?? 0) })}
               onDone={() => router.refresh()} />
@@ -4228,6 +4354,8 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
         )}
         {error && <p className="text-xs text-red-700">{t(`errors.${error}`)}</p>}
       </BlockCard>
+      </div>
+      {/* Outside the sortable node: a transformed ancestor would break the modal's fixed positioning. */}
       {editing && <BlockEditor mode="edit" block={block} lifts={ctx.lifts} onClose={() => setEditing(false)} />}
     </>
   );
@@ -4320,6 +4448,94 @@ export function WeekTools({ ctx, kind, published }: Props) {
 }
 ```
 
+`src/app/coach/programs/[id]/planner/WeekBoard.tsx`:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import {
+  DndContext, KeyboardSensor, PointerSensor, closestCorners, useDroppable, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { applyMove, dayDropId, locate, resolveDrop, type Board } from "@/lib/training/board";
+import type { ErrorCode } from "@/lib/training/errors";
+import { moveBlockAction } from "../../../block-actions";
+import { DayTools } from "./DayTools";
+import { PlannerBlock } from "./PlannerBlock";
+import type { PlannerBlockData, PlannerContext } from "./types";
+
+type Day = { dayIndex: number; label: string };
+
+function boardOf(days: Day[], blocks: PlannerBlockData[]): Board {
+  return Object.fromEntries(days.map((d) => [
+    d.dayIndex,
+    blocks.filter((b) => b.dayIndex === d.dayIndex).sort((a, b) => a.position - b.position).map((b) => b.id),
+  ]));
+}
+
+function DayColumn({ day, ids, byId, ctx }: { day: Day; ids: string[]; byId: Map<string, PlannerBlockData>; ctx: PlannerContext }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dayDropId(day.dayIndex), disabled: ctx.readOnly });
+  return (
+    <div ref={setNodeRef} className={`flex min-h-24 min-w-0 flex-col gap-2 rounded p-1 ${isOver ? "bg-neutral-100" : ""}`}>
+      <h2 className="text-sm font-medium capitalize">{day.label}</h2>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        {ids.map((id) => <PlannerBlock key={id} block={byId.get(id) as PlannerBlockData} ctx={ctx} />)}
+      </SortableContext>
+      <DayTools dayIndex={day.dayIndex} ctx={ctx} />
+    </div>
+  );
+}
+
+export function WeekBoard({ days, blocks, ctx }: { days: Day[]; blocks: PlannerBlockData[]; ctx: PlannerContext }) {
+  const te = useTranslations("errors");
+  const router = useRouter();
+  const [source, setSource] = useState(blocks);
+  const [board, setBoard] = useState(() => boardOf(days, blocks));
+  const [error, setError] = useState<ErrorCode | null>(null);
+  // New server data (after router.refresh) replaces the optimistic board.
+  if (source !== blocks) {
+    setSource(blocks);
+    setBoard(boardOf(days, blocks));
+  }
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const byId = new Map(blocks.map((b) => [b.id, b]));
+
+  async function onDragEnd({ active, over }: DragEndEvent) {
+    if (!over) return;
+    const activeId = String(active.id);
+    const from = locate(board, activeId);
+    const to = resolveDrop(board, activeId, String(over.id));
+    if (!from || !to || (from.day === to.day && from.index === to.index)) return;
+    const previous = board;
+    setBoard(applyMove(board, activeId, to));
+    const r = await moveBlockAction({ blockId: activeId, toDayIndex: to.day, toPosition: to.index });
+    if (r.ok) {
+      setError(null);
+      router.refresh();
+    } else {
+      setBoard(previous);
+      setError(r.code);
+    }
+  }
+
+  return (
+    // A fixed id keeps dnd-kit's generated aria ids identical on the server and the client.
+    <DndContext id={`planner-${ctx.programId}`} sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
+      {error && <p className="text-sm text-red-700">{te(error)}</p>}
+      <div className="grid grid-cols-7 gap-3">
+        {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx} />)}
+      </div>
+    </DndContext>
+  );
+}
+```
+
 - [ ] **Step 5: Planner page**
 
 `src/app/coach/programs/[id]/page.tsx`:
@@ -4337,9 +4553,8 @@ import { addDays, daysBetween, fromDbDate, todayIn, weekIndexOf } from "@/lib/tr
 import type { BarbellSet } from "@/lib/training/schemas";
 import { listWeekBlocks } from "@/lib/training/services/blocks";
 import { getOwnedProgram, publishedWeeks } from "@/lib/training/services/programs";
-import { DayTools } from "./planner/DayTools";
-import { PlannerBlock } from "./planner/PlannerBlock";
 import type { PlannerBlockData, PlannerContext } from "./planner/types";
+import { WeekBoard } from "./planner/WeekBoard";
 import { WeekTools } from "./planner/WeekTools";
 
 type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ week?: string }> };
@@ -4394,15 +4609,11 @@ export default async function PlannerPage({ params, searchParams }: Params) {
         {(maxWeek === null || weekIndex < maxWeek) && <Link href={`?week=${weekIndex + 1}`} className="text-sm underline">{t("planner.nextWeek")}</Link>}
         <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} />
       </div>
-      <div className="grid grid-cols-7 gap-3">
-        {Array.from({ length: 7 }, (_, d) => weekIndex * 7 + d).map((dayIndex) => (
-          <div key={dayIndex} className="flex min-w-0 flex-col gap-2">
-            <h2 className="text-sm font-medium capitalize">{dayLabel(dayIndex)}</h2>
-            {blocks.filter((b) => b.dayIndex === dayIndex).map((b) => <PlannerBlock key={b.id} block={toData(b)} ctx={ctx} />)}
-            <DayTools dayIndex={dayIndex} ctx={ctx} />
-          </div>
-        ))}
-      </div>
+      <WeekBoard
+        days={Array.from({ length: 7 }, (_, d) => weekIndex * 7 + d).map((dayIndex) => ({ dayIndex, label: dayLabel(dayIndex) }))}
+        blocks={blocks.map(toData)}
+        ctx={ctx}
+      />
     </section>
   );
 }
@@ -4414,8 +4625,8 @@ Run: `pnpm exec tsc --noEmit && pnpm lint && pnpm test`
 Expected: clean and green. The planner components import the actions as `../../../block-actions` and `../../../program-actions` (three levels up from `programs/[id]/planner/` is `src/app/coach/`).
 
 ```bash
-git add src/components/training src/app/coach src/i18n/messages tests/i18n/messages.test.ts
-git commit -m "feat: weekly planner with block editor, colors, reordering, duplication and publication
+git add package.json pnpm-lock.yaml src/lib/training/board.ts tests/training/board.test.ts src/components/training src/app/coach src/i18n/messages tests/i18n/messages.test.ts
+git commit -m "feat: weekly planner with block editor, colors, drag and drop between days, duplication and publication
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -5413,7 +5624,7 @@ Expected: `20261008120000_coaching` applied. Never point this at `production`.
 Start the `dev` configuration from `.claude/launch.json` with the preview tools. The user signs in with Google themselves in the browser pane (never enter credentials for them). Verify, taking a screenshot of each:
 
 1. `/coach/signin` → Google → `/coach/pending` shows "awaiting approval". Run `pnpm coach:approve <the user's email>`; reloading `/coach` shows "My programs".
-2. Create a continuous program starting next Monday; add a Custom block (for_time, cap 15) and a Barbell Set (Back Squat, 3 × 5 @ 80 %) on two days; reorder, recolor, duplicate a day; publish week 1.
+2. Create a continuous program starting next Monday; add a Custom block (for_time, cap 15) and a Barbell Set (Back Squat, 3 × 5 @ 80 %) on two days; drag a block to reorder it within its day and to another day (also with the keyboard: focus the handle, Space, arrows, Space), reload and check the order persisted; recolor, duplicate a day; publish week 1.
 3. Create a closed program of 2 weeks; check the roster shows "the link only works once published"; publish it.
 4. Open the continuous program's invitation link in the same browser: it redirects through `/onboarding` and joins; `/` shows the program, the week strip marks the two days, the blocks render with their colors, "80 %" shows without kg.
 5. Unpublish week 1 as coach: the athlete's day shows "Nothing published for this day."

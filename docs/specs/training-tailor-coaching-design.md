@@ -1,6 +1,6 @@
 # Training Tailor — Coaching Design (Programs, Results, Leaderboards)
 
-> Revision 1 (2026-10-08). A new project on top of the existing app: coaches write and
+> Revision 1 (2026-10-08), amended the same day: blocks are reordered by drag and drop (dnd-kit). A new project on top of the existing app: coaches write and
 > publish programs, athletes follow them on their phone, log results and compare them on a
 > leaderboard. The tailoring engine (`training-tailor-engine-v1-design.md`, paused on
 > 2026-10-07) is **not** part of this project; plugging it into the athlete's day view is a
@@ -42,6 +42,7 @@ ends with a browser verification of its main flows.
 | Several programs | An athlete can follow several programs; the day view shows one, with a selector. |
 | PRs | Lift only: 1RM in kg per barbell movement. Edited by the athlete, with history. A logged single above the current 1RM triggers a prompt to update it. A 1RM is never estimated. |
 | Visibility | Continuous: a week is a draft until the coach publishes it. Closed: the whole program is published at once; the invitation only works once published. |
+| Planner drag and drop | **dnd-kit** (`@dnd-kit/core`, `@dnd-kit/sortable`): reorder within a day and move between the days of the visible week, by pointer or keyboard. |
 | Mutations | Server Actions validated with Zod, over a service layer in `src/lib/training/`. The engine keeps its route handlers (it needs streaming); this project has no streaming, so it deliberately uses a different pattern. |
 | i18n | **next-intl**, Spanish and English, default Spanish. The locale comes from a per-profile preference, falling back to `Accept-Language`. URLs carry no locale prefix. The engine pages (`/tailor`, `/profile`) stay in English until phase 3. |
 | Data | Postgres via Prisma 7, new migrations. Calendar dates are stored as `@db.Date` (no time zone). |
@@ -270,8 +271,9 @@ coach/                     desktop layout, top bar
   "Edit result") and "N scores" (continuous only).
 - **Planner:** seven day columns per week. Continuous programs show dates and a per-week
   "Publish" / "Unpublish" toggle; closed programs show "Week N · Day M" and a program-level
-  "Publish". Actions: add, edit, delete, reorder and recolor blocks; duplicate a block, a day
-  or a week to a chosen target.
+  "Publish". Actions: add, edit, delete and recolor blocks; **drag and drop** a block to
+  reorder it within its day or move it to another day of the visible week (dnd-kit, keyboard
+  accessible); duplicate a block, a day or a week to a chosen target.
 - Visual design is decided during implementation (frontend-design), not in this spec.
 
 ## Accounts and access
@@ -318,7 +320,8 @@ coach/                     desktop layout, top bar
 - Unpublishing a week is allowed; athletes stop seeing it and their results are kept.
 - Duplicating a day or a week **appends** blocks to the target, never replaces them; a target
   outside a closed program's range is rejected.
-- Reordering renumbers positions in one transaction. Concurrent edits: last write wins (one
+- Moving a block (within its day or to another day) renumbers both days in one transaction;
+  its results keep their `performedOn`. A target day outside a closed program is rejected. Concurrent edits: last write wins (one
   coach per program).
 
 **Errors:** actions return `{ ok: false, code }`, never exception text (same principle as
