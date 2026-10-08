@@ -191,5 +191,20 @@
     "removeConfirm": "Remove this athlete from the program? Their results are kept.",
     "results": "Results",
     "notPublishedHint": "The link only works once the program is published."
+  },
+  "today": {
+    "noPrograms": "You do not follow any program yet. Ask your coach for their invitation link.",
+    "program": "Program",
+    "today": "Today",
+    "startsOn": "This program starts on {date}.",
+    "finished": "Program finished. Your history is still available.",
+    "nothing": "Nothing published for this day.",
+    "calendar": "Calendar",
+    "dayOfProgram": "Week {week} · Day {day}"
+  },
+  "calendar": {
+    "title": "Calendar",
+    "prevMonth": "← Previous month",
+    "nextMonth": "Next month →"
   }
 }
