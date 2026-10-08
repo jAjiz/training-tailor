@@ -1,0 +1,43 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Borrar",
+    "edit": "Editar",
+    "back": "Volver",
+    "close": "Cerrar",
+    "saving": "Guardando…"
+  },
+  "auth": {
+    "continueWithGoogle": "Continuar con Google",
+    "redirecting": "Redirigiendo…",
+    "failed": "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
+    "signOut": "Cerrar sesión",
+    "athleteTitle": "Entrar",
+    "athleteIntro": "Sigue la programación de tu coach, registra tus resultados y compáralos.",
+    "coachTitle": "Entrar como coach",
+    "coachIntro": "Crea y publica tus programaciones. Las cuentas de coach se aprueban manualmente."
+  },
+  "nav": {
+    "today": "Hoy",
+    "me": "Perfil",
+    "programs": "Mis programas"
+  },
+  "errors": {
+    "unauthorized": "Tu sesión ha caducado. Vuelve a entrar.",
+    "not_found": "No encontrado.",
+    "invalid_request": "Revisa los datos: hay algún campo no válido.",
+    "coach_pending": "Tu cuenta de coach aún no está aprobada.",
+    "program_archived": "El programa está archivado y no se puede modificar.",
+    "start_date_locked": "No puedes cambiar la fecha de inicio: ya hay semanas publicadas.",
+    "weeks_out_of_range": "Hay bloques fuera de la nueva duración. Bórralos antes de acortar el programa.",
+    "day_out_of_range": "Ese día está fuera del programa.",
+    "scoring_locked": "Este bloque ya tiene resultados: no puedes cambiar su tipo de score.",
+    "invite_invalid": "Este enlace de invitación no es válido.",
+    "enrollment_removed": "Tu coach te ha quitado de este programa.",
+    "not_loggable": "Todavía no puedes registrar este bloque.",
+    "invalid_score": "El resultado no es válido para este bloque.",
+    "own_result": "No puedes dar un fist bump a tu propio resultado.",
+    "internal": "Algo ha fallado. Inténtalo de nuevo."
+  }
+}

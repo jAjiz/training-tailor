@@ -1,0 +1,43 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "close": "Close",
+    "saving": "Saving…"
+  },
+  "auth": {
+    "continueWithGoogle": "Continue with Google",
+    "redirecting": "Redirecting…",
+    "failed": "Google sign-in failed. Try again.",
+    "signOut": "Sign out",
+    "athleteTitle": "Sign in",
+    "athleteIntro": "Follow your coach's programming, log your results and compare them.",
+    "coachTitle": "Sign in as a coach",
+    "coachIntro": "Write and publish your programs. Coach accounts are approved manually."
+  },
+  "nav": {
+    "today": "Today",
+    "me": "Me",
+    "programs": "My programs"
+  },
+  "errors": {
+    "unauthorized": "Your session expired. Sign in again.",
+    "not_found": "Not found.",
+    "invalid_request": "Check the form: a field is not valid.",
+    "coach_pending": "Your coach account is not approved yet.",
+    "program_archived": "The program is archived and cannot be changed.",
+    "start_date_locked": "The start date cannot change: some weeks are already published.",
+    "weeks_out_of_range": "Some blocks fall outside the new length. Delete them before shortening the program.",
+    "day_out_of_range": "That day is outside the program.",
+    "scoring_locked": "This block already has results: its scoring cannot change.",
+    "invite_invalid": "This invitation link is not valid.",
+    "enrollment_removed": "Your coach removed you from this program.",
+    "not_loggable": "You cannot log this block yet.",
+    "invalid_score": "The result is not valid for this block.",
+    "own_result": "You cannot fist bump your own result.",
+    "internal": "Something went wrong. Try again."
+  }
+}
