@@ -166,5 +166,30 @@
     "videoUrl": "Video link",
     "color": "Color",
     "scoringLockedHint": "This block already has results: its kind and scoring cannot change."
+  },
+  "join": {
+    "invalid": "This invitation link is not valid or has expired.",
+    "by": "Program by {coach}",
+    "signInToJoin": "Sign in with Google to join.",
+    "needsProfile": "Complete your athlete profile to join.",
+    "continue": "Continue",
+    "join": "Join the program",
+    "removed": "Your coach removed you from this program."
+  },
+  "roster": {
+    "title": "Athletes",
+    "inviteLink": "Invitation link",
+    "copy": "Copy",
+    "copied": "Copied",
+    "regenerate": "Generate a new link",
+    "regenerateConfirm": "The current link will stop working. Continue?",
+    "empty": "No athletes yet. Share the invitation link.",
+    "joined": "Since {date}",
+    "removedBadge": "Removed",
+    "remove": "Remove",
+    "restore": "Restore",
+    "removeConfirm": "Remove this athlete from the program? Their results are kept.",
+    "results": "Results",
+    "notPublishedHint": "The link only works once the program is published."
   }
 }

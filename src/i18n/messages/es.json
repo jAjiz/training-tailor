@@ -166,5 +166,30 @@
     "videoUrl": "Enlace de vídeo",
     "color": "Color",
     "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar."
+  },
+  "join": {
+    "invalid": "Este enlace de invitación no es válido o ha caducado.",
+    "by": "Programa de {coach}",
+    "signInToJoin": "Entra con Google para unirte.",
+    "needsProfile": "Completa tu perfil de atleta para unirte.",
+    "continue": "Continuar",
+    "join": "Unirme al programa",
+    "removed": "Tu coach te ha quitado de este programa."
+  },
+  "roster": {
+    "title": "Atletas",
+    "inviteLink": "Enlace de invitación",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "regenerate": "Generar un enlace nuevo",
+    "regenerateConfirm": "El enlace actual dejará de funcionar. ¿Continuar?",
+    "empty": "Todavía no hay atletas. Comparte el enlace de invitación.",
+    "joined": "Desde {date}",
+    "removedBadge": "Quitado",
+    "remove": "Quitar",
+    "restore": "Restaurar",
+    "removeConfirm": "¿Quitar a este atleta del programa? Sus resultados se conservan.",
+    "results": "Resultados",
+    "notPublishedHint": "El enlace solo funciona cuando el programa está publicado."
   }
 }
