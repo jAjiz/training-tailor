@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { BLOCK_SWATCH } from "@/components/training/colors";
 import { draftFromBlock, draftToInput, emptyDraft, type BlockDraft, type DraftSet } from "@/lib/training/block-draft";
 import type { ErrorCode } from "@/lib/training/errors";
 import { BLOCK_COLORS, Scoring } from "@/lib/training/schemas";
@@ -146,7 +145,7 @@ export function BlockEditor(props: Props) {
           <legend className="mb-1 text-sm">{t("editor.color")}</legend>
           {BLOCK_COLORS.map((c) => (
             <button key={c} type="button" aria-label={c} aria-pressed={draft.color === c} onClick={() => set({ color: c })}
-              className={`h-7 w-7 rounded-full ${BLOCK_SWATCH[c]} ${draft.color === c ? "ring-2 ring-black ring-offset-2" : ""}`} />
+              data-color={c} className={`h-7 w-7 rounded-full bg-(--block-stripe) ${draft.color === c ? "ring-2 ring-foreground ring-offset-2" : ""}`} />
           ))}
         </fieldset>
         {error && <p className="text-sm text-red-700">{t(`errors.${error}`)}</p>}

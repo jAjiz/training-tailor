@@ -1,7 +1,7 @@
 import { useTranslations } from "next-intl";
 import { describeSets } from "@/lib/training/barbell";
 import type { BarbellSet } from "@/lib/training/schemas";
-import { borderFor } from "./colors";
+import { blockColor } from "./colors";
 
 export type CardBlock = {
   kind: string;
@@ -22,7 +22,7 @@ export function BlockCard({ block, oneRm = null, children }: { block: CardBlock;
   const t = useTranslations("block");
   const heading = block.title ?? (block.kind === "barbell" ? block.movement : null);
   return (
-    <article className={`flex flex-col gap-2 rounded border border-l-4 p-3 ${borderFor(block.color)}`}>
+    <article data-color={blockColor(block.color)} className="flex flex-col gap-2 rounded border border-l-4 border-l-(--block-stripe) p-3">
       {heading && <h3 className="font-semibold">{heading}</h3>}
       {block.kind === "custom" && block.scoring && block.scoring !== "none" && (
         <p className="text-xs uppercase tracking-wide text-neutral-500">
