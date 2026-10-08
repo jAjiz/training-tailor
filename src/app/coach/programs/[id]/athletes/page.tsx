@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
@@ -7,6 +6,7 @@ import { formatDay } from "@/lib/format";
 import { fromDbDate } from "@/lib/training/dates";
 import { listRoster } from "@/lib/training/services/enrollments";
 import { getOwnedProgram } from "@/lib/training/services/programs";
+import { ProgramHeader } from "../ProgramHeader";
 import { InviteLink } from "./InviteLink";
 import { RosterRow } from "./RosterRow";
 
@@ -20,8 +20,7 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   const base = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
   return (
     <section className="flex flex-col gap-6">
-      <Link href={`/coach/programs/${program.id}`} className="text-sm underline">{t("programs.planner")}</Link>
-      <h1 className="text-2xl font-semibold">{program.name} · {t("roster.title")}</h1>
+      <ProgramHeader programId={program.id} name={program.name} />
       <InviteLink programId={program.id} url={`${base}/join/${program.inviteCode}`} readOnly={program.archivedAt !== null} />
       {program.kind === "closed" && !program.publishedAt && <p className="text-sm text-amber-700">{t("roster.notPublishedHint")}</p>}
       {roster.length === 0 ? <p className="text-neutral-600">{t("roster.empty")}</p> : (

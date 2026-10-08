@@ -10,6 +10,7 @@ import { addDays, daysBetween, fromDbDate, todayIn, weekIndexOf } from "@/lib/tr
 import type { BarbellSet } from "@/lib/training/schemas";
 import { listWeekBlocks } from "@/lib/training/services/blocks";
 import { getOwnedProgram, publishedWeeks } from "@/lib/training/services/programs";
+import { ProgramHeader } from "./ProgramHeader";
 import type { PlannerBlockData, PlannerContext } from "./planner/types";
 import { WeekBoard } from "./planner/WeekBoard";
 import { WeekTools } from "./planner/WeekTools";
@@ -54,11 +55,7 @@ export default async function PlannerPage({ params, searchParams }: Params) {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-baseline gap-4">
-        <h1 className="text-2xl font-semibold">{program.name}</h1>
-        <Link href={`/coach/programs/${program.id}/athletes`} className="text-sm underline">{t("programs.roster")}</Link>
-        <Link href={`/coach/programs/${program.id}/settings`} className="text-sm underline">{t("programs.settings")}</Link>
-      </div>
+      <ProgramHeader programId={program.id} name={program.name} />
       {ctx.readOnly && <p className="rounded bg-neutral-100 p-2 text-sm">{t("planner.archivedNotice")}</p>}
       <div className="flex flex-wrap items-center gap-4">
         {weekIndex > 0 && <Link href={`?week=${weekIndex - 1}`} className="text-sm underline">{t("planner.prevWeek")}</Link>}
