@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/controls";
+import { Field } from "@/components/ui/Field";
 import type { ErrorCode } from "@/lib/training/errors";
 import { archiveProgramAction, updateProgramAction } from "../../../program-actions";
 
@@ -39,40 +42,34 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
   }
 
   return (
-    <div className="flex max-w-lg flex-col gap-6">
-      <form onSubmit={save} className="flex flex-col gap-4">
-        <fieldset disabled={archived} className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1 text-sm">
-            {t("programs.name")}
-            <input required maxLength={80} className="rounded border px-3 py-2" value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            {t("programs.description")}
-            <textarea maxLength={500} className="rounded border px-3 py-2" value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </label>
+    <div className="flex flex-col gap-6">
+      <form onSubmit={save} className="flex flex-col gap-5">
+        <fieldset disabled={archived} className="flex flex-col gap-5">
+          <Field label={t("programs.name")}>
+            <Input required maxLength={80} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field label={t("programs.description")}>
+            <Textarea rows={3} maxLength={500} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </Field>
           {kind === "continuous" ? (
-            <label className="flex flex-col gap-1 text-sm">
-              {t("programs.startDate")}
-              <input type="date" step={7} disabled={startDateLocked} className="rounded border px-3 py-2"
-                value={form.startDate ?? ""} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
-              {startDateLocked && <span className="text-xs text-neutral-500">{t("programs.startDateLockedHint")}</span>}
-            </label>
+            <Field label={t("programs.startDate")} hint={startDateLocked ? t("programs.startDateLockedHint") : null}>
+              <Input type="date" step={7} disabled={startDateLocked} value={form.startDate ?? ""}
+                onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
+            </Field>
           ) : (
-            <label className="flex flex-col gap-1 text-sm">
-              {t("programs.weeks")}
-              <input type="number" min={1} max={52} className="rounded border px-3 py-2" value={form.weeks}
-                onChange={(e) => setForm({ ...form, weeks: e.target.value })} />
-            </label>
+            <Field label={t("programs.weeks")}>
+              <Input type="number" min={1} max={52} value={form.weeks} onChange={(e) => setForm({ ...form, weeks: e.target.value })} />
+            </Field>
           )}
-          <button className="w-fit rounded bg-black px-4 py-2 text-white">{t("common.save")}</button>
+          <Button type="submit" variant="primary" className="self-start" disabled={state === "saving"}>{t("common.save")}</Button>
         </fieldset>
-        {state === "saved" && <p className="text-sm text-green-700">{t("me.saved")}</p>}
-        {state !== "idle" && state !== "saving" && state !== "saved" && <p className="text-sm text-red-700">{t(`errors.${state}`)}</p>}
+        {state === "saved" && <p role="status" className="text-sm text-success">{t("me.saved")}</p>}
+        {state !== "idle" && state !== "saving" && state !== "saved" && <p role="alert" className="text-sm text-danger">{t(`errors.${state}`)}</p>}
       </form>
       {!archived && (
-        <button onClick={archive} className="w-fit text-sm text-red-700 underline">{t("programs.archive")}</button>
+        <div className="border-t pt-6">
+          <Button type="button" variant="danger" onClick={archive}>{t("programs.archive")}</Button>
+        </div>
       )}
     </div>
   );

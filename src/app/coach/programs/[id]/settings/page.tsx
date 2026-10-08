@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/Card";
 import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
@@ -14,18 +15,20 @@ export default async function ProgramSettingsPage({ params }: { params: Promise<
   return (
     <section className="flex flex-col gap-6">
       <ProgramHeader programId={program.id} name={program.name} />
-      <ProgramSettingsForm
-        programId={program.id}
-        kind={program.kind as "continuous" | "closed"}
-        initial={{
-          name: program.name,
-          description: program.description ?? "",
-          startDate: program.startDate ? fromDbDate(program.startDate) : null,
-          weeks: program.weeks,
-        }}
-        startDateLocked={locked}
-        archived={program.archivedAt !== null}
-      />
+      <Card className="max-w-xl p-6">
+        <ProgramSettingsForm
+          programId={program.id}
+          kind={program.kind as "continuous" | "closed"}
+          initial={{
+            name: program.name,
+            description: program.description ?? "",
+            startDate: program.startDate ? fromDbDate(program.startDate) : null,
+            weeks: program.weeks,
+          }}
+          startDateLocked={locked}
+          archived={program.archivedAt !== null}
+        />
+      </Card>
     </section>
   );
 }
