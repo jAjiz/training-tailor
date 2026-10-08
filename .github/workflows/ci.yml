@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version from "packageManager" in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # postinstall runs `prisma generate`.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm lint
+      # Deterministic: service tests run on in-memory PGlite, no network or keys.
+      - run: pnpm test
+      - run: pnpm build
