@@ -9,18 +9,20 @@ datasource db {
 
 // ---- Better Auth core. Field names are fixed by Better Auth, which also generates the ids. ----
 model User {
-  id            String            @id
-  name          String
-  email         String            @unique
-  emailVerified Boolean           @default(false)
-  image         String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  profile       AthleteProfile?
-  tailored      TailoredWorkout[]
-  usage         LlmUsage[]
+  id             String            @id
+  name           String
+  email          String            @unique
+  emailVerified  Boolean           @default(false)
+  image          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  sessions       Session[]
+  accounts       Account[]
+  profile        AthleteProfile?
+  tailored       TailoredWorkout[]
+  usage          LlmUsage[]
+  coachAccount   CoachAccount?
+  athleteAccount AthleteAccount?
 
   @@map("user")
 }
@@ -121,4 +123,139 @@ model UnrecognizedMovement {
   lastSeenAt  DateTime @default(now())
 
   @@index([status, count])
+}
+
+// ---- Coaching ----
+model CoachAccount {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName String
+  status      String    @default("pending") // "pending" | "approved" | "suspended"
+  locale      String? // "es" | "en"
+  createdAt   DateTime  @default(now())
+  programs    Program[]
+}
+
+model AthleteAccount {
+  id          String           @id @default(cuid())
+  userId      String           @unique
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName String
+  avatarUrl   String?
+  timezone    String // IANA
+  locale      String?
+  createdAt   DateTime         @default(now())
+  enrollments Enrollment[]
+  results     Result[]
+  fistBumps   FistBump[]
+  records     PersonalRecord[]
+}
+
+model Program {
+  id             String        @id @default(cuid())
+  coachId        String
+  coach          CoachAccount  @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  kind           String // "continuous" | "closed"
+  startDate      DateTime?     @db.Date // continuous: the Monday of day 0
+  weeks          Int? // closed: length in weeks
+  publishedAt    DateTime? // closed: the whole program is published
+  inviteCode     String        @unique
+  archivedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  weeksPublished ProgramWeek[]
+  blocks         Block[]
+  enrollments    Enrollment[]
+
+  @@index([coachId])
+}
+
+model ProgramWeek {
+  programId   String
+  program     Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  weekIndex   Int
+  publishedAt DateTime @default(now())
+
+  @@id([programId, weekIndex])
+}
+
+model Block {
+  id             String   @id @default(cuid())
+  programId      String
+  program        Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  dayIndex       Int
+  position       Int
+  kind           String // "custom" | "barbell"
+  title          String?
+  color          String
+  coachingTips   String?
+  videoUrl       String?
+  description    String? // custom
+  scoring        String? // custom
+  timeCapSeconds Int? // custom, for_time
+  movement       String? // barbell: canonical catalog name
+  sets           Json? // barbell: BarbellSet[]
+  instructions   String? // barbell
+  updatedAt      DateTime @updatedAt
+  results        Result[]
+
+  @@index([programId, dayIndex, position])
+}
+
+model Enrollment {
+  id        String         @id @default(cuid())
+  programId String
+  program   Program        @relation(fields: [programId], references: [id], onDelete: Cascade)
+  athleteId String
+  athlete   AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  startDate DateTime?      @db.Date // closed: the day the athlete joined, in their time zone
+  joinedAt  DateTime       @default(now())
+  removedAt DateTime?
+
+  @@unique([programId, athleteId])
+  @@index([athleteId])
+}
+
+model Result {
+  id          String         @id @default(cuid())
+  blockId     String
+  block       Block          @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  athleteId   String
+  athlete     AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  division    String // "rx" | "scaled"
+  score       Json
+  sortKey     Float? // higher is better; null for barbell results
+  capped      Boolean        @default(false)
+  notes       String?
+  performedOn DateTime       @db.Date // the date the block is scheduled for this athlete
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  fistBumps   FistBump[]
+
+  @@unique([blockId, athleteId])
+  @@index([athleteId])
+}
+
+model FistBump {
+  resultId  String
+  result    Result         @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  athleteId String
+  athlete   AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@id([resultId, athleteId])
+}
+
+model PersonalRecord {
+  id         String         @id @default(cuid())
+  athleteId  String
+  athlete    AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  movement   String
+  kg         Float
+  achievedOn DateTime       @db.Date
+  createdAt  DateTime       @default(now())
+
+  @@index([athleteId, movement])
 }

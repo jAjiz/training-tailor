@@ -15,6 +15,10 @@ export default async function TailorPage() {
         equipmentOptions={[...Equipment.options]}
         catalog={domain.contraindications.map((c) => ({ key: c.key, label: c.label, kind: c.kind }))}
       />
+      <p className="text-xs text-neutral-500">
+        Not medical advice. Training Tailor suggests workout modifications; it does not diagnose or treat
+        injuries. When in doubt, consult a qualified professional.
+      </p>
     </section>
   );
 }
