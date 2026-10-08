@@ -59,5 +59,32 @@
     "title": "Account awaiting approval",
     "pending": "We received your request. You can create programs once your account is approved.",
     "suspended": "Your coach account is suspended. Contact us if you think this is a mistake."
+  },
+  "programs": {
+    "title": "My programs",
+    "new": "New program",
+    "empty": "You have no programs yet.",
+    "athletes": "{count, plural, =0 {No athletes} one {# athlete} other {# athletes}}",
+    "archived": "Archived",
+    "kind": "Kind",
+    "kinds": {
+      "continuous": "Continuous",
+      "closed": "Closed"
+    },
+    "kindHelp": {
+      "continuous": "Real dates: you publish week by week and there is a leaderboard.",
+      "closed": "N weeks that each athlete starts when they join. No leaderboard."
+    },
+    "name": "Name",
+    "description": "Description",
+    "startDate": "Starts on Monday",
+    "weeks": "Weeks",
+    "create": "Create program",
+    "settings": "Settings",
+    "planner": "Planner",
+    "roster": "Athletes",
+    "archive": "Archive program",
+    "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
+    "startDateLockedHint": "The start date cannot change because some weeks are already published."
   }
 }

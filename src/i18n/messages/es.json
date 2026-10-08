@@ -59,5 +59,32 @@
     "title": "Cuenta pendiente de aprobación",
     "pending": "Hemos recibido tu solicitud. Podrás crear programas cuando aprobemos tu cuenta.",
     "suspended": "Tu cuenta de coach está suspendida. Escríbenos si crees que es un error."
+  },
+  "programs": {
+    "title": "Mis programas",
+    "new": "Nuevo programa",
+    "empty": "Todavía no tienes programas.",
+    "athletes": "{count, plural, =0 {Sin atletas} one {# atleta} other {# atletas}}",
+    "archived": "Archivado",
+    "kind": "Tipo",
+    "kinds": {
+      "continuous": "Continuo",
+      "closed": "Cerrado"
+    },
+    "kindHelp": {
+      "continuous": "Con fechas reales: publicas semana a semana y hay leaderboard.",
+      "closed": "N semanas que cada atleta empieza al unirse. Sin leaderboard."
+    },
+    "name": "Nombre",
+    "description": "Descripción",
+    "startDate": "Empieza el lunes",
+    "weeks": "Semanas",
+    "create": "Crear programa",
+    "settings": "Ajustes",
+    "planner": "Planificación",
+    "roster": "Atletas",
+    "archive": "Archivar programa",
+    "archiveConfirm": "¿Archivar este programa? Desaparecerá para tus atletas y el enlace dejará de funcionar.",
+    "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas."
   }
 }
