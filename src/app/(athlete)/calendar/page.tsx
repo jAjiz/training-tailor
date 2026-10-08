@@ -34,7 +34,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <h1 className="text-center text-lg font-semibold">{enrollment.program.name}</h1>
       <div className="flex items-center justify-between text-sm">
         <Link href={href(shiftMonth(month, -1))} className="underline">{t("prevMonth")}</Link>
-        <span className="font-medium capitalize">{formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}</span>
+        <span className="inline-block font-medium first-letter:uppercase">{formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}</span>
         <Link href={href(shiftMonth(month, 1))} className="underline">{t("nextMonth")}</Link>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-xs">

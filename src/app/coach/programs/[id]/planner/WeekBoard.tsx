@@ -39,7 +39,7 @@ function DayColumn({ day, ids, byId, ctx }: { day: Day; ids: string[]; byId: Map
   const { setNodeRef, isOver } = useDroppable({ id: dayDropId(day.dayIndex), disabled: ctx.readOnly });
   return (
     <div ref={setNodeRef} className={`flex min-h-24 min-w-0 flex-col gap-2 rounded p-1 ${isOver ? "bg-neutral-100" : ""}`}>
-      <h2 className="text-sm font-medium capitalize">{day.label}</h2>
+      <h2 className="text-sm font-medium first-letter:uppercase">{day.label}</h2>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         {ids.map((id) => <PlannerBlock key={id} block={byId.get(id) as PlannerBlockData} ctx={ctx} />)}
       </SortableContext>

@@ -37,7 +37,7 @@ export default async function TodayPage({ searchParams }: Props) {
       <ProgramSelect programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={programId} />
       <WeekStrip programId={programId} selected={date} today={today} withBlocks={withBlocks} locale={locale} />
       <div className="flex items-center justify-between text-sm">
-        <span className="capitalize text-neutral-600">
+        <span className="inline-block text-neutral-600 first-letter:uppercase">
           {formatDay(date, locale, { weekday: "long", day: "numeric", month: "long" })}
           {day.timeline.kind === "closed" && day.dayIndex !== null &&
             ` · ${t("dayOfProgram", { week: weekIndexOf(day.dayIndex) + 1, day: (day.dayIndex % 7) + 1 })}`}
