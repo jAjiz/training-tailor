@@ -39,5 +39,25 @@
     "invalid_score": "The result is not valid for this block.",
     "own_result": "You cannot fist bump your own result.",
     "internal": "Something went wrong. Try again."
+  },
+  "onboarding": {
+    "preparing": "Setting up your account…",
+    "retry": "Retry"
+  },
+  "me": {
+    "title": "Me",
+    "displayName": "Display name",
+    "timezone": "Time zone",
+    "language": "Language",
+    "saved": "Saved",
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "coachPending": {
+    "title": "Account awaiting approval",
+    "pending": "We received your request. You can create programs once your account is approved.",
+    "suspended": "Your coach account is suspended. Contact us if you think this is a mistake."
   }
 }

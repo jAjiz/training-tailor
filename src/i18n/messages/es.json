@@ -39,5 +39,25 @@
     "invalid_score": "El resultado no es válido para este bloque.",
     "own_result": "No puedes dar un fist bump a tu propio resultado.",
     "internal": "Algo ha fallado. Inténtalo de nuevo."
+  },
+  "onboarding": {
+    "preparing": "Preparando tu cuenta…",
+    "retry": "Reintentar"
+  },
+  "me": {
+    "title": "Perfil",
+    "displayName": "Nombre visible",
+    "timezone": "Zona horaria",
+    "language": "Idioma",
+    "saved": "Guardado",
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "coachPending": {
+    "title": "Cuenta pendiente de aprobación",
+    "pending": "Hemos recibido tu solicitud. Podrás crear programas cuando aprobemos tu cuenta.",
+    "suspended": "Tu cuenta de coach está suspendida. Escríbenos si crees que es un error."
   }
 }
