@@ -51,3 +51,28 @@ describe("Menu", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });
+
+describe("Menu outside its trigger", () => {
+  it("renders the popup in document.body, out of any scroll container", () => {
+    const { trigger } = setup();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu").parentElement).toBe(document.body);
+  });
+
+  it("closes when focus leaves it", () => {
+    const { trigger } = setup();
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    fireEvent.click(trigger);
+    fireEvent.blur(screen.getByRole("menuitem", { name: "Duplicate" }), { relatedTarget: outside });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    outside.remove();
+  });
+
+  it("stays open while focus moves between its items", () => {
+    const { trigger } = setup();
+    fireEvent.click(trigger);
+    fireEvent.blur(screen.getByRole("menuitem", { name: "Duplicate" }), { relatedTarget: screen.getByRole("menuitem", { name: "Delete" }) });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+});

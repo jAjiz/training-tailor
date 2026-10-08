@@ -168,16 +168,17 @@
     "kg": "kg",
     "kind": "Tipo de bloque",
     "addSet": "Añadir serie",
-    "removeSet": "Quitar la última serie",
+    "removeSet": "Quitar la serie {number}",
     "setNumber": "Serie",
     "value": "Valor",
     "unit": "Unidad",
-    "setCount": "{count, plural, one {# serie} other {# series}}",
+    "actions": "Acciones",
     "instructions": "Instrucciones",
     "coachingTips": "Coaching tips",
     "videoUrl": "Enlace de vídeo",
     "color": "Color",
-    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar."
+    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar.",
+    "discardConfirm": "¿Descartar los cambios de este bloque?"
   },
   "colors": {
     "neutral": "Gris",

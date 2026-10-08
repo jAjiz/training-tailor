@@ -38,7 +38,33 @@ describe("Modal", () => {
     open(onClose);
     fireEvent.click(screen.getByText("Body"));
     expect(onClose).not.toHaveBeenCalled();
+    fireEvent.pointerDown(screen.getByRole("dialog"));
     fireEvent.click(screen.getByRole("dialog"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays open when a press starts inside and ends on the backdrop (a text selection)", () => {
+    const onClose = vi.fn();
+    open(onClose);
+    fireEvent.pointerDown(screen.getByText("Body"));
+    // The click lands on the common ancestor of press and release: the dialog itself.
+    fireEvent.click(screen.getByRole("dialog"));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("ignores a late close event once the dialog is open again (StrictMode effect remount)", () => {
+    const onClose = vi.fn();
+    open(onClose);
+    fireEvent(screen.getByRole("dialog"), new Event("close"));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("reports a close the browser forced", () => {
+    const onClose = vi.fn();
+    open(onClose);
+    const dialog = screen.getByRole("dialog") as HTMLDialogElement;
+    dialog.removeAttribute("open");
+    fireEvent(dialog, new Event("close"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

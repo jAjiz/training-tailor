@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { BlockCard } from "@/components/training/BlockCard";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +13,9 @@ import { getAthleteDay, getVisibleDays } from "@/lib/training/services/athlete-v
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { AthleteHeader } from "./AthleteHeader";
 import { WeekStrip } from "./WeekStrip";
+
+// The page opens with the black AthleteHeader: the browser bar matches it in both themes.
+export const viewport: Viewport = { themeColor: "#000000" };
 
 type Props = { searchParams: Promise<{ program?: string; date?: string }> };
 

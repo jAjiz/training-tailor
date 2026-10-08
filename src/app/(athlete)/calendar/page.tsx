@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Viewport } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -12,6 +13,9 @@ import { monthGrid, todayIn } from "@/lib/training/dates";
 import { getVisibleDays } from "@/lib/training/services/athlete-view";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { AthleteHeader } from "../AthleteHeader";
+
+// The page opens with the black AthleteHeader: the browser bar matches it in both themes.
+export const viewport: Viewport = { themeColor: "#000000" };
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const shiftMonth = (month: string, by: number) => {

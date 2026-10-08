@@ -17,12 +17,14 @@ type Props = {
 
 /**
  * Native <dialog> opened with showModal(): the browser traps focus, makes the page inert and handles Esc.
- * Mounted open; the parent unmounts it to close. Portaled to document.body so transformed ancestors
- * (dnd-kit sortables) cannot offset it.
+ * Mounted open; the parent unmounts it to close, and may decline (e.g. after a "discard changes?" confirm).
+ * Portaled to document.body so transformed ancestors (dnd-kit sortables) cannot offset it.
  */
 export function Modal({ title, closeLabel, onClose, children, footer, size = "lg" }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // Only a press that starts and ends on the backdrop closes: a text selection dragged out of a field must not.
+  const pressedBackdrop = useRef(false);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -39,9 +41,22 @@ export function Modal({ title, closeLabel, onClose, children, footer, size = "lg
   return createPortal(
     <dialog ref={ref} aria-labelledby={titleId}
       onCancel={(e) => { e.preventDefault(); onClose(); }}
-      // A close the browser forces (a repeated Esc without user activation skips "cancel") still reaches the parent.
-      onClose={onClose}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      // A close the browser forces (a repeated Esc without user activation skips "cancel") still reaches the
+      // parent; if the parent keeps it mounted, it opens again. The event is async: the one queued by the effect
+      // cleanup (StrictMode remounts effects in development) arrives when the dialog is already open again.
+      onClose={(e) => {
+        if (e.currentTarget.open) return;
+        onClose();
+        requestAnimationFrame(() => {
+          const dialog = ref.current;
+          if (dialog?.isConnected && !dialog.open) dialog.showModal();
+        });
+      }}
+      onPointerDown={(e) => { pressedBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        if (pressedBackdrop.current && e.target === e.currentTarget) onClose();
+        pressedBackdrop.current = false;
+      }}
       className={cx(
         "m-auto max-h-[90vh] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-chrome/50 open:flex",
         size === "lg" ? "max-w-2xl" : "max-w-sm",

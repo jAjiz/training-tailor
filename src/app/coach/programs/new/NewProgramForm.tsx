@@ -35,12 +35,10 @@ export function NewProgramForm({ nextMonday }: { nextMonday: string }) {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">{t("programs.kind")}</span>
+      <Field label={t("programs.kind")} hint={t(`programs.kindHelp.${kind}`)} group>
         <Segmented label={t("programs.kind")} value={kind} onChange={setKind}
           options={(["continuous", "closed"] as const).map((k) => ({ value: k, label: t(`programs.kinds.${k}`) }))} />
-        <p className="text-xs text-muted">{t(`programs.kindHelp.${kind}`)}</p>
-      </div>
+      </Field>
       <Field label={t("programs.name")}>
         <Input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>

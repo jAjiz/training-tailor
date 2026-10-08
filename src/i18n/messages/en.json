@@ -168,16 +168,17 @@
     "kg": "kg",
     "kind": "Block type",
     "addSet": "Add set",
-    "removeSet": "Remove the last set",
+    "removeSet": "Remove set {number}",
     "setNumber": "Set",
     "value": "Value",
     "unit": "Unit",
-    "setCount": "{count, plural, one {# set} other {# sets}}",
+    "actions": "Actions",
     "instructions": "Instructions",
     "coachingTips": "Coaching tips",
     "videoUrl": "Video link",
     "color": "Color",
-    "scoringLockedHint": "This block already has results: its kind and scoring cannot change."
+    "scoringLockedHint": "This block already has results: its kind and scoring cannot change.",
+    "discardConfirm": "Discard the changes to this block?"
   },
   "colors": {
     "neutral": "Gray",

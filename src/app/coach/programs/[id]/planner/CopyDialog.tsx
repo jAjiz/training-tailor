@@ -30,8 +30,15 @@ export function CopyDialog({ title, withDay, defaultWeek, maxWeek, onCopy, onClo
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
-    const r = await onCopy(Number(week) - 1, withDay ? Number(day) - 1 : null);
-    setPending(false);
+    setError(null);
+    let r: ActionResult;
+    try {
+      r = await onCopy(Number(week) - 1, withDay ? Number(day) - 1 : null);
+    } catch {
+      r = { ok: false, code: "internal" };
+    } finally {
+      setPending(false);
+    }
     if (r.ok) {
       onClose();
       onDone();

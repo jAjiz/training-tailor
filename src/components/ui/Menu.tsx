@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MoreHorizontal } from "lucide-react";
 import { cx } from "./cx";
 import { IconButton } from "./IconButton";
@@ -9,23 +10,61 @@ import { stepEnabled } from "./radio-keys";
 export type MenuItem = { label: string; onSelect: () => void; danger?: boolean };
 type Props = { label: string; items: MenuItem[]; icon?: React.ReactNode; align?: "start" | "end"; className?: string };
 
-/** Icon trigger plus a popup list of actions; Esc, an outside pointer down or a choice closes it. */
+const GAP = 4;
+
+/** Where the popup goes: under the trigger, or above it when the viewport has no room below. */
+function place(trigger: DOMRect, popupHeight: number, align: "start" | "end"): React.CSSProperties {
+  const below = trigger.bottom + GAP + popupHeight <= window.innerHeight || trigger.top - GAP - popupHeight < 0;
+  return {
+    position: "fixed",
+    ...(below ? { top: trigger.bottom + GAP } : { bottom: window.innerHeight - trigger.top + GAP }),
+    ...(align === "end" ? { right: window.innerWidth - trigger.right } : { left: trigger.left }),
+  };
+}
+
+/**
+ * Icon trigger plus a popup list of actions; Esc, an outside pointer down, focus leaving, a scroll or a choice
+ * closes it. The popup is portaled with fixed positioning so scroll containers (the planner board) cannot clip it.
+ */
 export function Menu({ label, items, icon, align = "end", className }: Props) {
   const [open, setOpen] = useState(false);
+  const [style, setStyle] = useState<React.CSSProperties>({ position: "fixed", visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const menuId = useId();
+  const inside = (node: Node | null) => Boolean(node && (root.current?.contains(node) || popup.current?.contains(node)));
+
+  useLayoutEffect(() => {
+    if (!open || !trigger.current || !popup.current) return;
+    setStyle(place(trigger.current.getBoundingClientRect(), popup.current.offsetHeight, align));
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
     itemRefs.current[0]?.focus();
     const onPointerDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
+      if (!inside(e.target as Node)) setOpen(false);
+    };
+    // Fixed popup: it would drift away from its trigger on scroll or resize.
+    const dismiss = (e: Event) => {
+      if (!inside(e.target as Node)) setOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
   }, [open]);
+
+  function toggle() {
+    setStyle({ position: "fixed", visibility: "hidden" });
+    setOpen((o) => !o);
+  }
 
   function close() {
     setOpen(false);
@@ -46,14 +85,19 @@ export function Menu({ label, items, icon, align = "end", className }: Props) {
   }
 
   return (
-    <div ref={root} className={cx("relative", className)} onKeyDown={open ? onKeyDown : undefined}>
+    // React events bubble through the portal, so keys and blur from the popup reach this element.
+    <div ref={root} className={cx("relative", className)} onKeyDown={open ? onKeyDown : undefined}
+      onBlur={open ? (e) => { if (!inside(e.relatedTarget)) setOpen(false); } : undefined}>
       <IconButton ref={trigger} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((o) => !o)}>
+        // While open, pressing the trigger must not blur the focused item first (that would close, then reopen).
+        onMouseDown={open ? (e) => e.preventDefault() : undefined} onClick={toggle}>
         {icon ?? <MoreHorizontal size={18} aria-hidden />}
       </IconButton>
-      {open && (
-        <div id={menuId} role="menu" aria-label={label}
-          className={cx("absolute top-full z-20 mt-1 min-w-44 rounded-xl border bg-surface p-1 shadow-lg", align === "end" ? "right-0" : "left-0")}>
+      {open && createPortal(
+        <div ref={popup} id={menuId} role="menu" aria-label={label} style={style}
+          // Safari does not focus a pressed button: the blur would close the menu before the click lands.
+          onMouseDown={(e) => e.preventDefault()}
+          className="z-40 min-w-44 rounded-xl border bg-surface p-1 shadow-lg">
           {items.map((item, i) => (
             <button key={item.label} ref={(el) => { itemRefs.current[i] = el; }} type="button" role="menuitem" tabIndex={-1}
               onClick={() => { close(); item.onSelect(); }}
@@ -62,7 +106,8 @@ export function Menu({ label, items, icon, align = "end", className }: Props) {
               {item.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

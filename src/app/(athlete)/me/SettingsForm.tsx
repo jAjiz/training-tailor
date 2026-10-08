@@ -36,11 +36,10 @@ export function SettingsForm({ initial, timeZones }: { initial: Settings; timeZo
           {timeZones.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
         </Select>
       </Field>
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">{t("me.language")}</span>
+      <Field label={t("me.language")} group>
         <Segmented label={t("me.language")} value={form.locale} onChange={(locale) => setForm({ ...form, locale })}
           options={[{ value: "es", label: t("me.languages.es") }, { value: "en", label: t("me.languages.en") }]} />
-      </div>
+      </Field>
       <Button type="submit" variant="primary" block disabled={state === "saving"}>
         {state === "saving" ? t("common.saving") : t("common.save")}
       </Button>
