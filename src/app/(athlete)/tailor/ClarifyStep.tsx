@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { buttonClasses } from "@/components/ui/Button";
+import { controlClasses } from "@/components/ui/controls";
 import { MECHANISM_TEXT, type ClarifyAnswer } from "@/lib/engine/clarify";
 import type { ClarifyQuestion } from "@/lib/engine/types";
 
@@ -20,7 +22,7 @@ interface Props {
 // A site question: tick the kinds of load that bother it, or one of the whole-site answers.
 type SiteState = { mode: "pick" | "all" | "none" | "other"; picked: number[]; text: string };
 
-const field = "rounded border px-2 py-1 text-sm";
+const field = controlClasses(true);
 const where = (site: string, side: string | null) => `${side && side !== "both" ? `${side} ` : ""}${site.replaceAll("_", " ")}`;
 
 /** Asked only when the athlete's words leave the scope open; every answer bans exactly what was chosen. */
@@ -56,19 +58,19 @@ export function ClarifyStep({ questions, allowFreeText, busy, onSubmit, onCancel
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded border border-amber-300 bg-amber-50 p-3" aria-labelledby="clarify-heading">
+    <section data-color="yellow" className="flex flex-col gap-3 rounded-xl bg-(--block-fill) p-3" aria-labelledby="clarify-heading">
       <h2 id="clarify-heading" className="font-semibold">One question before we tailor</h2>
 
       {questions.map((q, i) => q.kind === "site" ? (
-        <fieldset key={i} className="flex flex-col gap-2 rounded border bg-white p-2 text-sm">
+        <fieldset key={i} className="flex flex-col gap-2 rounded-xl border bg-surface p-2 text-sm shadow-lg">
           <legend className="font-medium">What bothers your {where(q.site, q.side)} today?</legend>
-          <p className="text-xs text-neutral-600">&ldquo;{q.evidence}&rdquo;</p>
+          <p className="text-xs text-muted">&ldquo;{q.evidence}&rdquo;</p>
           {q.options.map((o, j) => (
             <label key={j} className="flex items-start gap-2">
               <input type="checkbox" checked={site(i).mode === "pick" && site(i).picked.includes(j)} onChange={(e) => setSite(i, {
                 mode: "pick", picked: e.target.checked ? [...site(i).picked, j] : site(i).picked.filter((x) => x !== j),
               })} />
-              <span>{o.label}: <span className="text-neutral-600">{o.movements.join(", ")}</span></span>
+              <span>{o.label}: <span className="text-muted">{o.movements.join(", ")}</span></span>
             </label>
           ))}
           <label className="flex items-center gap-2">
@@ -93,16 +95,16 @@ export function ClarifyStep({ questions, allowFreeText, busy, onSubmit, onCancel
           )}
         </fieldset>
       ) : (
-        <fieldset key={i} className="flex flex-col gap-2 rounded border bg-white p-2 text-sm">
+        <fieldset key={i} className="flex flex-col gap-2 rounded-xl border bg-surface p-2 text-sm shadow-lg">
           <legend className="font-medium">Instead of {q.movement}?</legend>
-          <p className="text-xs text-neutral-600">The closest alternative also loads your {where(q.site, null)}.</p>
+          <p className="text-xs text-muted">The closest alternative also loads your {where(q.site, null)}.</p>
           {q.options.map((o) => (
             <label key={o.name} className="flex items-start gap-2">
               <input type="radio" name={`replacement-${i}`} checked={picks[i] === o.name} onChange={() => setPicks({ ...picks, [i]: o.name })} />
               <span>
                 {o.name}
                 {o.shared.length > 0 && (
-                  <span className="text-amber-800"> — also loads your {where(q.site, null)}: {o.shared.map((m) => MECHANISM_TEXT[m]).join(", ")}</span>
+                  <span className="text-(--block-ink)"> — also loads your {where(q.site, null)}: {o.shared.map((m) => MECHANISM_TEXT[m]).join(", ")}</span>
                 )}
               </span>
             </label>
@@ -111,10 +113,10 @@ export function ClarifyStep({ questions, allowFreeText, busy, onSubmit, onCancel
       ))}
 
       <div className="flex gap-2">
-        <button type="button" className="rounded bg-black px-4 py-1 text-sm text-white disabled:opacity-50" disabled={busy || !answered} onClick={submit}>
+        <button type="button" className={buttonClasses({ variant: "primary", size: "sm" })} disabled={busy || !answered} onClick={submit}>
           Continue
         </button>
-        <button type="button" className="rounded border px-3 py-1 text-sm" onClick={onCancel}>Back</button>
+        <button type="button" className={buttonClasses({ size: "sm" })} onClick={onCancel}>Back</button>
       </div>
     </section>
   );
