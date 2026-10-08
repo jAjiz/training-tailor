@@ -202,12 +202,13 @@
     "startsOn": "Este programa empieza el {date}.",
     "finished": "Programa terminado. Tu historial sigue disponible.",
     "nothing": "Nada publicado para este día.",
-    "calendar": "Calendario",
-    "dayOfProgram": "Semana {week} · Día {day}"
+    "dayOfProgram": "Semana {week} · Día {day}",
+    "prevWeek": "Semana anterior",
+    "nextWeek": "Semana siguiente"
   },
   "calendar": {
     "title": "Calendario",
-    "prevMonth": "← Mes anterior",
-    "nextMonth": "Mes siguiente →"
+    "prevMonth": "Mes anterior",
+    "nextMonth": "Mes siguiente"
   }
 }

@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { cx } from "@/components/ui/cx";
+import { IconButton } from "@/components/ui/IconButton";
 import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
@@ -7,6 +11,7 @@ import { formatDay } from "@/lib/format";
 import { monthGrid, todayIn } from "@/lib/training/dates";
 import { getVisibleDays } from "@/lib/training/services/athlete-view";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
+import { AthleteHeader } from "../AthleteHeader";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const shiftMonth = (month: string, by: number) => {
@@ -30,23 +35,28 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const href = (m: string) => `/calendar?program=${enrollment.programId}&month=${m}`;
 
   return (
-    <section className="flex flex-col gap-4">
-      <h1 className="text-center text-lg font-semibold">{enrollment.program.name}</h1>
-      <div className="flex items-center justify-between text-sm">
-        <Link href={href(shiftMonth(month, -1))} className="underline">{t("prevMonth")}</Link>
-        <span className="inline-block font-medium first-letter:uppercase">{formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}</span>
-        <Link href={href(shiftMonth(month, 1))} className="underline">{t("nextMonth")}</Link>
-      </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-xs">
-        {weeks[0].map((d) => <span key={d} className="uppercase text-neutral-500">{formatDay(d, locale, { weekday: "narrow" })}</span>)}
-        {weeks.flat().map((d) => (
-          <Link key={d} href={`/?program=${enrollment.programId}&date=${d}`}
-            className={`flex flex-col items-center rounded py-2 ${d.slice(0, 7) === month ? "" : "text-neutral-300"} ${d === today ? "font-bold" : ""}`}>
-            {Number(d.slice(8))}
-            <span className={`mt-1 h-1 w-1 rounded-full ${withBlocks.has(d) ? "bg-black" : "bg-transparent"}`} />
-          </Link>
-        ))}
-      </div>
-    </section>
+    <>
+      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={enrollment.programId} basePath="/calendar" />
+      <section className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <IconButton href={href(shiftMonth(month, -1))} label={t("prevMonth")}><ChevronLeft size={20} aria-hidden /></IconButton>
+          <h2 className="inline-block text-xl font-bold first-letter:uppercase">{formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}</h2>
+          <IconButton href={href(shiftMonth(month, 1))} label={t("nextMonth")}><ChevronRight size={20} aria-hidden /></IconButton>
+        </div>
+        <Card className="grid grid-cols-7 gap-y-1 p-3 text-center">
+          {weeks[0].map((d) => (
+            <span key={d} className="pb-1 text-xs font-semibold uppercase text-muted">{formatDay(d, locale, { weekday: "narrow" })}</span>
+          ))}
+          {weeks.flat().map((d) => (
+            <Link key={d} href={`/?program=${enrollment.programId}&date=${d}`}
+              className={cx("mx-auto flex h-11 w-11 flex-col items-center justify-center rounded-xl border-2 text-sm font-semibold transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-foreground",
+                d === today ? "border-foreground" : "border-transparent", d.slice(0, 7) !== month && "text-muted/50")}>
+              {Number(d.slice(8))}
+              <span className={cx("mt-0.5 h-1 w-1 rounded-full", withBlocks.has(d) ? "bg-foreground" : "bg-transparent")} />
+            </Link>
+          ))}
+        </Card>
+      </section>
+    </>
   );
 }
