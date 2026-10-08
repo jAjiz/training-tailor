@@ -20,8 +20,11 @@
   },
   "nav": {
     "today": "Hoy",
+    "calendar": "Calendario",
     "me": "Perfil",
-    "programs": "Mis programas"
+    "programs": "Mis programas",
+    "main": "Navegación principal",
+    "account": "Cuenta"
   },
   "errors": {
     "unauthorized": "Tu sesión ha caducado. Vuelve a entrar.",

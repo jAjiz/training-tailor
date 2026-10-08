@@ -20,8 +20,11 @@
   },
   "nav": {
     "today": "Today",
+    "calendar": "Calendar",
     "me": "Me",
-    "programs": "My programs"
+    "programs": "My programs",
+    "main": "Main navigation",
+    "account": "Account"
   },
   "errors": {
     "unauthorized": "Your session expired. Sign in again.",
