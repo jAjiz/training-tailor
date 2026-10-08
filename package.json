@@ -15,7 +15,8 @@
     "db:studio": "prisma studio",
     "eval": "tsx scripts/eval.ts",
     "coverage": "tsx scripts/coverage.ts",
-    "review:movements": "tsx scripts/review-movements.ts"
+    "review:movements": "tsx scripts/review-movements.ts",
+    "coach:approve": "tsx scripts/approve-coach.ts"
   },
   "dependencies": {
     "@google/genai": "^2.25.0",
