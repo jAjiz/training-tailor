@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Minus, Plus } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { ColorSwatches } from "@/components/ui/ColorSwatches";
+import { Input, Select, Textarea } from "@/components/ui/controls";
+import { Field } from "@/components/ui/Field";
+import { IconButton } from "@/components/ui/IconButton";
+import { Modal } from "@/components/ui/Modal";
+import { Segmented } from "@/components/ui/Segmented";
 import { draftFromBlock, draftToInput, emptyDraft, type BlockDraft, type DraftSet } from "@/lib/training/block-draft";
 import type { ErrorCode } from "@/lib/training/errors";
-import { BLOCK_COLORS, Scoring } from "@/lib/training/schemas";
+import { BLOCK_COLORS, Scoring, type BlockColor } from "@/lib/training/schemas";
 import type { LiftGroup } from "@/lib/training/barbell";
 import { createBlockAction, updateBlockAction } from "../../../block-actions";
 import type { PlannerBlockData } from "./types";
@@ -14,15 +22,12 @@ type Props =
   | { mode: "create"; programId: string; dayIndex: number; lifts: LiftGroup[]; onClose: () => void }
   | { mode: "edit"; block: PlannerBlockData; lifts: LiftGroup[]; onClose: () => void };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="flex flex-col gap-1 text-sm">{label}{children}</label>;
-}
-
-const input = "rounded border px-3 py-2";
+const th = "px-3 py-2 font-semibold";
 
 export function BlockEditor(props: Props) {
   const t = useTranslations();
   const router = useRouter();
+  const formId = useId();
   const locked = props.mode === "edit" && props.block.resultCount > 0;
   const [draft, setDraft] = useState<BlockDraft>(props.mode === "edit" ? draftFromBlock(props.block) : emptyDraft("custom"));
   const [error, setError] = useState<ErrorCode | null>(null);
@@ -53,107 +58,114 @@ export function BlockEditor(props: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <form onSubmit={save} className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded bg-white p-6">
-        <h2 className="text-lg font-semibold">{props.mode === "edit" ? t("editor.editBlock") : t("editor.newBlock")}</h2>
-        <div className="flex gap-2">
-          {(["custom", "barbell"] as const).map((k) => (
-            <button key={k} type="button" disabled={locked && draft.kind !== k} onClick={() => switchKind(k)}
-              className={draft.kind === k ? "rounded bg-black px-3 py-1 text-white" : "rounded border px-3 py-1 disabled:opacity-40"}>
-              {t(`editor.kinds.${k}`)}
-            </button>
-          ))}
-        </div>
+    <Modal title={props.mode === "edit" ? t("editor.editBlock") : t("editor.newBlock")} closeLabel={t("common.close")} onClose={props.onClose}
+      footer={<>
+        {error && <p role="alert" className="mr-auto text-sm text-danger">{t(`errors.${error}`)}</p>}
+        <Button type="button" onClick={props.onClose}>{t("common.cancel")}</Button>
+        <Button type="submit" form={formId} variant="primary" disabled={pending}>{pending ? t("common.saving") : t("common.save")}</Button>
+      </>}>
+      <form id={formId} onSubmit={save} className="flex flex-col gap-5">
+        <Segmented label={t("editor.kind")} value={draft.kind} onChange={switchKind}
+          options={(["custom", "barbell"] as const).map((k) => ({ value: k, label: t(`editor.kinds.${k}`), disabled: locked && draft.kind !== k }))} />
         <Field label={t("editor.title")}>
-          <input className={input} maxLength={120} value={draft.title} onChange={(e) => set({ title: e.target.value })} />
+          <Input maxLength={120} value={draft.title} onChange={(e) => set({ title: e.target.value })} />
         </Field>
 
         {draft.kind === "custom" ? (
           <>
             <Field label={t("editor.description")}>
-              <textarea required rows={8} maxLength={5000} className={`${input} font-mono text-sm`} value={draft.description}
-                onChange={(e) => set({ description: e.target.value })} />
+              <Textarea required rows={8} maxLength={5000} value={draft.description} onChange={(e) => set({ description: e.target.value })} />
             </Field>
-            <div className="flex flex-wrap gap-4">
-              <Field label={t("editor.scoring")}>
-                <select disabled={locked} className={input} value={draft.scoring}
-                  onChange={(e) => set({ scoring: e.target.value as BlockDraft["scoring"] })}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("editor.scoring")} hint={locked ? t("editor.scoringLockedHint") : null}>
+                <Select disabled={locked} value={draft.scoring} onChange={(e) => set({ scoring: e.target.value as BlockDraft["scoring"] })}>
                   {Scoring.options.map((s) => <option key={s} value={s}>{t(`block.scoring.${s}`)}</option>)}
-                </select>
+                </Select>
               </Field>
               {draft.scoring === "for_time" && (
                 <Field label={t("editor.timeCap")}>
-                  <input type="number" min={1} max={120} step="0.5" className={input} value={draft.timeCapMinutes}
-                    onChange={(e) => set({ timeCapMinutes: e.target.value })} />
+                  <Input type="number" min={1} max={120} step="0.5" value={draft.timeCapMinutes} onChange={(e) => set({ timeCapMinutes: e.target.value })} />
                 </Field>
               )}
             </div>
-            {locked && <p className="text-xs text-neutral-500">{t("editor.scoringLockedHint")}</p>}
           </>
         ) : (
           <>
             <Field label={t("editor.movement")}>
-              <select required className={input} value={draft.movement} onChange={(e) => set({ movement: e.target.value })}>
+              <Select required value={draft.movement} onChange={(e) => set({ movement: e.target.value })}>
                 <option value="" disabled>—</option>
                 {props.lifts.map((g) => (
                   <optgroup key={g.pattern} label={t(`patterns.${g.pattern}`)}>
                     {g.movements.map((m) => <option key={m} value={m}>{m}</option>)}
                   </optgroup>
                 ))}
-              </select>
+              </Select>
             </Field>
             <fieldset className="flex flex-col gap-2">
-              <legend className="text-sm">{t("editor.sets")}</legend>
-              {draft.sets.map((s, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  <span className="w-6 text-neutral-500">#{i + 1}</span>
-                  <input type="number" min={1} max={100} aria-label={t("editor.reps")} className="w-16 rounded border px-2 py-1"
-                    value={s.reps} onChange={(e) => setRow(i, { reps: e.target.value })} />
-                  <span>{t("editor.reps")} @</span>
-                  <input type="number" min={0} step="0.5" className="w-20 rounded border px-2 py-1" value={s.value}
-                    onChange={(e) => setRow(i, { value: e.target.value })} />
-                  <select className="rounded border px-2 py-1" value={s.mode} onChange={(e) => setRow(i, { mode: e.target.value as DraftSet["mode"] })}>
-                    <option value="percent">{t("editor.percent")}</option>
-                    <option value="kg">{t("editor.kg")}</option>
-                  </select>
-                  {draft.sets.length > 1 && (
-                    <button type="button" className="text-red-700" onClick={() => set({ sets: draft.sets.filter((_, j) => j !== i) })}>
-                      {t("editor.removeSet")}
-                    </button>
-                  )}
-                </div>
-              ))}
-              {draft.sets.length < 20 && (
-                <button type="button" className="w-fit underline text-sm" onClick={() => set({ sets: [...draft.sets, { ...draft.sets[draft.sets.length - 1] }] })}>
-                  {t("editor.addSet")}
-                </button>
-              )}
+              <legend className="mb-1.5 text-sm font-medium">{t("editor.sets")}</legend>
+              <div className="overflow-hidden rounded-xl border">
+                <table className="w-full text-sm">
+                  <thead className="bg-surface-2 text-left text-xs text-muted">
+                    <tr>
+                      <th scope="col" className={th}>{t("editor.setNumber")}</th>
+                      <th scope="col" className={th}>{t("editor.reps")}</th>
+                      <th scope="col" className={th}>{t("editor.value")}</th>
+                      <th scope="col" className={th}>{t("editor.unit")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draft.sets.map((s, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="px-3 py-1.5 font-semibold text-muted">#{i + 1}</td>
+                        <td className="py-1.5 pr-2">
+                          <Input compact className="w-full" type="number" min={1} max={100} aria-label={`${t("editor.reps")} #${i + 1}`}
+                            value={s.reps} onChange={(e) => setRow(i, { reps: e.target.value })} />
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          <Input compact className="w-full" type="number" min={0} step="0.5" aria-label={`${t("editor.value")} #${i + 1}`}
+                            value={s.value} onChange={(e) => setRow(i, { value: e.target.value })} />
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <Select compact className="w-full" aria-label={`${t("editor.unit")} #${i + 1}`} value={s.mode}
+                            onChange={(e) => setRow(i, { mode: e.target.value as DraftSet["mode"] })}>
+                            <option value="percent">{t("editor.percent")}</option>
+                            <option value="kg">{t("editor.kg")}</option>
+                          </Select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-2">
+                <IconButton label={t("editor.removeSet")} disabled={draft.sets.length <= 1} onClick={() => set({ sets: draft.sets.slice(0, -1) })}>
+                  <Minus size={16} aria-hidden />
+                </IconButton>
+                <span className="min-w-20 text-center text-sm font-semibold">{t("editor.setCount", { count: draft.sets.length })}</span>
+                <IconButton label={t("editor.addSet")} disabled={draft.sets.length >= 20}
+                  onClick={() => set({ sets: [...draft.sets, { ...draft.sets[draft.sets.length - 1] }] })}>
+                  <Plus size={16} aria-hidden />
+                </IconButton>
+              </div>
             </fieldset>
             <Field label={t("editor.instructions")}>
-              <textarea rows={3} maxLength={2000} className={input} value={draft.instructions} onChange={(e) => set({ instructions: e.target.value })} />
+              <Textarea rows={3} maxLength={2000} value={draft.instructions} onChange={(e) => set({ instructions: e.target.value })} />
             </Field>
           </>
         )}
 
         <Field label={t("editor.coachingTips")}>
-          <textarea rows={3} maxLength={2000} className={input} value={draft.coachingTips} onChange={(e) => set({ coachingTips: e.target.value })} />
+          <Textarea rows={3} maxLength={2000} value={draft.coachingTips} onChange={(e) => set({ coachingTips: e.target.value })} />
         </Field>
         <Field label={t("editor.videoUrl")}>
-          <input type="url" placeholder="https://" className={input} value={draft.videoUrl} onChange={(e) => set({ videoUrl: e.target.value })} />
+          <Input type="url" placeholder="https://" value={draft.videoUrl} onChange={(e) => set({ videoUrl: e.target.value })} />
         </Field>
-        <fieldset className="flex items-center gap-2">
-          <legend className="mb-1 text-sm">{t("editor.color")}</legend>
-          {BLOCK_COLORS.map((c) => (
-            <button key={c} type="button" aria-label={c} aria-pressed={draft.color === c} onClick={() => set({ color: c })}
-              data-color={c} className={`h-7 w-7 rounded-full bg-(--block-stripe) ${draft.color === c ? "ring-2 ring-foreground ring-offset-2" : ""}`} />
-          ))}
-        </fieldset>
-        {error && <p className="text-sm text-red-700">{t(`errors.${error}`)}</p>}
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={props.onClose}>{t("common.cancel")}</button>
-          <button disabled={pending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">{t("common.save")}</button>
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium">{t("editor.color")}</span>
+          <ColorSwatches label={t("editor.color")} colors={BLOCK_COLORS} value={draft.color}
+            onChange={(c) => set({ color: c as BlockColor })} colorLabel={(c) => t(`colors.${c as BlockColor}`)} />
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
