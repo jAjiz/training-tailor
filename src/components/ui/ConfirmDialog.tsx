@@ -21,7 +21,7 @@ export function ConfirmDialog({ title, message, confirmLabel, danger = true, onA
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => { cancel.current?.focus(); }, []);
   return (
-    <Modal title={title} closeLabel={t("close")} onClose={() => onAnswer(false)} size="sm"
+    <Modal title={title} closeLabel={t("close")} onClose={() => onAnswer(false)} size="md"
       footer={<>
         <Button ref={cancel} type="button" onClick={() => onAnswer(false)}>{t("cancel")}</Button>
         <Button type="button" variant={danger ? "danger" : "primary"} onClick={() => onAnswer(true)}>{confirmLabel}</Button>

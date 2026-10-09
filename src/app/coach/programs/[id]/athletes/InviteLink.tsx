@@ -25,7 +25,7 @@ export function InviteLink({ programId, url, readOnly }: { programId: string; ur
   }
 
   async function regenerate() {
-    if (!(await confirm({ title: t("roster.regenerate"), message: t("roster.regenerateConfirm"), confirmLabel: t("roster.regenerate") }))) return;
+    if (!(await confirm({ title: t("roster.regenerate"), message: t("roster.regenerateConfirm"), confirmLabel: t("roster.regenerate"), danger: false }))) return;
     const r = await regenerateInviteAction(programId);
     if (r.ok) router.refresh();
     else setError(r.code);
