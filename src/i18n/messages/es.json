@@ -181,7 +181,9 @@
     "videoUrl": "Enlace de vídeo",
     "color": "Color",
     "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar.",
-    "discardConfirm": "¿Descartar los cambios de este bloque?"
+    "discardConfirm": "¿Descartar los cambios de este bloque?",
+    "keepEditing": "Seguir editando",
+    "discard": "Descartar"
   },
   "colors": {
     "neutral": "Gris",

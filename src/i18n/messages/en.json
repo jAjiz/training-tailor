@@ -181,7 +181,9 @@
     "videoUrl": "Video link",
     "color": "Color",
     "scoringLockedHint": "This block already has results: its kind and scoring cannot change.",
-    "discardConfirm": "Discard the changes to this block?"
+    "discardConfirm": "Discard the changes to this block?",
+    "keepEditing": "Keep editing",
+    "discard": "Discard"
   },
   "colors": {
     "neutral": "Gray",
