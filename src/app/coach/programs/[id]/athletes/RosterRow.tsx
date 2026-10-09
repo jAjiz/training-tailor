@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { cx } from "@/components/ui/cx";
 import { Pill } from "@/components/ui/Pill";
 import { removeAthleteAction, restoreAthleteAction } from "../../../roster-actions";
@@ -13,9 +14,10 @@ type Props = { enrollmentId: string; name: string; joined: string; removed: bool
 export function RosterRow({ enrollmentId, name, joined, removed, resultsHref }: Props) {
   const t = useTranslations("roster");
   const router = useRouter();
+  const { confirm, dialog } = useConfirm();
 
   async function toggle() {
-    if (!removed && !window.confirm(t("removeConfirm"))) return;
+    if (!removed && !(await confirm({ title: t("removeTitle", { name }), message: t("removeConfirm"), confirmLabel: t("remove") }))) return;
     const r = removed ? await restoreAthleteAction(enrollmentId) : await removeAthleteAction(enrollmentId);
     if (r.ok) router.refresh();
   }
@@ -32,6 +34,7 @@ export function RosterRow({ enrollmentId, name, joined, removed, resultsHref }: 
           <Button href={resultsHref} variant="ghost" size="sm">{t("results")}</Button>
           <Button type="button" size="sm" variant={removed ? "secondary" : "danger"} onClick={toggle}>{removed ? t("restore") : t("remove")}</Button>
         </span>
+        {dialog}
       </td>
     </tr>
   );

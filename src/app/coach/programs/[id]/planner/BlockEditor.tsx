@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Plus, X } from "lucide-react";
@@ -41,10 +41,16 @@ export function BlockEditor(props: Props) {
   // forth (arrow keys select at once) loses nothing.
   const switchKind = (kind: BlockDraft["kind"]) => set({ kind });
 
-  // Esc, the backdrop, the close button and Cancel all come here: unsaved changes need a confirmation.
+  // Esc, the backdrop, the close button and Cancel all come here: unsaved changes ask first, in the footer
+  // (a native confirm() is not shown everywhere: the app's built-in browser answers it with "no" unseen).
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const keepEditing = useRef<HTMLButtonElement>(null);
+  // The safe answer takes the focus (autoFocus does not reach into the open dialog).
+  useEffect(() => { if (confirmingDiscard) keepEditing.current?.focus(); }, [confirmingDiscard]);
   function requestClose() {
     if (pending) return;
-    if (JSON.stringify(draft) === JSON.stringify(initial) || window.confirm(t("editor.discardConfirm"))) props.onClose();
+    if (JSON.stringify(draft) === JSON.stringify(initial)) props.onClose();
+    else setConfirmingDiscard(true);
   }
 
   async function save(e: React.FormEvent) {
@@ -72,7 +78,11 @@ export function BlockEditor(props: Props) {
 
   return (
     <Modal title={props.mode === "edit" ? t("editor.editBlock") : t("editor.newBlock")} closeLabel={t("common.close")} onClose={requestClose}
-      footer={<>
+      footer={confirmingDiscard ? <>
+        <p role="alert" className="mr-auto text-sm font-medium">{t("editor.discardConfirm")}</p>
+        <Button ref={keepEditing} type="button" onClick={() => setConfirmingDiscard(false)}>{t("editor.keepEditing")}</Button>
+        <Button type="button" variant="danger" onClick={props.onClose}>{t("editor.discard")}</Button>
+      </> : <>
         {error && <p role="alert" className="mr-auto text-sm text-danger">{t(`errors.${error}`)}</p>}
         <Button type="button" onClick={requestClose}>{t("common.cancel")}</Button>
         <Button type="submit" form={formId} variant="primary" disabled={pending}>{pending ? t("common.saving") : t("common.save")}</Button>

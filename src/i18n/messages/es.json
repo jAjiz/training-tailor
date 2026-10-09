@@ -122,8 +122,9 @@
   },
   "planner": {
     "week": "Semana {week}",
-    "dayLabel": "Semana {week} · Día {day}",
+    "dayNumber": "Día {day}",
     "prevWeek": "Semana anterior",
+    "pickWeek": "Elegir semana (ahora {week})",
     "nextWeek": "Semana siguiente",
     "weekPublished": "Semana publicada",
     "weekDraft": "Semana en borrador",
@@ -139,13 +140,17 @@
     "weekActions": "Acciones de la semana",
     "blockCount": "{count, plural, one {# bloque} other {# bloques}}",
     "dragHandle": "Arrastrar para mover",
-    "duplicate": "Duplicar…",
-    "duplicateDay": "Duplicar día…",
-    "duplicateWeek": "Duplicar semana…",
+    "duplicate": "Copiar",
+    "duplicateDay": "Copiar día",
+    "duplicateWeek": "Copiar semana",
     "targetWeek": "Semana",
     "targetDay": "Día",
+    "targetDate": "Fecha de destino",
+    "targetWeekDate": "Semana de destino",
+    "targetWeekDateHint": "Elige cualquier día de esa semana.",
     "copy": "Copiar",
     "deleteConfirm": "¿Borrar este bloque?",
+    "deleteBlock": "Borrar bloque",
     "deleteConfirmResults": "Este bloque tiene {count, plural, one {# resultado} other {# resultados}} que se borrarán. ¿Continuar?",
     "results": "{count, plural, one {# resultado} other {# resultados}}",
     "archivedNotice": "Programa archivado: solo lectura."
@@ -178,7 +183,9 @@
     "videoUrl": "Enlace de vídeo",
     "color": "Color",
     "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar.",
-    "discardConfirm": "¿Descartar los cambios de este bloque?"
+    "discardConfirm": "¿Descartar los cambios de este bloque?",
+    "keepEditing": "Seguir editando",
+    "discard": "Descartar"
   },
   "colors": {
     "neutral": "Gris",
@@ -213,6 +220,7 @@
     "activeBadge": "Activo",
     "removedBadge": "Quitado",
     "remove": "Quitar",
+    "removeTitle": "Quitar a {name}",
     "restore": "Restaurar",
     "removeConfirm": "¿Quitar a este atleta del programa? Sus resultados se conservan.",
     "results": "Resultados",
@@ -232,6 +240,7 @@
   "calendar": {
     "title": "Calendario",
     "prevMonth": "Mes anterior",
-    "nextMonth": "Mes siguiente"
+    "nextMonth": "Mes siguiente",
+    "pickDate": "Elegir fecha"
   }
 }

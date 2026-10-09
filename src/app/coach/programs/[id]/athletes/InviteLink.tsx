@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Check, Copy, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/controls";
 import type { ErrorCode } from "@/lib/training/errors";
 import { regenerateInviteAction } from "../../../program-actions";
@@ -13,6 +14,7 @@ import { regenerateInviteAction } from "../../../program-actions";
 export function InviteLink({ programId, url, readOnly }: { programId: string; url: string; readOnly: boolean }) {
   const t = useTranslations();
   const router = useRouter();
+  const { confirm, dialog } = useConfirm();
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<ErrorCode | null>(null);
 
@@ -23,7 +25,7 @@ export function InviteLink({ programId, url, readOnly }: { programId: string; ur
   }
 
   async function regenerate() {
-    if (!window.confirm(t("roster.regenerateConfirm"))) return;
+    if (!(await confirm({ title: t("roster.regenerate"), message: t("roster.regenerateConfirm"), confirmLabel: t("roster.regenerate"), danger: false }))) return;
     const r = await regenerateInviteAction(programId);
     if (r.ok) router.refresh();
     else setError(r.code);
@@ -43,6 +45,7 @@ export function InviteLink({ programId, url, readOnly }: { programId: string; ur
         )}
       </div>
       {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
+      {dialog}
     </Card>
   );
 }

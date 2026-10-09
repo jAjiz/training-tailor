@@ -15,17 +15,6 @@ export function locate(board: Board, id: string): Slot | null {
   return null;
 }
 
-/** Dropped on a block: take its slot. Dropped on a day column: go to the end of that day. */
-export function resolveDrop(board: Board, activeId: string, overId: string): Slot | null {
-  if (!locate(board, activeId)) return null;
-  const match = DAY_DROP.exec(overId);
-  if (match) {
-    const day = Number(match[1]);
-    return { day, index: (board[day] ?? []).filter((id) => id !== activeId).length };
-  }
-  return locate(board, overId);
-}
-
 /** Removes the block from its day and inserts it at `to` (clamped); returns a new board. */
 export function applyMove(board: Board, activeId: string, to: Slot): Board {
   const next: Board = Object.fromEntries(
@@ -35,4 +24,27 @@ export function applyMove(board: Board, activeId: string, to: Slot): Board {
   target.splice(Math.max(0, Math.min(to.index, target.length)), 0, activeId);
   next[to.day] = target;
   return next;
+}
+
+/**
+ * While dragging, the block itself moves through the board so its gap shows where it will land, the same way
+ * within a day and across days: before the block under the pointer, or after it when `below`; at the end of a
+ * day when over the column itself. Null when nothing changes (over itself, already in place, unknown ids).
+ */
+export function moveOver(board: Board, activeId: string, overId: string, below: boolean): Board | null {
+  const from = locate(board, activeId);
+  if (!from || overId === activeId) return null;
+  const match = DAY_DROP.exec(overId);
+  let to: Slot;
+  if (match) {
+    const day = Number(match[1]);
+    to = { day, index: (board[day] ?? []).filter((id) => id !== activeId).length };
+  } else {
+    const over = locate(board, overId);
+    if (!over) return null;
+    const rest = (board[over.day] ?? []).filter((id) => id !== activeId);
+    to = { day: over.day, index: rest.indexOf(overId) + (below ? 1 : 0) };
+  }
+  if (to.day === from.day && to.index === from.index) return null;
+  return applyMove(board, activeId, to);
 }
