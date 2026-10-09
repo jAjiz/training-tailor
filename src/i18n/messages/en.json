@@ -20,8 +20,11 @@
   },
   "nav": {
     "today": "Today",
+    "calendar": "Calendar",
     "me": "Me",
-    "programs": "My programs"
+    "programs": "My programs",
+    "main": "Main navigation",
+    "account": "Account"
   },
   "errors": {
     "unauthorized": "Your session expired. Sign in again.",
@@ -120,8 +123,8 @@
   "planner": {
     "week": "Week {week}",
     "dayLabel": "Week {week} · Day {day}",
-    "prevWeek": "← Previous week",
-    "nextWeek": "Next week →",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
     "weekPublished": "Week published",
     "weekDraft": "Week in draft",
     "publishWeek": "Publish week",
@@ -130,7 +133,11 @@
     "programDraft": "Program in draft",
     "publishProgram": "Publish program",
     "unpublishProgram": "Unpublish",
-    "addBlock": "+ Block",
+    "addBlock": "Add block",
+    "blockActions": "Block actions",
+    "dayActions": "Day actions",
+    "weekActions": "Week actions",
+    "blockCount": "{count, plural, one {# block} other {# blocks}}",
     "dragHandle": "Drag to move",
     "duplicate": "Duplicate…",
     "duplicateDay": "Duplicate day…",
@@ -159,13 +166,28 @@
     "reps": "Reps",
     "percent": "% 1RM",
     "kg": "kg",
-    "addSet": "+ Set",
-    "removeSet": "Remove",
+    "kind": "Block type",
+    "addSet": "Add set",
+    "removeSet": "Remove set {number}",
+    "setNumber": "Set",
+    "value": "Value",
+    "unit": "Unit",
+    "actions": "Actions",
     "instructions": "Instructions",
     "coachingTips": "Coaching tips",
     "videoUrl": "Video link",
     "color": "Color",
-    "scoringLockedHint": "This block already has results: its kind and scoring cannot change."
+    "scoringLockedHint": "This block already has results: its kind and scoring cannot change.",
+    "discardConfirm": "Discard the changes to this block?"
+  },
+  "colors": {
+    "neutral": "Gray",
+    "red": "Red",
+    "orange": "Orange",
+    "yellow": "Yellow",
+    "green": "Green",
+    "blue": "Blue",
+    "purple": "Purple"
   },
   "join": {
     "invalid": "This invitation link is not valid or has expired.",
@@ -184,7 +206,11 @@
     "regenerate": "Generate a new link",
     "regenerateConfirm": "The current link will stop working. Continue?",
     "empty": "No athletes yet. Share the invitation link.",
-    "joined": "Since {date}",
+    "athlete": "Athlete",
+    "since": "Since",
+    "status": "Status",
+    "actions": "Actions",
+    "activeBadge": "Active",
     "removedBadge": "Removed",
     "remove": "Remove",
     "restore": "Restore",
@@ -199,12 +225,13 @@
     "startsOn": "This program starts on {date}.",
     "finished": "Program finished. Your history is still available.",
     "nothing": "Nothing published for this day.",
-    "calendar": "Calendar",
-    "dayOfProgram": "Week {week} · Day {day}"
+    "dayOfProgram": "Week {week} · Day {day}",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week"
   },
   "calendar": {
     "title": "Calendar",
-    "prevMonth": "← Previous month",
-    "nextMonth": "Next month →"
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month"
   }
 }

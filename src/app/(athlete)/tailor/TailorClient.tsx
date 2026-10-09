@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { buttonClasses } from "@/components/ui/Button";
+import { controlClasses } from "@/components/ui/controls";
+import { chipClasses } from "@/components/ui/Pill";
 import type { Equipment } from "@/lib/domain/types";
 import type { ProgressStage } from "@/lib/engine/pipeline";
 import { applyAnswers, mergeFreeText, type ClarifyAnswer } from "@/lib/engine/clarify";
@@ -47,8 +50,8 @@ const ERROR_TEXT: Record<string, string> = {
   engine_unsafe: "We could not produce a modification that is safe for your conditions. Rephrase your situation, or check with a professional.",
 };
 
-const field = "rounded border px-2 py-1 text-sm";
-const chip = (on: boolean) => `rounded border px-3 py-1 text-sm ${on ? "bg-black text-white" : ""}`;
+const field = controlClasses(true);
+const chip = chipClasses;
 
 export function TailorClient({ movementNames, equipmentOptions, catalog }: Props) {
   const [rawText, setRawText] = useState("");
@@ -249,12 +252,12 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
         )}
       </section>
 
-      <button type="button" className="w-fit rounded bg-black px-4 py-2 text-white disabled:opacity-50" disabled={busy} onClick={() => void submit()}>
+      <button type="button" className={buttonClasses({ variant: "primary", className: "w-fit" })} disabled={busy} onClick={() => void submit()}>
         Tailor my workout
       </button>
 
-      {busy && <p className="text-sm text-neutral-600" aria-live="polite">{STAGE_TEXT[stage!]}</p>}
-      {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
+      {busy && <p className="text-sm text-muted" aria-live="polite">{STAGE_TEXT[stage!]}</p>}
+      {error && <p className="text-sm text-danger" role="alert">{error}</p>}
       {pending && (
         <ClarifyStep key={JSON.stringify(pending.questions)} questions={pending.questions} allowFreeText={pending.allowFreeText}
           busy={busy} onSubmit={(answers, freeText) => void answer(pending, answers, freeText)} onCancel={() => setPending(null)} />
@@ -269,7 +272,7 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
               placeholder="e.g. still hurts, too easy, no rower" />
             <div className="flex flex-wrap gap-2">
               <button type="button" className={chip(false)} disabled={busy || !feedback.trim()} onClick={() => void refine()}>Refine</button>
-              <button type="button" className="rounded bg-black px-4 py-1 text-sm text-white disabled:opacity-50" disabled={busy || saved} onClick={save}>
+              <button type="button" className={buttonClasses({ variant: "primary", size: "sm" })} disabled={busy || saved} onClick={save}>
                 {saved ? "Saved" : "Save to history"}
               </button>
             </div>

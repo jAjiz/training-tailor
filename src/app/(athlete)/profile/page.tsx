@@ -11,7 +11,7 @@ export default async function ProfilePage() {
   const [profile, domain] = await Promise.all([loadProfile(userId), getDomainData()]);
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Profile</h1>
+      <h1 className="text-3xl font-bold">Profile</h1>
       <ProfileForm
         initial={profile}
         catalog={domain.contraindications.map((c) => ({ key: c.key, label: c.label, kind: c.kind }))}

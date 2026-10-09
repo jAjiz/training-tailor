@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPublicPath, safeNext, signinPathFor } from "@/lib/routes";
+import { isPublicPath, safeNext, signinPathFor, withProgram } from "@/lib/routes";
 
 describe("routes", () => {
   it("leaves the sign-in pages and invitations public", () => {
@@ -24,5 +24,11 @@ describe("routes", () => {
     expect(safeNext("/\\evil.com")).toBe("/");
     expect(safeNext("https://evil.com")).toBe("/");
     expect(safeNext(undefined, "/me")).toBe("/me");
+  });
+
+  it("carries the selected program to another athlete page", () => {
+    expect(withProgram("/calendar", "p1")).toBe("/calendar?program=p1");
+    expect(withProgram("/calendar", null)).toBe("/calendar");
+    expect(withProgram("/", "a b")).toBe("/?program=a%20b");
   });
 });

@@ -3,23 +3,46 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Plus } from "lucide-react";
+import { Menu } from "@/components/ui/Menu";
 import { duplicateDayAction } from "../../../block-actions";
 import { BlockEditor } from "./BlockEditor";
-import { CopyForm } from "./CopyForm";
+import { CopyDialog } from "./CopyDialog";
 import type { PlannerContext } from "./types";
 
-export function DayTools({ dayIndex, ctx }: { dayIndex: number; ctx: PlannerContext }) {
+type Props = { dayIndex: number; ctx: PlannerContext };
+
+/** "⋯" on a day column's header: duplicate the whole day. */
+export function DayMenu({ dayIndex, ctx }: Props) {
   const t = useTranslations("planner");
   const router = useRouter();
+  const [copying, setCopying] = useState(false);
+  if (ctx.readOnly) return null;
+  return (
+    <>
+      <Menu className="ml-auto" label={t("dayActions")} items={[{ label: t("duplicateDay"), onSelect: () => setCopying(true) }]} />
+      {copying && (
+        <CopyDialog title={t("duplicateDay")} withDay defaultWeek={ctx.weekIndex} maxWeek={ctx.maxWeek}
+          onCopy={(week, day) => duplicateDayAction({ programId: ctx.programId, fromDay: dayIndex, toDay: week * 7 + (day ?? 0) })}
+          onClose={() => setCopying(false)} onDone={() => router.refresh()} />
+      )}
+    </>
+  );
+}
+
+/** Dashed "Add block" button at the bottom of a day column. */
+export function AddBlock({ dayIndex, ctx }: Props) {
+  const t = useTranslations("planner");
   const [adding, setAdding] = useState(false);
   if (ctx.readOnly) return null;
   return (
-    <div className="flex flex-col gap-1 text-xs">
-      <button onClick={() => setAdding(true)} className="rounded border border-dashed py-2 text-sm">{t("addBlock")}</button>
-      <CopyForm label={t("duplicateDay")} withDay defaultWeek={ctx.weekIndex} maxWeek={ctx.maxWeek}
-        onCopy={(week, day) => duplicateDayAction({ programId: ctx.programId, fromDay: dayIndex, toDay: week * 7 + (day ?? 0) })}
-        onDone={() => router.refresh()} />
+    <>
+      <button type="button" onClick={() => setAdding(true)}
+        className="flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed py-2.5 text-sm font-semibold text-muted transition hover:border-foreground/30 hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground">
+        <Plus size={16} aria-hidden />
+        {t("addBlock")}
+      </button>
       {adding && <BlockEditor mode="create" programId={ctx.programId} dayIndex={dayIndex} lifts={ctx.lifts} onClose={() => setAdding(false)} />}
-    </div>
+    </>
   );
 }
