@@ -54,6 +54,11 @@ export function todayIn(timeZone: string, now: Date = new Date()): IsoDate {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+/** The month `YYYY-MM` shifted by whole months. */
+export function addMonths(month: string, by: number): string {
+  return fromDbDate(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + by, 1))).slice(0, 7);
+}
+
 /** Monday-first weeks covering the month `YYYY-MM`. */
 export function monthGrid(month: string): IsoDate[][] {
   const first = `${month}-01`;

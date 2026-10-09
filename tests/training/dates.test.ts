@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  addDays, canLogDay, dateOfDay, dayIndexOf, daysBetween, fromDbDate, inRange, isDayVisible, isIsoDate,
+  addDays, addMonths, canLogDay, dateOfDay, dayIndexOf, daysBetween, fromDbDate, inRange, isDayVisible, isIsoDate,
   isMonday, isValidTimeZone, mondayOf, monthGrid, toDbDate, todayIn, weekIndexOf, type Timeline,
 } from "@/lib/training/dates";
 
@@ -38,6 +38,12 @@ describe("calendar arithmetic", () => {
     expect(todayIn("America/New_York", now)).toBe("2026-10-07");
     expect(isValidTimeZone("Europe/Madrid")).toBe(true);
     expect(isValidTimeZone("Mars/Base")).toBe(false);
+  });
+
+  it("shifts months across years", () => {
+    expect(addMonths("2026-10", 1)).toBe("2026-11");
+    expect(addMonths("2026-12", 1)).toBe("2027-01");
+    expect(addMonths("2026-01", -1)).toBe("2025-12");
   });
 
   it("builds Monday-first month grids", () => {

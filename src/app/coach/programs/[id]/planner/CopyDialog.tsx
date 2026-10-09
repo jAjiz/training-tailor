@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/controls";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { Field } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { closedTarget, continuousTarget, defaultTargetDate, type CopyTarget } from "@/lib/training/copy-target";
@@ -74,7 +75,7 @@ export function CopyDialog({ title, target, startDate, defaultIndex, maxWeek, on
         {startDate ? (
           <Field label={t(target === "week" ? "planner.targetWeekDate" : "planner.targetDate")}
             hint={target === "week" ? t("planner.targetWeekDateHint") : null} className="flex-1">
-            <Input type="date" required min={startDate} value={date} onChange={(e) => setDate(e.target.value)} />
+            <DatePicker min={startDate} select={target} value={date} onChange={setDate} />
           </Field>
         ) : (
           <>

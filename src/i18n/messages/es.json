@@ -240,6 +240,7 @@
   "calendar": {
     "title": "Calendario",
     "prevMonth": "Mes anterior",
-    "nextMonth": "Mes siguiente"
+    "nextMonth": "Mes siguiente",
+    "pickDate": "Elegir fecha"
   }
 }

@@ -9,7 +9,7 @@ import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
-import { monthGrid, todayIn } from "@/lib/training/dates";
+import { addMonths, monthGrid, todayIn } from "@/lib/training/dates";
 import { getVisibleDays } from "@/lib/training/services/athlete-view";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { AthleteHeader } from "../AthleteHeader";
@@ -18,10 +18,6 @@ import { AthleteHeader } from "../AthleteHeader";
 export const viewport: Viewport = { themeColor: "#000000" };
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
-const shiftMonth = (month: string, by: number) => {
-  const d = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + by, 1));
-  return d.toISOString().slice(0, 7);
-};
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ program?: string; month?: string }> }) {
   const athlete = await requireAthletePage();
@@ -43,9 +39,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={enrollment.programId} basePath="/calendar" />
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <IconButton href={href(shiftMonth(month, -1))} label={t("prevMonth")}><ChevronLeft size={20} aria-hidden /></IconButton>
+          <IconButton href={href(addMonths(month, -1))} label={t("prevMonth")}><ChevronLeft size={20} aria-hidden /></IconButton>
           <h2 className="inline-block text-xl font-bold first-letter:uppercase">{formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}</h2>
-          <IconButton href={href(shiftMonth(month, 1))} label={t("nextMonth")}><ChevronRight size={20} aria-hidden /></IconButton>
+          <IconButton href={href(addMonths(month, 1))} label={t("nextMonth")}><ChevronRight size={20} aria-hidden /></IconButton>
         </div>
         <Card className="grid grid-cols-7 gap-y-1 p-3 text-center">
           {weeks[0].map((d) => (

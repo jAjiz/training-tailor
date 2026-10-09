@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/controls";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { Field } from "@/components/ui/Field";
 import { Segmented } from "@/components/ui/Segmented";
+import { isMonday } from "@/lib/training/dates";
 import type { ErrorCode } from "@/lib/training/errors";
 import { createProgramAction } from "../../program-actions";
 
@@ -47,7 +49,7 @@ export function NewProgramForm({ nextMonday }: { nextMonday: string }) {
       </Field>
       {kind === "continuous" ? (
         <Field label={t("programs.startDate")}>
-          <Input type="date" step={7} min={nextMonday} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <DatePicker min={nextMonday} allow={isMonday} value={startDate} onChange={setStartDate} />
         </Field>
       ) : (
         <Field label={t("programs.weeks")}>

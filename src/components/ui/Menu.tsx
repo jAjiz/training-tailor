@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { cx } from "./cx";
 import { IconButton } from "./IconButton";
+import { place } from "./place";
 import { stepEnabled } from "./radio-keys";
 
 export type MenuItem = { label: string; onSelect: () => void; danger?: boolean };
@@ -17,18 +18,6 @@ type Props = {
   align?: "start" | "end";
   className?: string;
 };
-
-const GAP = 4;
-
-/** Where the popup goes: under the trigger, or above it when the viewport has no room below. */
-function place(trigger: DOMRect, popupHeight: number, align: "start" | "end"): React.CSSProperties {
-  const below = trigger.bottom + GAP + popupHeight <= window.innerHeight || trigger.top - GAP - popupHeight < 0;
-  return {
-    position: "fixed",
-    ...(below ? { top: trigger.bottom + GAP } : { bottom: window.innerHeight - trigger.top + GAP }),
-    ...(align === "end" ? { right: window.innerWidth - trigger.right } : { left: trigger.left }),
-  };
-}
 
 /**
  * Icon trigger plus a popup list of actions; Esc, an outside pointer down, focus leaving, a scroll or a choice

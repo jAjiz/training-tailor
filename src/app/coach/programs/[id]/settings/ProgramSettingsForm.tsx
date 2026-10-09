@@ -6,7 +6,9 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/controls";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { Field } from "@/components/ui/Field";
+import { isMonday } from "@/lib/training/dates";
 import type { ErrorCode } from "@/lib/training/errors";
 import { archiveProgramAction, updateProgramAction } from "../../../program-actions";
 
@@ -55,8 +57,8 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
           </Field>
           {kind === "continuous" ? (
             <Field label={t("programs.startDate")} hint={startDateLocked ? t("programs.startDateLockedHint") : null}>
-              <Input type="date" step={7} disabled={startDateLocked} value={form.startDate ?? ""}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
+              <DatePicker allow={isMonday} disabled={startDateLocked || archived} value={form.startDate}
+                onChange={(startDate) => setForm({ ...form, startDate })} />
             </Field>
           ) : (
             <Field label={t("programs.weeks")}>
