@@ -89,7 +89,8 @@ function DayColumn({ day, ids, byId, ctx, receiving }: {
       <SortableContext id={columnId(day.dayIndex)} items={ids} strategy={inPlace}>
         {ids.map((id) => <PlannerBlock key={id} block={byId.get(id) as PlannerBlockData} ctx={ctx} />)}
       </SortableContext>
-      <AddBlock dayIndex={day.dayIndex} ctx={ctx} />
+      {/* The column holding the dragged block hides it: on the highlighted background its dashed border vanished. */}
+      {!receiving && <AddBlock dayIndex={day.dayIndex} ctx={ctx} />}
     </div>
   );
 }
