@@ -124,6 +124,7 @@
     "week": "Week {week}",
     "dayNumber": "Day {day}",
     "prevWeek": "Previous week",
+    "pickWeek": "Pick a week (now {week})",
     "nextWeek": "Next week",
     "weekPublished": "Week published",
     "weekDraft": "Week in draft",

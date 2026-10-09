@@ -14,6 +14,7 @@ import { getOwnedProgram, publishedWeeks } from "@/lib/training/services/program
 import { ProgramHeader } from "./ProgramHeader";
 import type { PlannerBlockData, PlannerContext } from "./planner/types";
 import { WeekBoard } from "./planner/WeekBoard";
+import { WeekPicker } from "./planner/WeekPicker";
 import { WeekTools } from "./planner/WeekTools";
 
 type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ week?: string }> };
@@ -73,7 +74,11 @@ export default async function PlannerPage({ params, searchParams }: Params) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-1">
           <WeekArrow to={weekIndex > 0 ? weekIndex - 1 : null} label={t("planner.prevWeek")}><ChevronLeft size={20} aria-hidden /></WeekArrow>
-          <h2 className="min-w-28 px-1 text-center text-lg font-bold">{weekLabel}</h2>
+          <h2>
+            {startDate
+              ? <WeekPicker label={weekLabel} startDate={startDate} weekStart={addDays(startDate, weekIndex * 7)} />
+              : <span className="block min-w-28 px-1 text-center text-lg font-bold">{weekLabel}</span>}
+          </h2>
           <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
         </div>
         <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} />
