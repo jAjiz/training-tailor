@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/Button";
 import type { ErrorCode } from "@/lib/training/errors";
 import { joinProgramAction } from "../../actions";
 
@@ -25,8 +26,8 @@ export function JoinButton({ code }: { code: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <button onClick={join} disabled={pending} className="rounded bg-black px-4 py-3 text-white disabled:opacity-50">{t("join.join")}</button>
-      {error && <p className="text-sm text-red-700">{t(`errors.${error}`)}</p>}
+      <Button type="button" variant="primary" block onClick={join} disabled={pending}>{t("join.join")}</Button>
+      {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
     </div>
   );
 }

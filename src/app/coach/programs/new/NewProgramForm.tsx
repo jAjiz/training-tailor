@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/controls";
+import { Field } from "@/components/ui/Field";
+import { Segmented } from "@/components/ui/Segmented";
 import type { ErrorCode } from "@/lib/training/errors";
 import { createProgramAction } from "../../program-actions";
 
@@ -30,37 +34,28 @@ export function NewProgramForm({ nextMonday }: { nextMonday: string }) {
   }
 
   return (
-    <form onSubmit={submit} className="flex max-w-lg flex-col gap-4">
-      <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">{t("programs.kind")}</legend>
-        {(["continuous", "closed"] as const).map((k) => (
-          <label key={k} className="flex items-start gap-2 text-sm">
-            <input type="radio" name="kind" checked={kind === k} onChange={() => setKind(k)} />
-            <span><b>{t(`programs.kinds.${k}`)}</b> — {t(`programs.kindHelp.${k}`)}</span>
-          </label>
-        ))}
-      </fieldset>
-      <label className="flex flex-col gap-1 text-sm">
-        {t("programs.name")}
-        <input required maxLength={80} className="rounded border px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        {t("programs.description")}
-        <textarea maxLength={500} className="rounded border px-3 py-2" value={description} onChange={(e) => setDescription(e.target.value)} />
-      </label>
+    <form onSubmit={submit} className="flex flex-col gap-5">
+      <Field label={t("programs.kind")} hint={t(`programs.kindHelp.${kind}`)} group>
+        <Segmented label={t("programs.kind")} value={kind} onChange={setKind}
+          options={(["continuous", "closed"] as const).map((k) => ({ value: k, label: t(`programs.kinds.${k}`) }))} />
+      </Field>
+      <Field label={t("programs.name")}>
+        <Input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label={t("programs.description")}>
+        <Textarea rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
       {kind === "continuous" ? (
-        <label className="flex flex-col gap-1 text-sm">
-          {t("programs.startDate")}
-          <input type="date" step={7} min={nextMonday} className="rounded border px-3 py-2" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        </label>
+        <Field label={t("programs.startDate")}>
+          <Input type="date" step={7} min={nextMonday} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </Field>
       ) : (
-        <label className="flex flex-col gap-1 text-sm">
-          {t("programs.weeks")}
-          <input type="number" min={1} max={52} className="rounded border px-3 py-2" value={weeks} onChange={(e) => setWeeks(e.target.value)} />
-        </label>
+        <Field label={t("programs.weeks")}>
+          <Input type="number" min={1} max={52} value={weeks} onChange={(e) => setWeeks(e.target.value)} />
+        </Field>
       )}
-      <button disabled={pending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">{t("programs.create")}</button>
-      {error && <p className="text-sm text-red-700">{t(`errors.${error}`)}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
+      <Button type="submit" variant="primary" disabled={pending}>{t("programs.create")}</Button>
     </form>
   );
 }

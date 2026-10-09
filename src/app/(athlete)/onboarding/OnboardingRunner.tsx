@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/Button";
 import type { ErrorCode } from "@/lib/training/errors";
 import { completeAthleteOnboarding } from "../actions";
 
@@ -26,13 +27,11 @@ export function OnboardingRunner({ next }: { next: string }) {
     return () => { cancelled = true; };
   }, [next, router, attempt]);
 
-  if (!error) return <p className="py-12 text-center text-neutral-600">{t("onboarding.preparing")}</p>;
+  if (!error) return <p role="status" className="py-16 text-center text-muted">{t("onboarding.preparing")}</p>;
   return (
-    <div className="flex flex-col gap-3 py-12">
-      <p className="text-red-700">{t(`errors.${error}`)}</p>
-      <button className="w-fit underline" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>
-        {t("onboarding.retry")}
-      </button>
+    <div className="flex flex-col items-center gap-4 py-16 text-center">
+      <p role="alert" className="text-danger">{t(`errors.${error}`)}</p>
+      <Button type="button" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>{t("onboarding.retry")}</Button>
     </div>
   );
 }

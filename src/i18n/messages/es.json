@@ -20,8 +20,11 @@
   },
   "nav": {
     "today": "Hoy",
+    "calendar": "Calendario",
     "me": "Perfil",
-    "programs": "Mis programas"
+    "programs": "Mis programas",
+    "main": "Navegación principal",
+    "account": "Cuenta"
   },
   "errors": {
     "unauthorized": "Tu sesión ha caducado. Vuelve a entrar.",
@@ -120,8 +123,8 @@
   "planner": {
     "week": "Semana {week}",
     "dayLabel": "Semana {week} · Día {day}",
-    "prevWeek": "← Semana anterior",
-    "nextWeek": "Semana siguiente →",
+    "prevWeek": "Semana anterior",
+    "nextWeek": "Semana siguiente",
     "weekPublished": "Semana publicada",
     "weekDraft": "Semana en borrador",
     "publishWeek": "Publicar semana",
@@ -130,7 +133,11 @@
     "programDraft": "Programa en borrador",
     "publishProgram": "Publicar programa",
     "unpublishProgram": "Despublicar",
-    "addBlock": "+ Bloque",
+    "addBlock": "Añadir bloque",
+    "blockActions": "Acciones del bloque",
+    "dayActions": "Acciones del día",
+    "weekActions": "Acciones de la semana",
+    "blockCount": "{count, plural, one {# bloque} other {# bloques}}",
     "dragHandle": "Arrastrar para mover",
     "duplicate": "Duplicar…",
     "duplicateDay": "Duplicar día…",
@@ -159,13 +166,28 @@
     "reps": "Reps",
     "percent": "% 1RM",
     "kg": "kg",
-    "addSet": "+ Serie",
-    "removeSet": "Quitar",
+    "kind": "Tipo de bloque",
+    "addSet": "Añadir serie",
+    "removeSet": "Quitar la serie {number}",
+    "setNumber": "Serie",
+    "value": "Valor",
+    "unit": "Unidad",
+    "actions": "Acciones",
     "instructions": "Instrucciones",
     "coachingTips": "Coaching tips",
     "videoUrl": "Enlace de vídeo",
     "color": "Color",
-    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar."
+    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar.",
+    "discardConfirm": "¿Descartar los cambios de este bloque?"
+  },
+  "colors": {
+    "neutral": "Gris",
+    "red": "Rojo",
+    "orange": "Naranja",
+    "yellow": "Amarillo",
+    "green": "Verde",
+    "blue": "Azul",
+    "purple": "Morado"
   },
   "join": {
     "invalid": "Este enlace de invitación no es válido o ha caducado.",
@@ -184,7 +206,11 @@
     "regenerate": "Generar un enlace nuevo",
     "regenerateConfirm": "El enlace actual dejará de funcionar. ¿Continuar?",
     "empty": "Todavía no hay atletas. Comparte el enlace de invitación.",
-    "joined": "Desde {date}",
+    "athlete": "Atleta",
+    "since": "Desde",
+    "status": "Estado",
+    "actions": "Acciones",
+    "activeBadge": "Activo",
     "removedBadge": "Quitado",
     "remove": "Quitar",
     "restore": "Restaurar",
@@ -199,12 +225,13 @@
     "startsOn": "Este programa empieza el {date}.",
     "finished": "Programa terminado. Tu historial sigue disponible.",
     "nothing": "Nada publicado para este día.",
-    "calendar": "Calendario",
-    "dayOfProgram": "Semana {week} · Día {day}"
+    "dayOfProgram": "Semana {week} · Día {day}",
+    "prevWeek": "Semana anterior",
+    "nextWeek": "Semana siguiente"
   },
   "calendar": {
     "title": "Calendario",
-    "prevMonth": "← Mes anterior",
-    "nextMonth": "Mes siguiente →"
+    "prevMonth": "Mes anterior",
+    "nextMonth": "Mes siguiente"
   }
 }

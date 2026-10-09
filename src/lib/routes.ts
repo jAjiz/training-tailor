@@ -13,3 +13,8 @@ export function safeNext(next: string | null | undefined, fallback = "/"): strin
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return fallback;
   return next;
 }
+
+/** Carries the selected program over to another athlete page ("/calendar" → "/calendar?program=…"). */
+export function withProgram(path: string, program: string | null): string {
+  return program ? `${path}?program=${encodeURIComponent(program)}` : path;
+}

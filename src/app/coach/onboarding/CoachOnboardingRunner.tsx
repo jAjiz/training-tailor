@@ -23,6 +23,6 @@ export function CoachOnboardingRunner() {
   }, [router]);
 
   return error
-    ? <p className="py-12 text-red-700">{t(`errors.${error}`)}</p>
-    : <p className="py-12 text-neutral-600">{t("onboarding.preparing")}</p>;
+    ? <p role="alert" className="py-16 text-center text-danger">{t(`errors.${error}`)}</p>
+    : <p role="status" className="py-16 text-center text-muted">{t("onboarding.preparing")}</p>;
 }

@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { buttonClasses } from "@/components/ui/Button";
+import { controlClasses } from "@/components/ui/controls";
+import { chipClasses } from "@/components/ui/Pill";
 import { Severity, Side, type Equipment } from "@/lib/domain/types";
 import {
   BenchmarkKind, BenchmarkUnit, ScalingLevel, Sex, Weekday,
@@ -14,8 +17,8 @@ interface Props {
   equipmentOptions: Equipment[];
 }
 
-const field = "rounded border px-2 py-1 text-sm";
-const chip = (on: boolean) => `rounded border px-3 py-1 text-sm ${on ? "bg-black text-white" : ""}`;
+const field = controlClasses(true);
+const chip = chipClasses;
 const toggle = <T,>(list: T[], item: T) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
 const intOrNull = (v: string) => (v.trim() === "" ? null : Math.round(Number(v)));
 const label = (s: string) => s.replaceAll("_", " ");
@@ -78,7 +81,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       <section className="flex flex-col gap-2">
         <h2 className="font-semibold">Injuries and limitations</h2>
         {p.injuries.map((inj, i) => (
-          <div key={inj.key} className="flex flex-wrap items-center gap-2 rounded border p-2">
+          <div key={inj.key} className="flex flex-wrap items-center gap-2 rounded-xl border bg-surface p-2">
             <span className="font-medium">{conditionLabel(inj.key)}</span>
             {isInjury(inj.key) ? (
               <>
@@ -91,10 +94,10 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
                 </select>
               </>
             ) : (
-              <span className="text-sm text-neutral-600">always applies</span>
+              <span className="text-sm text-muted">always applies</span>
             )}
             <input className={`${field} grow`} placeholder="notes" value={inj.notes ?? ""} onChange={(e) => setInjury(i, { notes: e.target.value || null })} />
-            <button type="button" className="text-sm underline" onClick={() => setP({ ...p, injuries: p.injuries.filter((_, j) => j !== i) })}>remove</button>
+            <button type="button" className={buttonClasses({ variant: "ghost", size: "sm", className: "w-fit" })} onClick={() => setP({ ...p, injuries: p.injuries.filter((_, j) => j !== i) })}>remove</button>
           </div>
         ))}
         <div className="flex gap-2">
@@ -139,7 +142,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
             <select className={field} value={b.unit} onChange={(e) => setBenchmark(i, { unit: BenchmarkUnit.parse(e.target.value) })}>
               {BenchmarkUnit.options.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
-            <button type="button" className="text-sm underline" onClick={() => setP({ ...p, benchmarks: p.benchmarks.filter((_, j) => j !== i) })}>remove</button>
+            <button type="button" className={buttonClasses({ variant: "ghost", size: "sm", className: "w-fit" })} onClick={() => setP({ ...p, benchmarks: p.benchmarks.filter((_, j) => j !== i) })}>remove</button>
           </div>
         ))}
         <button type="button" className={`${chip(false)} w-fit`} onClick={() => setP({
@@ -153,7 +156,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
           <div key={i} className="flex flex-wrap items-center gap-2">
             <input className={`${field} grow`} placeholder="e.g. first strict muscle-up" value={g.description} onChange={(e) => setGoal(i, { description: e.target.value })} />
             <input className={field} list="movement-names" placeholder="movement (optional)" value={g.movement ?? ""} onChange={(e) => setGoal(i, { movement: e.target.value || null })} />
-            <button type="button" className="text-sm underline" onClick={() => setP({ ...p, goals: p.goals.filter((_, j) => j !== i) })}>remove</button>
+            <button type="button" className={buttonClasses({ variant: "ghost", size: "sm", className: "w-fit" })} onClick={() => setP({ ...p, goals: p.goals.filter((_, j) => j !== i) })}>remove</button>
           </div>
         ))}
         <button type="button" className={`${chip(false)} w-fit`} onClick={() => setP({ ...p, goals: [...p.goals, { movement: null, description: "" }] })}>Add goal</button>
@@ -178,8 +181,8 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <div className="flex items-center gap-3">
-        <button type="button" className="rounded bg-black px-4 py-2 text-white" onClick={save}>Save profile</button>
-        {status && <span className="text-sm text-neutral-600">{status}</span>}
+        <button type="button" className={buttonClasses({ variant: "primary" })} onClick={save}>Save profile</button>
+        {status && <span className="text-sm text-muted">{status}</span>}
       </div>
     </div>
   );

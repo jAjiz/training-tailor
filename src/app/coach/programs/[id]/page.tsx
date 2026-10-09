@@ -1,5 +1,6 @@
-import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { IconButton } from "@/components/ui/IconButton";
 import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
@@ -10,11 +11,19 @@ import { addDays, daysBetween, fromDbDate, todayIn, weekIndexOf } from "@/lib/tr
 import type { BarbellSet } from "@/lib/training/schemas";
 import { listWeekBlocks } from "@/lib/training/services/blocks";
 import { getOwnedProgram, publishedWeeks } from "@/lib/training/services/programs";
+import { ProgramHeader } from "./ProgramHeader";
 import type { PlannerBlockData, PlannerContext } from "./planner/types";
 import { WeekBoard } from "./planner/WeekBoard";
 import { WeekTools } from "./planner/WeekTools";
 
 type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ week?: string }> };
+
+/** A week arrow: a link, or a disabled button at the ends of the program. */
+function WeekArrow({ to, label, children }: { to: number | null; label: string; children: React.ReactNode }) {
+  return to === null
+    ? <IconButton label={label} disabled>{children}</IconButton>
+    : <IconButton label={label} href={`?week=${to}`}>{children}</IconButton>;
+}
 
 export default async function PlannerPage({ params, searchParams }: Params) {
   const coach = await requireCoachPage();
@@ -53,17 +62,15 @@ export default async function PlannerPage({ params, searchParams }: Params) {
   const published = continuous ? weeks.has(weekIndex) : program.publishedAt !== null;
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-baseline gap-4">
-        <h1 className="text-2xl font-semibold">{program.name}</h1>
-        <Link href={`/coach/programs/${program.id}/athletes`} className="text-sm underline">{t("programs.roster")}</Link>
-        <Link href={`/coach/programs/${program.id}/settings`} className="text-sm underline">{t("programs.settings")}</Link>
-      </div>
-      {ctx.readOnly && <p className="rounded bg-neutral-100 p-2 text-sm">{t("planner.archivedNotice")}</p>}
-      <div className="flex flex-wrap items-center gap-4">
-        {weekIndex > 0 && <Link href={`?week=${weekIndex - 1}`} className="text-sm underline">{t("planner.prevWeek")}</Link>}
-        <span className="font-medium">{t("planner.week", { week: weekIndex + 1 })}</span>
-        {(maxWeek === null || weekIndex < maxWeek) && <Link href={`?week=${weekIndex + 1}`} className="text-sm underline">{t("planner.nextWeek")}</Link>}
+    <section className="flex flex-col gap-6">
+      <ProgramHeader programId={program.id} name={program.name} />
+      {ctx.readOnly && <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">{t("planner.archivedNotice")}</p>}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-1">
+          <WeekArrow to={weekIndex > 0 ? weekIndex - 1 : null} label={t("planner.prevWeek")}><ChevronLeft size={20} aria-hidden /></WeekArrow>
+          <h2 className="min-w-28 text-center text-lg font-bold">{t("planner.week", { week: weekIndex + 1 })}</h2>
+          <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
+        </div>
         <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} />
       </div>
       <WeekBoard

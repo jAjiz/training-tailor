@@ -20,11 +20,12 @@ function restrictionText(r: Restriction): string {
   return [`${site}${r.side ? ` (${r.side})` : ""}`, bans.join(", ") || "context only", ...(r.site ? ["today"] : [])].join(" · ");
 }
 
-const BADGE: Partial<Record<Finding["kind"], { text: string; className: string }>> = {
-  caution_movement: { text: "caution", className: "bg-amber-100 text-amber-900" },
-  unrecognized_movement: { text: "not verified", className: "bg-neutral-200 text-neutral-800" },
-  equipment_unavailable: { text: "missing equipment", className: "bg-red-100 text-red-900" },
-  contraindicated_movement: { text: "contraindicated", className: "bg-red-100 text-red-900" },
+// Badge colors come from the block color tokens (data-color on the badge).
+const BADGE: Partial<Record<Finding["kind"], { text: string; color: "yellow" | "neutral" | "red" }>> = {
+  caution_movement: { text: "caution", color: "yellow" },
+  unrecognized_movement: { text: "not verified", color: "neutral" },
+  equipment_unavailable: { text: "missing equipment", color: "red" },
+  contraindicated_movement: { text: "contraindicated", color: "red" },
 };
 
 export function ResultView({ result, catalog }: { result: PipelineResult; catalog: CatalogEntry[] }) {
@@ -34,7 +35,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
     componentFindings(result.findings, blockIndex, c.canonical ?? c.movement)
       .filter((f) => BADGE[f.kind])
       .map((f) => (
-        <span key={f.kind} title={f.message} className={`mr-2 rounded px-2 text-xs ${BADGE[f.kind]!.className}`}>
+        <span key={f.kind} title={f.message} data-color={BADGE[f.kind]!.color} className="mr-2 rounded-full bg-(--block-fill) px-2 text-xs font-semibold text-(--block-ink)">
           {BADGE[f.kind]!.text}
         </span>
       ));
@@ -44,7 +45,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
       {result.conditions.length + result.restrictions.length > 0 && (
         <div className="flex flex-wrap gap-2 text-xs">
           {result.conditions.map((c) => (
-            <span key={c.key} className="rounded border px-2 py-1">
+            <span key={c.key} className="rounded-full bg-surface-2 px-2.5 py-1 font-medium">
               {entry(c.key)?.label ?? c.key}{c.side ? ` (${c.side})` : ""}
               {/* Severity only grades injuries; a limitation or condition always applies in full. */}
               {entry(c.key)?.kind === "injury" ? ` · ${c.severity}` : ""}
@@ -52,7 +53,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
             </span>
           ))}
           {result.restrictions.map((r, i) => (
-            <span key={`r${i}`} title={[r.evidence, ...r.movements].join(" · ")} className="rounded border px-2 py-1">{restrictionText(r)}</span>
+            <span key={`r${i}`} title={[r.evidence, ...r.movements].join(" · ")} className="rounded-full bg-surface-2 px-2.5 py-1 font-medium">{restrictionText(r)}</span>
           ))}
         </div>
       )}
@@ -93,13 +94,13 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
       </section>
 
       {tailored.safetyNote && (
-        <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">{tailored.safetyNote}</p>
+        <p data-color="yellow" className="rounded-xl bg-(--block-fill) p-3 text-sm text-(--block-ink)">{tailored.safetyNote}</p>
       )}
 
       {result.findings.some((f) => !BADGE[f.kind] || f.blockIndex === null) && (
         <section>
           <h3 className="font-semibold">Checks</h3>
-          <ul className="list-disc pl-5 text-sm text-neutral-700">
+          <ul className="list-disc pl-5 text-sm text-muted">
             {result.findings.filter((f) => !BADGE[f.kind] || f.blockIndex === null).map((f, i) => <li key={i}>{f.message}</li>)}
           </ul>
         </section>

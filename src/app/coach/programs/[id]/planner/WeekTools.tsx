@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/Button";
+import { Menu } from "@/components/ui/Menu";
+import { Pill } from "@/components/ui/Pill";
 import type { ActionResult, ErrorCode } from "@/lib/training/errors";
 import { duplicateWeekAction } from "../../../block-actions";
 import { setProgramPublishedAction, setWeekPublishedAction } from "../../../program-actions";
-import { CopyForm } from "./CopyForm";
+import { CopyDialog } from "./CopyDialog";
 import type { PlannerContext } from "./types";
 
 type Props = { ctx: PlannerContext; kind: "continuous" | "closed"; published: boolean };
@@ -16,6 +19,7 @@ export function WeekTools({ ctx, kind, published }: Props) {
   const te = useTranslations("errors");
   const router = useRouter();
   const [error, setError] = useState<ErrorCode | null>(null);
+  const [copying, setCopying] = useState(false);
 
   async function run(action: Promise<ActionResult>) {
     const r = await action;
@@ -35,17 +39,20 @@ export function WeekTools({ ctx, kind, published }: Props) {
     : (published ? t("unpublishProgram") : t("publishProgram"));
 
   return (
-    <div className="flex flex-wrap items-center gap-4 text-sm">
-      <span className={published ? "text-green-700" : "text-neutral-500"}>{status}</span>
+    <div className="flex flex-wrap items-center gap-3">
+      <Pill tone={published ? "success" : "neutral"}>{status}</Pill>
       {!ctx.readOnly && (
         <>
-          <button onClick={toggle} className={published ? "underline" : "rounded bg-black px-3 py-1 text-white"}>{action}</button>
-          <CopyForm label={t("duplicateWeek")} withDay={false} defaultWeek={ctx.weekIndex + 1} maxWeek={ctx.maxWeek}
-            onCopy={(week) => duplicateWeekAction({ programId: ctx.programId, fromWeek: ctx.weekIndex, toWeek: week })}
-            onDone={() => router.refresh()} />
+          <Button type="button" size="sm" variant={published ? "secondary" : "primary"} onClick={toggle}>{action}</Button>
+          <Menu label={t("weekActions")} items={[{ label: t("duplicateWeek"), onSelect: () => setCopying(true) }]} />
         </>
       )}
-      {error && <span className="text-red-700">{te(error)}</span>}
+      {error && <span role="alert" className="text-sm text-danger">{te(error)}</span>}
+      {copying && (
+        <CopyDialog title={t("duplicateWeek")} withDay={false} defaultWeek={ctx.weekIndex + 1} maxWeek={ctx.maxWeek}
+          onCopy={(week) => duplicateWeekAction({ programId: ctx.programId, fromWeek: ctx.weekIndex, toWeek: week })}
+          onClose={() => setCopying(false)} onDone={() => router.refresh()} />
+      )}
     </div>
   );
 }

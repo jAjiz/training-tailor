@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/controls";
+import { Field } from "@/components/ui/Field";
+import { Segmented } from "@/components/ui/Segmented";
 import type { ErrorCode } from "@/lib/training/errors";
 import { updateSettingsAction } from "../actions";
 
@@ -23,32 +27,24 @@ export function SettingsForm({ initial, timeZones }: { initial: Settings; timeZo
   }
 
   return (
-    <form onSubmit={save} className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1 text-sm">
-        {t("me.displayName")}
-        <input className="rounded border px-3 py-2" value={form.displayName} maxLength={60}
-          onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        {t("me.timezone")}
-        <select className="rounded border px-3 py-2" value={form.timezone}
-          onChange={(e) => setForm({ ...form, timezone: e.target.value })}>
+    <form onSubmit={save} className="flex flex-col gap-5">
+      <Field label={t("me.displayName")}>
+        <Input value={form.displayName} maxLength={60} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+      </Field>
+      <Field label={t("me.timezone")}>
+        <Select value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })}>
           {timeZones.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        {t("me.language")}
-        <select className="rounded border px-3 py-2" value={form.locale}
-          onChange={(e) => setForm({ ...form, locale: e.target.value as Settings["locale"] })}>
-          <option value="es">{t("me.languages.es")}</option>
-          <option value="en">{t("me.languages.en")}</option>
-        </select>
-      </label>
-      <button disabled={state === "saving"} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
+        </Select>
+      </Field>
+      <Field label={t("me.language")} group>
+        <Segmented label={t("me.language")} value={form.locale} onChange={(locale) => setForm({ ...form, locale })}
+          options={[{ value: "es", label: t("me.languages.es") }, { value: "en", label: t("me.languages.en") }]} />
+      </Field>
+      <Button type="submit" variant="primary" block disabled={state === "saving"}>
         {state === "saving" ? t("common.saving") : t("common.save")}
-      </button>
-      {state === "saved" && <p className="text-sm text-green-700">{t("me.saved")}</p>}
-      {state !== "idle" && state !== "saving" && state !== "saved" && <p className="text-sm text-red-700">{t(`errors.${state}`)}</p>}
+      </Button>
+      {state === "saved" && <p role="status" className="text-center text-sm text-success">{t("me.saved")}</p>}
+      {state !== "idle" && state !== "saving" && state !== "saved" && <p role="alert" className="text-sm text-danger">{t(`errors.${state}`)}</p>}
     </form>
   );
 }

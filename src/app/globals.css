@@ -1,20 +1,143 @@
 @import "tailwindcss";
 
-/* The UI is designed light-only for v1. color-scheme keeps native controls (select popups,
-   checkboxes, date pickers) light as well, even when the OS is in dark mode. */
+/* Semantic tokens. Light values here; dark values in the media query that closes this file.
+   The theme follows the operating system only (docs/specs/training-tailor-ui-restyle-design.md). */
 :root {
-  color-scheme: light;
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light dark;
+  --background: #f5f5f5;
+  --surface: #ffffff;
+  --surface-2: #f0f0f0;
+  --raised: #ffffff;
+  --border: #e5e5e5;
+  --foreground: #111111;
+  --muted: #666666;
+  --primary: #111111;
+  --on-primary: #ffffff;
+  --chrome: #000000;
+  --on-chrome: #ffffff;
+  --danger: #dc2626;
+  --success: #15803d;
+
+  /* Block colors: stripe (athlete card), fill (planner block, tinted buttons), ink (text on a fill). */
+  --color-block-neutral-stripe: #d4d4d4;
+  --color-block-neutral-fill: #f0f0f0;
+  --color-block-neutral-ink: #404040;
+  --color-block-red-stripe: #fca5a5;
+  --color-block-red-fill: #fee2e2;
+  --color-block-red-ink: #b91c1c;
+  --color-block-orange-stripe: #fdba74;
+  --color-block-orange-fill: #ffedd5;
+  --color-block-orange-ink: #c2410c;
+  --color-block-yellow-stripe: #fde047;
+  --color-block-yellow-fill: #fef9c3;
+  --color-block-yellow-ink: #a16207;
+  --color-block-green-stripe: #86efac;
+  --color-block-green-fill: #dcfce7;
+  --color-block-green-ink: #15803d;
+  --color-block-blue-stripe: #93c5fd;
+  --color-block-blue-fill: #dbeafe;
+  --color-block-blue-ink: #1d4ed8;
+  --color-block-purple-stripe: #d8b4fe;
+  --color-block-purple-fill: #f3e8ff;
+  --color-block-purple-ink: #7e22ce;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-raised: var(--raised);
+  --color-border: var(--border);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-chrome: var(--chrome);
+  --color-on-chrome: var(--on-chrome);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--border);
+  }
+}
+
+/* An element with data-color exposes its block color as --block-stripe / --block-fill / --block-ink.
+   Unknown values keep neutral (the generic rule comes first and has the same specificity). */
+[data-color] {
+  --block-stripe: var(--color-block-neutral-stripe);
+  --block-fill: var(--color-block-neutral-fill);
+  --block-ink: var(--color-block-neutral-ink);
+}
+[data-color="red"] {
+  --block-stripe: var(--color-block-red-stripe);
+  --block-fill: var(--color-block-red-fill);
+  --block-ink: var(--color-block-red-ink);
+}
+[data-color="orange"] {
+  --block-stripe: var(--color-block-orange-stripe);
+  --block-fill: var(--color-block-orange-fill);
+  --block-ink: var(--color-block-orange-ink);
+}
+[data-color="yellow"] {
+  --block-stripe: var(--color-block-yellow-stripe);
+  --block-fill: var(--color-block-yellow-fill);
+  --block-ink: var(--color-block-yellow-ink);
+}
+[data-color="green"] {
+  --block-stripe: var(--color-block-green-stripe);
+  --block-fill: var(--color-block-green-fill);
+  --block-ink: var(--color-block-green-ink);
+}
+[data-color="blue"] {
+  --block-stripe: var(--color-block-blue-stripe);
+  --block-fill: var(--color-block-blue-fill);
+  --block-ink: var(--color-block-blue-ink);
+}
+[data-color="purple"] {
+  --block-stripe: var(--color-block-purple-stripe);
+  --block-fill: var(--color-block-purple-fill);
+  --block-ink: var(--color-block-purple-ink);
+}
+
+/* Keep this block last: tests/ui/tokens.test.ts reads everything after it as the dark theme. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #111111;
+    --surface: #1e1e1e;
+    --surface-2: #2c2c2c;
+    --raised: #555555;
+    --border: #2e2e2e;
+    --foreground: #f5f5f5;
+    --muted: #a3a3a3;
+    --primary: #f5f5f5;
+    --on-primary: #111111;
+    --danger: #f87171;
+    --success: #4ade80;
+
+    --color-block-neutral-stripe: #525252;
+    --color-block-neutral-fill: #262626;
+    --color-block-neutral-ink: #d4d4d4;
+    --color-block-red-stripe: #dc2626;
+    --color-block-red-fill: #3b1d1d;
+    --color-block-red-ink: #fca5a5;
+    --color-block-orange-stripe: #ea580c;
+    --color-block-orange-fill: #3b2414;
+    --color-block-orange-ink: #fdba74;
+    --color-block-yellow-stripe: #a16207;
+    --color-block-yellow-fill: #352b12;
+    --color-block-yellow-ink: #fde047;
+    --color-block-green-stripe: #16a34a;
+    --color-block-green-fill: #15301f;
+    --color-block-green-ink: #86efac;
+    --color-block-blue-stripe: #2563eb;
+    --color-block-blue-fill: #172a46;
+    --color-block-blue-ink: #93c5fd;
+    --color-block-purple-stripe: #7e22ce;
+    --color-block-purple-fill: #2e1a40;
+    --color-block-purple-ink: #d8b4fe;
+  }
 }
