@@ -20,7 +20,7 @@ export default async function CoachHome() {
         <Button href="/coach/programs/new" variant="primary"><Plus size={18} aria-hidden />{t("new")}</Button>
       </div>
       {programs.length === 0 && <EmptyState>{t("empty")}</EmptyState>}
-      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {programs.map((p) => (
           <li key={p.id}>
             <Link href={`/coach/programs/${p.id}`}

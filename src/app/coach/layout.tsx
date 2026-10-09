@@ -9,7 +9,7 @@ export default async function CoachLayout({ children }: { children: React.ReactN
   return (
     <>
       <CoachNav user={user && { name: user.name, image: user.image }} approved={coach?.status === "approved"} />
-      <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+      <main className="px-6 py-8 lg:px-8">{children}</main>
     </>
   );
 }

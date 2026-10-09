@@ -56,7 +56,7 @@ export function BlockCard({ block, oneRm = null, compact = false, children }: {
   if (compact) {
     return (
       <article data-color={blockColor(block.color)} className="flex flex-col gap-1.5 rounded-xl bg-(--block-fill) p-3">
-        {heading && <h3 className="pr-16 text-sm font-bold leading-snug">{heading}</h3>}
+        {heading && <h3 className="pr-8 text-sm font-bold leading-snug">{heading}</h3>}
         <BlockBody block={block} oneRm={oneRm} compact />
         {(block.coachingTips || block.videoUrl) && (
           <p className="flex flex-wrap items-center gap-3 text-xs font-semibold text-(--block-ink)">

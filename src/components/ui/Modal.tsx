@@ -12,7 +12,7 @@ type Props = {
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: "sm" | "lg";
+  size?: "sm" | "md" | "lg";
 };
 
 /**
@@ -59,7 +59,7 @@ export function Modal({ title, closeLabel, onClose, children, footer, size = "lg
       }}
       className={cx(
         "m-auto max-h-[90vh] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-chrome/50 open:flex",
-        size === "lg" ? "max-w-2xl" : "max-w-sm",
+        size === "lg" ? "max-w-2xl" : size === "md" ? "max-w-md" : "max-w-sm",
       )}>
       <header className="flex items-center justify-between gap-4 px-6 pb-2 pt-5">
         <h2 id={titleId} className="text-lg font-bold">{title}</h2>

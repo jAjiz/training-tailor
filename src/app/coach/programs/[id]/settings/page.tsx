@@ -15,7 +15,7 @@ export default async function ProgramSettingsPage({ params }: { params: Promise<
   return (
     <section className="flex flex-col gap-6">
       <ProgramHeader programId={program.id} name={program.name} />
-      <Card className="max-w-xl p-6">
+      <Card className="p-6">
         <ProgramSettingsForm
           programId={program.id}
           kind={program.kind as "continuous" | "closed"}

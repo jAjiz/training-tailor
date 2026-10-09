@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Pencil } from "lucide-react";
 import { BlockCard } from "@/components/training/BlockCard";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu } from "@/components/ui/Menu";
@@ -17,16 +17,18 @@ import { CopyDialog } from "./CopyDialog";
 import type { PlannerBlockData, PlannerContext } from "./types";
 
 /**
- * A planner tile: a click opens the editor (a stretched button under the tools) and a press-and-move anywhere
- * but the "⋯" menu drags it (the sensor waits for 6px, and swallows the click that ends a drag). The handle
- * stays for the keyboard and for touch, where a press on the tile scrolls the board instead.
+ * A planner tile: a click opens the editor (a stretched button under the menu); pressing and moving anywhere
+ * but the menu drags it (6px with a mouse, a 250ms press on touch; the click that ends a drag is swallowed).
+ * Keyboard users get a handle that only shows when focused. While dragging, the tile stays as a faded
+ * placeholder where it would land and WeekBoard's DragOverlay follows the pointer.
  */
 export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: PlannerContext }) {
   const t = useTranslations();
   const router = useRouter();
   const [dialog, setDialog] = useState<"edit" | "duplicate" | null>(null);
   const [error, setError] = useState<ErrorCode | null>(null);
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: block.id, disabled: ctx.readOnly });
+  const { confirm, dialog: confirmDialog } = useConfirm();
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useSortable({ id: block.id, disabled: ctx.readOnly });
   const heading = block.title ?? block.movement ?? t(`editor.kinds.${block.kind}`);
 
   async function run(action: Promise<ActionResult>) {
@@ -35,26 +37,28 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
     else setError(r.code);
   }
 
-  function remove() {
+  async function remove() {
     const message = block.resultCount > 0
       ? t("planner.deleteConfirmResults", { count: block.resultCount })
       : t("planner.deleteConfirm");
-    if (window.confirm(message)) run(deleteBlockAction(block.id));
+    if (await confirm({ title: t("planner.deleteBlock"), message, confirmLabel: t("common.delete") })) run(deleteBlockAction(block.id));
   }
 
-  // Pointer drags start from the whole tile; the menu (and its portaled popup, whose React events bubble
-  // here) is excluded so a press on it never turns into a drag.
-  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+  // Drags start from the whole tile; the menu (and its portaled popup, whose React events bubble here) is
+  // excluded so a press on it never turns into a drag.
+  const fromTile = (e: React.SyntheticEvent<HTMLDivElement>) => {
     const target = e.target as Element;
-    if (!e.currentTarget.contains(target) || target.closest("[data-no-drag]")) return;
-    listeners?.onPointerDown?.(e);
-  }
+    return e.currentTarget.contains(target) && !target.closest("[data-no-drag]");
+  };
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => { if (fromTile(e)) listeners?.onMouseDown?.(e); };
+  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => { if (fromTile(e)) listeners?.onTouchStart?.(e); };
 
   return (
     <>
-      <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}
-        onPointerDown={ctx.readOnly ? undefined : onPointerDown}
-        className={cx("group relative", !ctx.readOnly && "cursor-grab", isDragging && "z-10 cursor-grabbing opacity-60")}>
+      {/* No transform: WeekBoard moves the block through the board while dragging (its strategy shifts nothing). */}
+      <div ref={setNodeRef}
+        onMouseDown={ctx.readOnly ? undefined : onMouseDown} onTouchStart={ctx.readOnly ? undefined : onTouchStart}
+        className={cx("group relative select-none [-webkit-touch-callout:none]", !ctx.readOnly && "cursor-grab", isDragging && "rounded-xl opacity-50 outline-2 outline-offset-2 outline-dashed outline-foreground/50")}>
         <BlockCard block={block} compact>
           {block.resultCount > 0 && <p className="text-xs text-muted">{t("planner.results", { count: block.resultCount })}</p>}
           {error && <p role="alert" className="text-xs text-danger">{t(`errors.${error}`)}</p>}
@@ -63,17 +67,18 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
           <>
             <button type="button" onClick={() => setDialog("edit")} aria-label={`${t("common.edit")}: ${heading}`}
               className="absolute inset-0 cursor-[inherit] rounded-xl focus-visible:outline-2 focus-visible:outline-foreground" />
-            <div className="absolute right-1 top-1 flex items-center opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-              <IconButton ref={setActivatorNodeRef} label={t("planner.dragHandle")} className="cursor-[inherit] touch-none" {...attributes}
-                onKeyDown={listeners?.onKeyDown as React.KeyboardEventHandler | undefined}>
-                <GripVertical size={16} aria-hidden />
-              </IconButton>
-              <div data-no-drag className="cursor-auto">
-                <Menu label={t("planner.blockActions")} items={[
-                  { label: t("planner.duplicate"), onSelect: () => setDialog("duplicate") },
-                  { label: t("common.delete"), onSelect: remove, danger: true },
-                ]} />
-              </div>
+            {/* Keyboard moves (Space to lift, arrows, Space to drop): visible only while focused. */}
+            <IconButton ref={setActivatorNodeRef} label={t("planner.dragHandle")} size="sm" {...attributes}
+              onKeyDown={listeners?.onKeyDown as React.KeyboardEventHandler | undefined}
+              className="pointer-events-none absolute left-1 top-1 bg-surface opacity-0 focus-visible:opacity-100">
+              <GripVertical size={14} aria-hidden />
+            </IconButton>
+            <div data-no-drag className="absolute right-1 top-1 cursor-auto opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+              <Menu compact label={t("planner.blockActions")} icon={<Pencil size={14} aria-hidden />} items={[
+                { label: t("common.edit"), onSelect: () => setDialog("edit") },
+                { label: t("planner.duplicate"), onSelect: () => setDialog("duplicate") },
+                { label: t("common.delete"), onSelect: () => void remove(), danger: true },
+              ]} />
             </div>
           </>
         )}
@@ -81,10 +86,11 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
       {/* Outside the sortable node: Modal portals anyway, but the editor state belongs to this block. */}
       {dialog === "edit" && <BlockEditor mode="edit" block={block} lifts={ctx.lifts} onClose={() => setDialog(null)} />}
       {dialog === "duplicate" && (
-        <CopyDialog title={t("planner.duplicate")} withDay defaultWeek={ctx.weekIndex} maxWeek={ctx.maxWeek}
-          onCopy={(week, day) => duplicateBlockAction({ blockId: block.id, targetDayIndex: week * 7 + (day ?? 0) })}
+        <CopyDialog title={t("planner.duplicate")} target="day" startDate={ctx.startDate} defaultIndex={block.dayIndex} maxWeek={ctx.maxWeek}
+          onCopy={(targetDayIndex) => duplicateBlockAction({ blockId: block.id, targetDayIndex })}
           onClose={() => setDialog(null)} onDone={() => router.refresh()} />
       )}
+      {confirmDialog}
     </>
   );
 }

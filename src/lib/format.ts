@@ -15,3 +15,9 @@ export function initials(name: string): string {
   const last = words.length > 1 ? words[words.length - 1][0] : "";
   return (words[0][0] + last).toUpperCase();
 }
+
+/** A span of dates as one label ("12–18 oct 2026"), shared parts written once. */
+export function formatDayRange(from: IsoDate, to: IsoDate, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+    .formatRange(toDbDate(from), toDbDate(to));
+}
