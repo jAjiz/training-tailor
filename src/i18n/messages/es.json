@@ -149,6 +149,7 @@
     "targetWeekDateHint": "Elige cualquier día de esa semana.",
     "copy": "Copiar",
     "deleteConfirm": "¿Borrar este bloque?",
+    "deleteBlock": "Borrar bloque",
     "deleteConfirmResults": "Este bloque tiene {count, plural, one {# resultado} other {# resultados}} que se borrarán. ¿Continuar?",
     "results": "{count, plural, one {# resultado} other {# resultados}}",
     "archivedNotice": "Programa archivado: solo lectura."
@@ -218,6 +219,7 @@
     "activeBadge": "Activo",
     "removedBadge": "Quitado",
     "remove": "Quitar",
+    "removeTitle": "Quitar a {name}",
     "restore": "Restaurar",
     "removeConfirm": "¿Quitar a este atleta del programa? Sus resultados se conservan.",
     "results": "Resultados",

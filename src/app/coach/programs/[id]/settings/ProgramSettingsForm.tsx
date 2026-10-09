@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/controls";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Field } from "@/components/ui/Field";
 import type { ErrorCode } from "@/lib/training/errors";
 import { archiveProgramAction, updateProgramAction } from "../../../program-actions";
@@ -20,6 +21,7 @@ type Props = {
 export function ProgramSettingsForm({ programId, kind, initial, startDateLocked, archived }: Props) {
   const t = useTranslations();
   const router = useRouter();
+  const { confirm, dialog } = useConfirm();
   const [form, setForm] = useState({ ...initial, weeks: String(initial.weeks ?? "") });
   const [state, setState] = useState<"idle" | "saving" | "saved" | ErrorCode>("idle");
 
@@ -35,7 +37,7 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
   }
 
   async function archive() {
-    if (!window.confirm(t("programs.archiveConfirm"))) return;
+    if (!(await confirm({ title: t("programs.archive"), message: t("programs.archiveConfirm"), confirmLabel: t("programs.archive") }))) return;
     const r = await archiveProgramAction(programId);
     if (r.ok) router.push("/coach");
     else setState(r.code);
@@ -71,6 +73,7 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
           <Button type="button" variant="danger" onClick={archive}>{t("programs.archive")}</Button>
         </div>
       )}
+      {dialog}
     </div>
   );
 }

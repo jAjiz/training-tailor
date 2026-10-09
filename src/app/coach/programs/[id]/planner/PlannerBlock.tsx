@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useSortable } from "@dnd-kit/sortable";
 import { GripVertical, Pencil } from "lucide-react";
 import { BlockCard } from "@/components/training/BlockCard";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu } from "@/components/ui/Menu";
@@ -26,6 +27,7 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
   const router = useRouter();
   const [dialog, setDialog] = useState<"edit" | "duplicate" | null>(null);
   const [error, setError] = useState<ErrorCode | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useSortable({ id: block.id, disabled: ctx.readOnly });
   const heading = block.title ?? block.movement ?? t(`editor.kinds.${block.kind}`);
 
@@ -35,11 +37,11 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
     else setError(r.code);
   }
 
-  function remove() {
+  async function remove() {
     const message = block.resultCount > 0
       ? t("planner.deleteConfirmResults", { count: block.resultCount })
       : t("planner.deleteConfirm");
-    if (window.confirm(message)) run(deleteBlockAction(block.id));
+    if (await confirm({ title: t("planner.deleteBlock"), message, confirmLabel: t("common.delete") })) run(deleteBlockAction(block.id));
   }
 
   // Drags start from the whole tile; the menu (and its portaled popup, whose React events bubble here) is
@@ -75,7 +77,7 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
               <Menu compact label={t("planner.blockActions")} icon={<Pencil size={14} aria-hidden />} items={[
                 { label: t("common.edit"), onSelect: () => setDialog("edit") },
                 { label: t("planner.duplicate"), onSelect: () => setDialog("duplicate") },
-                { label: t("common.delete"), onSelect: remove, danger: true },
+                { label: t("common.delete"), onSelect: () => void remove(), danger: true },
               ]} />
             </div>
           </>
@@ -88,6 +90,7 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
           onCopy={(targetDayIndex) => duplicateBlockAction({ blockId: block.id, targetDayIndex })}
           onClose={() => setDialog(null)} onDone={() => router.refresh()} />
       )}
+      {confirmDialog}
     </>
   );
 }
