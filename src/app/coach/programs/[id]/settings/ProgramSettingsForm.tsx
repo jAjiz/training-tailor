@@ -44,11 +44,11 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
   return (
     <div className="flex flex-col gap-6">
       <form onSubmit={save} className="flex flex-col gap-5">
-        <fieldset disabled={archived} className="flex flex-col gap-5">
+        <fieldset disabled={archived} className="grid gap-5 lg:grid-cols-2 lg:gap-x-8">
           <Field label={t("programs.name")}>
             <Input required maxLength={80} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label={t("programs.description")}>
+          <Field label={t("programs.description")} className="lg:order-last lg:col-span-2">
             <Textarea rows={3} maxLength={500} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           {kind === "continuous" ? (
@@ -61,7 +61,7 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
               <Input type="number" min={1} max={52} value={form.weeks} onChange={(e) => setForm({ ...form, weeks: e.target.value })} />
             </Field>
           )}
-          <Button type="submit" variant="primary" className="self-start" disabled={state === "saving"}>{t("common.save")}</Button>
+          <Button type="submit" variant="primary" className="justify-self-start lg:order-last lg:col-span-2" disabled={state === "saving"}>{t("common.save")}</Button>
         </fieldset>
         {state === "saved" && <p role="status" className="text-sm text-success">{t("me.saved")}</p>}
         {state !== "idle" && state !== "saving" && state !== "saved" && <p role="alert" className="text-sm text-danger">{t(`errors.${state}`)}</p>}

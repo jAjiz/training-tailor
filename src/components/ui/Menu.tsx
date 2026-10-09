@@ -2,13 +2,21 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cx } from "./cx";
 import { IconButton } from "./IconButton";
 import { stepEnabled } from "./radio-keys";
 
 export type MenuItem = { label: string; onSelect: () => void; danger?: boolean };
-type Props = { label: string; items: MenuItem[]; icon?: React.ReactNode; align?: "start" | "end"; className?: string };
+type Props = {
+  label: string;
+  items: MenuItem[];
+  icon?: React.ReactNode;
+  /** A smaller trigger, for controls laid over content (planner tiles). */
+  compact?: boolean;
+  align?: "start" | "end";
+  className?: string;
+};
 
 const GAP = 4;
 
@@ -26,7 +34,7 @@ function place(trigger: DOMRect, popupHeight: number, align: "start" | "end"): R
  * Icon trigger plus a popup list of actions; Esc, an outside pointer down, focus leaving, a scroll or a choice
  * closes it. The popup is portaled with fixed positioning so scroll containers (the planner board) cannot clip it.
  */
-export function Menu({ label, items, icon, align = "end", className }: Props) {
+export function Menu({ label, items, icon, compact = false, align = "end", className }: Props) {
   const [open, setOpen] = useState(false);
   const [style, setStyle] = useState<React.CSSProperties>({ position: "fixed", visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
@@ -90,8 +98,8 @@ export function Menu({ label, items, icon, align = "end", className }: Props) {
       onBlur={open ? (e) => { if (!inside(e.relatedTarget)) setOpen(false); } : undefined}>
       <IconButton ref={trigger} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
         // While open, pressing the trigger must not blur the focused item first (that would close, then reopen).
-        onMouseDown={open ? (e) => e.preventDefault() : undefined} onClick={toggle}>
-        {icon ?? <MoreHorizontal size={18} aria-hidden />}
+        onMouseDown={open ? (e) => e.preventDefault() : undefined} onClick={toggle} size={compact ? "sm" : "md"}>
+        {icon ?? <ChevronDown size={compact ? 14 : 18} aria-hidden />}
       </IconButton>
       {open && createPortal(
         <div ref={popup} id={menuId} role="menu" aria-label={label} style={style}

@@ -22,8 +22,8 @@ export function DayMenu({ dayIndex, ctx }: Props) {
     <>
       <Menu className="ml-auto" label={t("dayActions")} items={[{ label: t("duplicateDay"), onSelect: () => setCopying(true) }]} />
       {copying && (
-        <CopyDialog title={t("duplicateDay")} withDay defaultWeek={ctx.weekIndex} maxWeek={ctx.maxWeek}
-          onCopy={(week, day) => duplicateDayAction({ programId: ctx.programId, fromDay: dayIndex, toDay: week * 7 + (day ?? 0) })}
+        <CopyDialog title={t("duplicateDay")} target="day" startDate={ctx.startDate} defaultIndex={dayIndex + 7} maxWeek={ctx.maxWeek}
+          onCopy={(toDay) => duplicateDayAction({ programId: ctx.programId, fromDay: dayIndex, toDay })}
           onClose={() => setCopying(false)} onDone={() => router.refresh()} />
       )}
     </>

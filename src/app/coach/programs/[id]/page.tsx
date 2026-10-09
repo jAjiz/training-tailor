@@ -5,7 +5,7 @@ import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { getDomainData } from "@/lib/domain/repository";
-import { formatDay } from "@/lib/format";
+import { formatDay, formatDayRange } from "@/lib/format";
 import { liftCatalog } from "@/lib/training/barbell";
 import { addDays, daysBetween, fromDbDate, todayIn, weekIndexOf } from "@/lib/training/dates";
 import type { BarbellSet } from "@/lib/training/schemas";
@@ -49,6 +49,7 @@ export default async function PlannerPage({ params, searchParams }: Params) {
   ]);
   const ctx: PlannerContext = {
     programId: program.id, lifts: liftCatalog(domain.movements), readOnly: program.archivedAt !== null, maxWeek, weekIndex,
+    startDate,
   };
   const toData = (b: (typeof blocks)[number]): PlannerBlockData => ({
     id: b.id, dayIndex: b.dayIndex, position: b.position, kind: b.kind as PlannerBlockData["kind"], title: b.title,
@@ -58,7 +59,11 @@ export default async function PlannerPage({ params, searchParams }: Params) {
   });
   const dayLabel = (dayIndex: number) => startDate
     ? formatDay(addDays(startDate, dayIndex), locale)
-    : t("planner.dayLabel", { week: weekIndexOf(dayIndex) + 1, day: (dayIndex % 7) + 1 });
+    : t("planner.dayNumber", { day: (dayIndex % 7) + 1 });
+  // Continuous programs live on the calendar: the week is its dates. Closed ones count weeks.
+  const weekLabel = startDate
+    ? formatDayRange(addDays(startDate, weekIndex * 7), addDays(startDate, weekIndex * 7 + 6), locale)
+    : t("planner.week", { week: weekIndex + 1 });
   const published = continuous ? weeks.has(weekIndex) : program.publishedAt !== null;
 
   return (
@@ -68,7 +73,7 @@ export default async function PlannerPage({ params, searchParams }: Params) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-1">
           <WeekArrow to={weekIndex > 0 ? weekIndex - 1 : null} label={t("planner.prevWeek")}><ChevronLeft size={20} aria-hidden /></WeekArrow>
-          <h2 className="min-w-28 text-center text-lg font-bold">{t("planner.week", { week: weekIndex + 1 })}</h2>
+          <h2 className="min-w-28 px-1 text-center text-lg font-bold">{weekLabel}</h2>
           <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
         </div>
         <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} />

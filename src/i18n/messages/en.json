@@ -122,7 +122,7 @@
   },
   "planner": {
     "week": "Week {week}",
-    "dayLabel": "Week {week} · Day {day}",
+    "dayNumber": "Day {day}",
     "prevWeek": "Previous week",
     "nextWeek": "Next week",
     "weekPublished": "Week published",
@@ -144,6 +144,9 @@
     "duplicateWeek": "Duplicate week…",
     "targetWeek": "Week",
     "targetDay": "Day",
+    "targetDate": "Target date",
+    "targetWeekDate": "Target week",
+    "targetWeekDateHint": "Pick any day in that week.",
     "copy": "Copy",
     "deleteConfirm": "Delete this block?",
     "deleteConfirmResults": "This block has {count, plural, one {# result} other {# results}} that will be deleted. Continue?",

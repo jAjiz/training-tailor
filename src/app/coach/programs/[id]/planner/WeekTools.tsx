@@ -49,8 +49,8 @@ export function WeekTools({ ctx, kind, published }: Props) {
       )}
       {error && <span role="alert" className="text-sm text-danger">{te(error)}</span>}
       {copying && (
-        <CopyDialog title={t("duplicateWeek")} withDay={false} defaultWeek={ctx.weekIndex + 1} maxWeek={ctx.maxWeek}
-          onCopy={(week) => duplicateWeekAction({ programId: ctx.programId, fromWeek: ctx.weekIndex, toWeek: week })}
+        <CopyDialog title={t("duplicateWeek")} target="week" startDate={ctx.startDate} defaultIndex={ctx.weekIndex + 1} maxWeek={ctx.maxWeek}
+          onCopy={(toWeek) => duplicateWeekAction({ programId: ctx.programId, fromWeek: ctx.weekIndex, toWeek })}
           onClose={() => setCopying(false)} onDone={() => router.refresh()} />
       )}
     </div>
