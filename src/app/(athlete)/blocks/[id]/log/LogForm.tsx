@@ -43,28 +43,43 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (pending) return;
     setPending(true);
     setError(null);
-    const r = await saveResultAction({ blockId, division, score: buildScore(target, d), notes });
-    setPending(false);
-    if (!r.ok) return setError(r.code);
-    if (r.value.singlePrompt) setPrompt(r.value.singlePrompt);
-    else done();
+    try {
+      const r = await saveResultAction({ blockId, division, score: buildScore(target, d), notes });
+      if (!r.ok) return setError(r.code);
+      if (r.value.singlePrompt) setPrompt(r.value.singlePrompt);
+      else done();
+    } finally {
+      setPending(false);
+    }
   }
 
   async function acceptPrompt() {
-    if (!prompt) return;
-    const r = await addPrAction({ movement: prompt.movement, kg: prompt.to, achievedOn: date });
-    if (r.ok) done();
-    else setError(r.code);
+    if (!prompt || pending) return;
+    setPending(true);
+    try {
+      const r = await addPrAction({ movement: prompt.movement, kg: prompt.to, achievedOn: date });
+      if (r.ok) done();
+      else setError(r.code);
+    } finally {
+      setPending(false);
+    }
   }
 
   async function remove() {
+    if (pending) return;
     const yes = await confirm({ title: t("log.delete"), message: t("log.deleteConfirm"), confirmLabel: t("log.delete") });
     if (!yes) return;
-    const r = await deleteResultAction(blockId);
-    if (r.ok) done();
-    else setError(r.code);
+    setPending(true);
+    try {
+      const r = await deleteResultAction(blockId);
+      if (r.ok) done();
+      else setError(r.code);
+    } finally {
+      setPending(false);
+    }
   }
 
   if (prompt) {
@@ -74,8 +89,8 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
           ? t("log.singlePromptFirst", { movement: prompt.movement, to: prompt.to })
           : t("log.singlePrompt", { movement: prompt.movement, from: prompt.from, to: prompt.to })}</p>
         <div className="flex gap-3">
-          <Button type="button" variant="primary" onClick={acceptPrompt}>{t("log.yes")}</Button>
-          <Button type="button" variant="ghost" onClick={done}>{t("log.no")}</Button>
+          <Button type="button" variant="primary" onClick={acceptPrompt} disabled={pending}>{t("log.yes")}</Button>
+          <Button type="button" variant="ghost" onClick={done} disabled={pending}>{t("log.no")}</Button>
         </div>
         {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       </Card>
@@ -142,7 +157,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
           {target.scoring === "load" && single(t("log.kg"), true)}
           {target.scoring === "calories" && single(t("log.calories"))}
           {target.scoring === "distance" && single(t("log.meters"), true)}
-          <Segmented label={t("log.rx")} value={division} onChange={setDivision}
+          <Segmented label={t("log.division")} value={division} onChange={setDivision}
             options={[{ value: "rx", label: t("log.rx") }, { value: "scaled", label: t("log.scaled") }]} />
         </>
       )}
@@ -151,7 +166,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
       </Field>
       {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       <Button type="submit" variant="primary" block disabled={pending}>{t("log.save")}</Button>
-      {hasResult && <Button type="button" variant="danger" block onClick={remove}>{t("log.delete")}</Button>}
+      {hasResult && <Button type="button" variant="danger" block onClick={remove} disabled={pending}>{t("log.delete")}</Button>}
       {dialog}
     </form>
   );

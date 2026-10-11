@@ -270,6 +270,7 @@
   "log": {
     "title": "Log result",
     "editTitle": "Edit result",
+    "division": "Division",
     "rx": "Rx",
     "scaled": "Scaled",
     "minutes": "Minutes",

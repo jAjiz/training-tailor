@@ -270,6 +270,7 @@
   "log": {
     "title": "Registrar resultado",
     "editTitle": "Editar resultado",
+    "division": "Categoría",
     "rx": "Rx",
     "scaled": "Scaled",
     "minutes": "Minutos",

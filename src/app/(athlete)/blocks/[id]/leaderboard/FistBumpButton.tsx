@@ -31,7 +31,8 @@ export function FistBumpButton({ resultId, initialCount, initialBumped, disabled
   }
 
   return (
-    <button onClick={toggle} disabled={disabled || pending} aria-pressed={bumped} aria-label={t("fistBump")}
+    <button onClick={toggle} disabled={disabled || pending} aria-pressed={disabled ? undefined : bumped}
+      aria-label={count > 0 ? `${t("fistBump")} (${count})` : t("fistBump")}
       className={cx(
         "flex h-9 min-w-9 items-center justify-center gap-1 rounded-full px-2.5 text-sm font-semibold tabular-nums transition",
         "focus-visible:outline-2 focus-visible:outline-foreground disabled:opacity-50",
