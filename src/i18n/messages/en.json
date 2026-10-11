@@ -242,5 +242,30 @@
     "prevMonth": "Previous month",
     "nextMonth": "Next month",
     "pickDate": "Pick a date"
+  },
+  "log": {
+    "title": "Log result",
+    "editTitle": "Edit result",
+    "rx": "Rx",
+    "scaled": "Scaled",
+    "minutes": "Minutes",
+    "seconds": "Seconds",
+    "capped": "I did not finish within the time cap",
+    "repsDone": "Reps completed",
+    "rounds": "Rounds",
+    "reps": "Reps",
+    "kg": "kg",
+    "calories": "Calories",
+    "meters": "Meters",
+    "set": "Set {n}",
+    "notes": "Notes",
+    "save": "Save result",
+    "delete": "Delete result",
+    "deleteConfirm": "Delete your result?",
+    "notLoggable": "This block cannot be logged yet.",
+    "singlePrompt": "Update your {movement} 1RM from {from} kg to {to} kg?",
+    "singlePromptFirst": "Save {to} kg as your {movement} 1RM?",
+    "yes": "Yes, update",
+    "no": "No"
   }
 }
