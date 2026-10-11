@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { cx } from "@/components/ui/cx";
@@ -9,17 +10,23 @@ export function FistBumpButton({ resultId, initialCount, initialBumped, disabled
   resultId: string; initialCount: number; initialBumped: boolean; disabled: boolean;
 }) {
   const t = useTranslations("leaderboard");
+  const router = useRouter();
   const [count, setCount] = useState(initialCount);
   const [bumped, setBumped] = useState(initialBumped);
   const [pending, setPending] = useState(false);
 
   async function toggle() {
     setPending(true);
-    const r = await toggleFistBumpAction(resultId);
-    setPending(false);
-    if (r.ok) {
-      setCount(r.value.count);
-      setBumped(r.value.bumped);
+    try {
+      const r = await toggleFistBumpAction(resultId);
+      if (r.ok) {
+        setCount(r.value.count);
+        setBumped(r.value.bumped);
+      } else {
+        router.refresh();
+      }
+    } finally {
+      setPending(false);
     }
   }
 
