@@ -1,4 +1,5 @@
 import type { Viewport } from "next";
+import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { BlockCard } from "@/components/training/BlockCard";
 import { Button } from "@/components/ui/Button";
@@ -7,10 +8,14 @@ import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
+import { hasLeaderboard } from "@/lib/training/access";
 import { addDays, isIsoDate, mondayOf, todayIn, weekIndexOf } from "@/lib/training/dates";
 import type { BarbellSet } from "@/lib/training/schemas";
+import { formatScore, scoreTarget } from "@/lib/training/scoring";
 import { getAthleteDay, getVisibleDays } from "@/lib/training/services/athlete-view";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
+import { oneRmMap } from "@/lib/training/services/prs";
+import { getDayResults } from "@/lib/training/services/results";
 import { AthleteHeader } from "./AthleteHeader";
 import { WeekStrip } from "./WeekStrip";
 
@@ -36,6 +41,11 @@ export default async function TodayPage({ searchParams }: Props) {
     orNotFound(getAthleteDay(prisma, athlete.id, programId, date, today)),
     getVisibleDays(prisma, athlete.id, programId, monday, addDays(monday, 6)),
   ]);
+  const movements = day.blocks.flatMap((b) => (b.movement ? [b.movement] : []));
+  const [dayResults, oneRms] = await Promise.all([
+    getDayResults(prisma, athlete.id, programId, day.blocks.map((b) => b.id)),
+    oneRmMap(prisma, athlete.id, movements),
+  ]);
 
   return (
     <>
@@ -55,9 +65,33 @@ export default async function TodayPage({ searchParams }: Props) {
         {day.status === "before_start" && <EmptyState>{t("startsOn", { date: formatDay(day.timeline.startDate, locale) })}</EmptyState>}
         {day.status === "finished" && <EmptyState>{t("finished")}</EmptyState>}
         {(day.status === "unpublished" || (day.status === "ok" && day.blocks.length === 0)) && <EmptyState>{t("nothing")}</EmptyState>}
-        {day.blocks.map((b) => (
-          <BlockCard key={b.id} block={{ ...b, sets: b.sets as BarbellSet[] | null }} />
-        ))}
+        {day.blocks.map((b) => {
+          const mine = dayResults.mine.get(b.id);
+          const scored = b.kind === "barbell" || (b.scoring !== null && b.scoring !== "none");
+          const board = hasLeaderboard(b, day.program);
+          return (
+            <BlockCard key={b.id} block={{ ...b, sets: b.sets as BarbellSet[] | null }} oneRm={b.movement ? oneRms.get(b.movement) ?? null : null}>
+              {b.kind === "barbell" && b.movement && !oneRms.has(b.movement) && (b.sets as BarbellSet[] | null)?.some((s) => s.percent !== null) && (
+                <Link href={`/prs/${encodeURIComponent(b.movement)}`} className="text-xs text-muted underline">{t("addOneRm", { movement: b.movement })}</Link>
+              )}
+              {mine && <p className="text-sm font-semibold">{t("myResult", { score: formatScore(scoreTarget(b), mine.score) })}</p>}
+              {(scored && day.loggable) || board ? (
+                <div className="flex gap-2">
+                  {scored && day.loggable && (
+                    <Button href={`/blocks/${b.id}/log`} variant="tinted" size="sm" block>
+                      {mine ? t("editResult") : t("logResult")}
+                    </Button>
+                  )}
+                  {board && (
+                    <Button href={`/blocks/${b.id}/leaderboard`} variant="tinted" size="sm" block>
+                      {t("scores", { count: dayResults.counts.get(b.id) ?? 0 })}
+                    </Button>
+                  )}
+                </div>
+              ) : null}
+            </BlockCard>
+          );
+        })}
       </section>
     </>
   );

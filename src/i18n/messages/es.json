@@ -235,7 +235,18 @@
     "nothing": "Nada publicado para este día.",
     "dayOfProgram": "Semana {week} · Día {day}",
     "prevWeek": "Semana anterior",
-    "nextWeek": "Semana siguiente"
+    "nextWeek": "Semana siguiente",
+    "logResult": "Registrar resultado",
+    "editResult": "Editar",
+    "myResult": "Tu resultado: {score}",
+    "scores": "{count, plural, =0 {Sin scores} one {# score} other {# scores}}",
+    "addOneRm": "Añade tu 1RM de {movement} para ver los kg"
+  },
+  "leaderboard": {
+    "title": "Leaderboard",
+    "empty": "Todavía nadie ha registrado este bloque.",
+    "you": "Tú",
+    "fistBump": "Fist bump"
   },
   "calendar": {
     "title": "Calendario",
