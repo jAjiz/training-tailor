@@ -14,7 +14,12 @@ import { PrHistory } from "./PrHistory";
 
 export default async function MovementPrPage({ params }: { params: Promise<{ movement: string }> }) {
   const athlete = await requireAthletePage("/prs");
-  const movement = decodeURIComponent((await params).movement);
+  let movement: string;
+  try {
+    movement = decodeURIComponent((await params).movement);
+  } catch {
+    notFound();
+  }
   const { movements } = await getDomainData();
   if (!isLiftMovement(movement, movements)) notFound();
   const [t, tc] = await Promise.all([getTranslations("prs"), getTranslations("common")]);

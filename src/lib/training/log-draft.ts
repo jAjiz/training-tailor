@@ -38,8 +38,14 @@ export function logDraftFor(target: ScoreTarget, existing: unknown | null, presc
   return draft;
 }
 
-const int = (v: string) => (v.trim() === "" ? NaN : Number(v));
-const part = (v: string) => (v.trim() === "" ? 0 : Number(v));
+/** Parses a typed number, accepting a comma as the decimal separator; empty is NaN. */
+export function parseDecimal(v: string): number {
+  const t = v.trim().replace(",", ".");
+  return t === "" ? NaN : Number(t);
+}
+
+const int = parseDecimal;
+const part = (v: string) => (v.trim() === "" ? 0 : parseDecimal(v));
 
 /** The raw score sent to the server, which validates it with `evaluateScore`. */
 export function buildScore(target: ScoreTarget, d: LogDraft): unknown {

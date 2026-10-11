@@ -11,6 +11,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
 import type { IsoDate } from "@/lib/training/dates";
+import { parseDecimal } from "@/lib/training/log-draft";
 import type { ErrorCode } from "@/lib/training/errors";
 import { addPrAction, deletePrAction } from "../../pr-actions";
 
@@ -28,9 +29,11 @@ export function PrHistory({ movement, today, entries }: { movement: string; toda
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (pending) return;
+    const value = parseDecimal(kg);
+    if (!Number.isFinite(value)) return setError("invalid_request");
     setPending(true);
     try {
-      const r = await addPrAction({ movement, kg: Number(kg), achievedOn: date });
+      const r = await addPrAction({ movement, kg: value, achievedOn: date });
       if (r.ok) {
         setKg("");
         setError(null);

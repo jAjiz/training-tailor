@@ -34,4 +34,14 @@ describe("log drafts", () => {
     const d = logDraftFor(custom("reps"), null, [], null);
     expect(evaluateScore(custom("reps"), buildScore(custom("reps"), d))).toBeNull();
   });
+
+  it("accepts a comma decimal for a load score", () => {
+    const d = { ...logDraftFor(custom("load"), null, [], null), value: "102,5" };
+    expect(buildScore(custom("load"), d)).toEqual({ kg: 102.5 });
+  });
+
+  it("accepts a comma decimal for a barbell set", () => {
+    const d = { ...logDraftFor({ kind: "barbell" }, null, [], null), sets: [{ kg: "82,5", reps: "3" }] };
+    expect(buildScore({ kind: "barbell" }, d)).toEqual({ sets: [{ kg: 82.5, reps: 3 }] });
+  });
 });
