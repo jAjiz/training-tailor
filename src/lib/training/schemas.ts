@@ -95,3 +95,18 @@ export function parse<S extends z.ZodType>(schema: S, raw: unknown): z.output<S>
   if (!result.success) throw new TrainingError("invalid_request");
   return result.data;
 }
+
+export const ResultInput = z.object({
+  blockId: z.string().min(1).max(64),
+  division: Division,
+  score: z.unknown(),
+  notes: optionalText(1000),
+});
+export type ResultInputValue = z.output<typeof ResultInput>;
+
+export const PrInput = z.object({
+  movement: z.string().trim().min(1).max(80),
+  kg: z.number().positive().max(500),
+  achievedOn: IsoDateString,
+});
+export type PrInputValue = z.output<typeof PrInput>;
