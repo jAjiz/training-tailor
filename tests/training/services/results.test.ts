@@ -109,6 +109,14 @@ describe("results", () => {
     expect(await getMyResult(tdb.prisma, ana.id, wod.id)).toBeNull();
   });
 
+  it("exposes what an untitled block needs to be labelled in coach rows", async () => {
+    const { coach, program, ana, wod } = await setup();
+    await tdb.prisma.block.update({ where: { id: wod.id }, data: { title: null } });
+    await log(ana, wod.id, { seconds: 640 });
+    const row = (await listAthleteResults(tdb.prisma, coach.id, program.id, ana.id)).results[0];
+    expect(row).toMatchObject({ blockTitle: null, blockKind: "custom", blockScoring: "for_time" });
+  });
+
   it("lists results for the coach, by block and by athlete", async () => {
     const { coach, program, ana, wod } = await setup();
     const other = await makeCoach(tdb.prisma);

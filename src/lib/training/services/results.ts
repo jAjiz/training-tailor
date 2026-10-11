@@ -145,7 +145,7 @@ export async function toggleFistBump(db: Db, athlete: AthleteRef, resultId: stri
 }
 
 export type CoachResultRow = {
-  id: string; athleteId: string; displayName: string; blockId: string; blockTitle: string;
+  id: string; athleteId: string; displayName: string; blockId: string; blockTitle: string | null; blockKind: string; blockScoring: string | null;
   division: string; formatted: string; notes: string | null; performedOn: IsoDate;
 };
 
@@ -157,7 +157,8 @@ type ResultWithRefs = {
 
 const toRow = (r: ResultWithRefs): CoachResultRow => ({
   id: r.id, athleteId: r.athleteId, displayName: r.athlete.displayName, blockId: r.blockId,
-  blockTitle: r.block.title ?? r.block.movement ?? "", division: r.division,
+  blockTitle: r.block.title ?? r.block.movement ?? null, blockKind: r.block.kind, blockScoring: r.block.scoring,
+  division: r.division,
   formatted: formatScore(scoreTarget(r.block), r.score), notes: r.notes, performedOn: fromDbDate(r.performedOn),
 });
 

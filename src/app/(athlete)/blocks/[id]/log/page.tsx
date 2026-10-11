@@ -5,6 +5,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
+import { blockLabel } from "@/lib/training/block-label";
 import { logDraftFor } from "@/lib/training/log-draft";
 import type { BarbellSet } from "@/lib/training/schemas";
 import { scoreTarget } from "@/lib/training/scoring";
@@ -16,7 +17,7 @@ export default async function LogPage({ params }: { params: Promise<{ id: string
   const athlete = await requireAthletePage();
   const { id } = await params;
   const { block, date, loggable } = await orNotFound(getVisibleBlock(prisma, athlete, id));
-  const [t, tc] = await Promise.all([getTranslations("log"), getTranslations("common")]);
+  const [t, tc, tb] = await Promise.all([getTranslations("log"), getTranslations("common"), getTranslations()]);
   const backHref = `/?program=${block.programId}&date=${date}`;
   const back = <IconButton href={backHref} label={tc("back")}><ChevronLeft size={20} aria-hidden /></IconButton>;
   if (!loggable) {
@@ -38,7 +39,7 @@ export default async function LogPage({ params }: { params: Promise<{ id: string
       <div>{back}</div>
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold">{mine ? t("editTitle") : t("title")}</h1>
-        <p className="text-[15px] text-muted">{block.title ?? block.movement}</p>
+        <p className="text-[15px] text-muted">{blockLabel(block, tb)}</p>
       </div>
       <LogForm
         blockId={block.id}

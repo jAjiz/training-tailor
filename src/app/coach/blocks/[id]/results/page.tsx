@@ -8,6 +8,7 @@ import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
+import { blockLabel } from "@/lib/training/block-label";
 import { hasLeaderboard } from "@/lib/training/access";
 import { getLeaderboard, listBlockResults } from "@/lib/training/services/results";
 
@@ -36,7 +37,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
     return (
       <section className="flex flex-col gap-6">
         {back}
-        <h1 className="text-3xl font-bold">{block.title} · {t("leaderboard.title")}</h1>
+        <h1 className="text-3xl font-bold">{blockLabel(block, t)} · {t("leaderboard.title")}</h1>
         {entries.length === 0 ? <EmptyState>{t("coachResults.empty")}</EmptyState> : (
           <Card className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
@@ -70,7 +71,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
   return (
     <section className="flex flex-col gap-6">
       {back}
-      <h1 className="text-3xl font-bold">{block.title ?? block.movement} · {t("coachResults.title")}</h1>
+      <h1 className="text-3xl font-bold">{blockLabel(block, t)} · {t("coachResults.title")}</h1>
       {results.length === 0 ? <EmptyState>{t("coachResults.empty")}</EmptyState> : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">

@@ -10,6 +10,7 @@ import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
+import { blockLabel } from "@/lib/training/block-label";
 import { getLeaderboard } from "@/lib/training/services/results";
 import { FistBumpButton } from "./FistBumpButton";
 
@@ -17,7 +18,7 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ id
   const athlete = await requireAthletePage();
   const { id } = await params;
   const { block, date, entries } = await orNotFound(getLeaderboard(prisma, { athlete }, id));
-  const [t, tc, tl] = await Promise.all([getTranslations("leaderboard"), getTranslations("common"), getTranslations("log")]);
+  const [t, tc, tl, tb] = await Promise.all([getTranslations("leaderboard"), getTranslations("common"), getTranslations("log"), getTranslations()]);
   const locale = await getLocale();
   return (
     <section className="flex flex-col gap-5 pt-4">
@@ -26,7 +27,7 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ id
       </div>
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold">{t("title")}</h1>
-        <p className="text-[15px] text-muted">{block.title} · {formatDay(date, locale, { day: "numeric", month: "long", year: "numeric" })}</p>
+        <p className="text-[15px] text-muted">{blockLabel(block, tb)} · {formatDay(date, locale, { day: "numeric", month: "long", year: "numeric" })}</p>
       </div>
       {entries.length === 0 && <EmptyState>{t("empty")}</EmptyState>}
       {entries.length > 0 && (
