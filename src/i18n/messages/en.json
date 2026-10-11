@@ -21,6 +21,7 @@
   "nav": {
     "today": "Today",
     "calendar": "Calendar",
+    "prs": "PRs",
     "me": "Me",
     "programs": "My programs",
     "main": "Main navigation",
@@ -104,6 +105,18 @@
       "distance": "Distance (m)",
       "max_time": "Time (more is better)"
     }
+  },
+  "prs": {
+    "title": "PRs",
+    "search": "Search an exercise",
+    "noResults": "No exercise matches.",
+    "current": "Current 1RM",
+    "history": "History",
+    "empty": "You have not recorded a 1RM for this exercise yet.",
+    "add": "Add 1RM",
+    "kg": "kg",
+    "date": "Date",
+    "deleteConfirm": "Delete this entry?"
   },
   "patterns": {
     "squat": "Squats",

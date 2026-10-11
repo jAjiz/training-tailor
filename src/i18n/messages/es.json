@@ -21,6 +21,7 @@
   "nav": {
     "today": "Hoy",
     "calendar": "Calendario",
+    "prs": "PRs",
     "me": "Perfil",
     "programs": "Mis programas",
     "main": "Navegación principal",
@@ -104,6 +105,18 @@
       "distance": "Distancia (m)",
       "max_time": "Tiempo (más es mejor)"
     }
+  },
+  "prs": {
+    "title": "PRs",
+    "search": "Buscar un ejercicio",
+    "noResults": "Ningún ejercicio coincide.",
+    "current": "1RM actual",
+    "history": "Historial",
+    "empty": "Todavía no has registrado ningún 1RM de este ejercicio.",
+    "add": "Añadir 1RM",
+    "kg": "kg",
+    "date": "Fecha",
+    "deleteConfirm": "¿Borrar esta entrada?"
   },
   "patterns": {
     "squat": "Sentadillas",
