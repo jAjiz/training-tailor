@@ -291,5 +291,18 @@
     "singlePromptFirst": "Save {to} kg as your {movement} 1RM?",
     "yes": "Yes, update",
     "no": "No"
+  },
+  "coachResults": {
+    "title": "Results",
+    "empty": "No results yet.",
+    "athlete": "Athlete",
+    "block": "Block",
+    "date": "Date",
+    "score": "Result",
+    "division": "Division",
+    "notes": "Notes",
+    "rank": "#",
+    "bumps": "Fist bumps",
+    "view": "View results"
   }
 }

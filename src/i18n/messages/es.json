@@ -291,5 +291,18 @@
     "singlePromptFirst": "¿Guardar {to} kg como tu 1RM de {movement}?",
     "yes": "Sí, actualizar",
     "no": "No"
+  },
+  "coachResults": {
+    "title": "Resultados",
+    "empty": "Todavía no hay resultados.",
+    "athlete": "Atleta",
+    "block": "Bloque",
+    "date": "Fecha",
+    "score": "Resultado",
+    "division": "Categoría",
+    "notes": "Notas",
+    "rank": "#",
+    "bumps": "Fist bumps",
+    "view": "Ver resultados"
   }
 }
