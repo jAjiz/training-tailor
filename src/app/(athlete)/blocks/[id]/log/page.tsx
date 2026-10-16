@@ -37,10 +37,6 @@ export default async function LogPage({ params }: { params: Promise<{ id: string
   return (
     <section className="flex flex-col gap-5 pt-4">
       <div>{back}</div>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold">{mine ? t("editTitle") : t("title")}</h1>
-        <p className="text-[15px] text-muted">{blockLabel(block, tb)}</p>
-      </div>
       <LogForm
         blockId={block.id}
         target={target}
@@ -50,6 +46,8 @@ export default async function LogPage({ params }: { params: Promise<{ id: string
         initialDivision={mine?.division === "scaled" ? "scaled" : "rx"}
         initialNotes={mine?.notes ?? ""}
         hasResult={mine !== null}
+        titles={{ new: t("title"), edit: t("editTitle") }}
+        subtitle={blockLabel(block, tb)}
       />
     </section>
   );

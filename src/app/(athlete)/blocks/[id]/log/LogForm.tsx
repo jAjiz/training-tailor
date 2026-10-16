@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
@@ -24,11 +24,15 @@ type Props = {
   initialDivision: "rx" | "scaled";
   initialNotes: string;
   hasResult: boolean;
+  titles: { new: string; edit: string };
+  subtitle: string;
 };
 
 type Prompt = { movement: string; from: number | null; to: number };
 
-export function LogForm({ blockId, target, date, backHref, initial, initialDivision, initialNotes, hasResult }: Props) {
+export function LogForm({ blockId, target, date, backHref, initial, initialDivision, initialNotes, hasResult, titles, subtitle }: Props) {
+  const cappedId = useId();
+  const [title] = useState(hasResult ? titles.edit : titles.new);
   const t = useTranslations();
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
@@ -82,8 +86,17 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
     }
   }
 
+  const header = (
+    <div className="flex flex-col gap-1">
+      <h1 className="text-3xl font-bold">{title}</h1>
+      <p className="text-[15px] text-muted">{subtitle}</p>
+    </div>
+  );
+
   if (prompt) {
     return (
+      <>
+      {header}
       <Card className="flex flex-col gap-4 p-5">
         <p className="text-[15px]">{prompt.from === null
           ? t("log.singlePromptFirst", { movement: prompt.movement, to: prompt.to })
@@ -94,6 +107,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
         </div>
         {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       </Card>
+      </>
     );
   }
 
@@ -114,6 +128,8 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
   );
 
   return (
+    <>
+    {header}
     <form onSubmit={save} className="flex flex-col gap-5">
       {target.kind === "barbell" ? (
         d.sets.map((s, i) => (
@@ -139,9 +155,9 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
                 ? <Field label={t("log.repsDone")}><Input inputMode="numeric" value={d.reps} onChange={(e) => set({ reps: e.target.value })} /></Field>
                 : time}
               {target.timeCapSeconds !== null && (
-                <label className="flex items-center gap-3 text-sm">
-                  <input type="checkbox" className="h-5 w-5 shrink-0 accent-primary" checked={d.capped} onChange={(e) => set({ capped: e.target.checked })} />
-                  {t("log.capped")}
+                <label htmlFor={cappedId} className="flex items-center gap-3 text-sm">
+                  <input id={cappedId} type="checkbox" aria-labelledby={`${cappedId}-text`} className="h-5 w-5 shrink-0 accent-primary" checked={d.capped} onChange={(e) => set({ capped: e.target.checked })} />
+                  <span id={`${cappedId}-text`}>{t("log.capped")}</span>
                 </label>
               )}
             </>
@@ -169,5 +185,6 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
       {hasResult && <Button type="button" variant="danger" block onClick={remove} disabled={pending}>{t("log.delete")}</Button>}
       {dialog}
     </form>
+    </>
   );
 }

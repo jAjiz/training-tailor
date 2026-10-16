@@ -72,7 +72,7 @@ export function PrHistory({ movement, today, entries }: { movement: string; toda
             <Input required inputMode="decimal" value={kg} onChange={(e) => setKg(e.target.value)} />
           </Field>
           <Field label={t("prs.date")}>
-            <DatePicker value={date} onChange={setDate} allow={(d) => d <= today} />
+            <DatePicker label={t("prs.date")} value={date} onChange={setDate} allow={(d) => d <= today} />
           </Field>
         </div>
         {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
