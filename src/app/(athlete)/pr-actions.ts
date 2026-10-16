@@ -12,7 +12,7 @@ import { addPr, deletePr } from "@/lib/training/services/prs";
 export async function addPrAction(raw: unknown): Promise<ActionResult> {
   return runAction(async () => {
     const athlete = await requireAthlete();
-    await addPr(prisma, athlete.id, parse(PrInput, raw));
+    await addPr(prisma, athlete, parse(PrInput, raw));
     revalidatePath("/", "layout");
   });
 }

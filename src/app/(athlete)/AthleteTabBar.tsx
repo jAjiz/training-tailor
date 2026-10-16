@@ -23,7 +23,8 @@ export function AthleteTabBar() {
     <nav aria-label={t("main")} className="fixed inset-x-0 bottom-0 z-30 border-t bg-surface pb-[env(safe-area-inset-bottom)]">
       <ul className="mx-auto flex max-w-md">
         {ITEMS.map(({ href, key, Icon, keepProgram }) => {
-          const active = href === "/prs" ? pathname === href || pathname.startsWith("/prs/") : pathname === href;
+          // A tab stays active on its nested pages ("/prs/Back Squat"); "/" only matches itself.
+          const active = pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
           return (
             <li key={href} className="flex-1">
               <Link href={keepProgram ? withProgram(href, program) : href} aria-current={active ? "page" : undefined}

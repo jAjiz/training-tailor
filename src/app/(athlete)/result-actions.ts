@@ -23,7 +23,7 @@ export async function saveResultAction(raw: unknown): Promise<ActionResult<{ sin
 export async function deleteResultAction(blockId: unknown): Promise<ActionResult> {
   return runAction(async () => {
     const athlete = await requireAthlete();
-    await deleteResult(prisma, athlete.id, parse(Id, blockId));
+    await deleteResult(prisma, athlete, parse(Id, blockId));
     revalidatePath("/", "layout");
   });
 }

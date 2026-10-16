@@ -4,7 +4,7 @@ import {
   enroll, makeAthlete, makeBarbellBlock, makeClosed, makeCoach, makeContinuous, makeCustomBlock, publishWeek,
 } from "../../helpers/factories";
 import {
-  deleteResult, getDayResults, getLeaderboard, getMyResult, listAthleteResults, listBlockResults, saveResult, toggleFistBump,
+  deleteResult, getCoachBlockResults, getDayResults, getLeaderboard, getMyResult, listAthleteResults, listBlockResults, saveResult, toggleFistBump,
 } from "@/lib/training/services/results";
 
 let tdb: TestDb;
@@ -105,8 +105,17 @@ describe("results", () => {
     const day = await getDayResults(tdb.prisma, ana.id, program.id, [wod.id]);
     expect(day.counts.get(wod.id)).toBe(2);
     expect(day.mine.get(wod.id)?.sortKey).toBe(-640);
-    await deleteResult(tdb.prisma, ana.id, wod.id);
+    await deleteResult(tdb.prisma, ana, wod.id, NOW);
     expect(await getMyResult(tdb.prisma, ana.id, wod.id)).toBeNull();
+    await expect(deleteResult(tdb.prisma, ana, wod.id, NOW)).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("refuses deleting a result the athlete can no longer see", async () => {
+    const { program, ana, wod } = await setup();
+    await log(ana, wod.id, { seconds: 640 });
+    await tdb.prisma.enrollment.updateMany({ where: { programId: program.id, athleteId: ana.id }, data: { removedAt: NOW } });
+    await expect(deleteResult(tdb.prisma, ana, wod.id, NOW)).rejects.toMatchObject({ code: "not_found" });
+    expect(await getMyResult(tdb.prisma, ana.id, wod.id)).not.toBeNull();
   });
 
   it("exposes what an untitled block needs to be labelled in coach rows", async () => {
@@ -114,7 +123,7 @@ describe("results", () => {
     await tdb.prisma.block.update({ where: { id: wod.id }, data: { title: null } });
     await log(ana, wod.id, { seconds: 640 });
     const row = (await listAthleteResults(tdb.prisma, coach.id, program.id, ana.id)).results[0];
-    expect(row).toMatchObject({ blockTitle: null, blockKind: "custom", blockScoring: "for_time" });
+    expect(row).toMatchObject({ blockTitle: null, blockMovement: null, blockKind: "custom", blockScoring: "for_time" });
   });
 
   it("lists results for the coach, by block and by athlete", async () => {
@@ -125,5 +134,13 @@ describe("results", () => {
     expect((await listAthleteResults(tdb.prisma, coach.id, program.id, ana.id)).results).toHaveLength(1);
     await expect(listBlockResults(tdb.prisma, other.id, wod.id)).rejects.toMatchObject({ code: "not_found" });
     await expect(listAthleteResults(tdb.prisma, other.id, program.id, ana.id)).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("gives the coach the leaderboard for leaderboard blocks and the list otherwise", async () => {
+    const { coach, program, ana, wod } = await setup();
+    const squat = await makeBarbellBlock(tdb.prisma, program.id, 1);
+    await log(ana, wod.id, { seconds: 640 });
+    expect(await getCoachBlockResults(tdb.prisma, coach.id, wod.id)).toMatchObject({ results: null, entries: [{ rank: 1, formatted: "10:40" }] });
+    expect(await getCoachBlockResults(tdb.prisma, coach.id, squat.id)).toMatchObject({ entries: null, results: [] });
   });
 });

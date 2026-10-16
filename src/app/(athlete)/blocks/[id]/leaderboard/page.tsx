@@ -45,7 +45,8 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ id
                   </span>
                   {e.notes && <span className="truncate text-xs text-muted">{e.notes}</span>}
                 </div>
-                <FistBumpButton resultId={e.resultId} initialCount={e.bumps} initialBumped={e.bumpedByViewer} disabled={e.own} />
+                {/* Keyed on the server values so a refresh resets the button's local state. */}
+                <FistBumpButton key={`${e.resultId}:${e.bumps}:${e.bumpedByViewer}`} resultId={e.resultId} initialCount={e.bumps} initialBumped={e.bumpedByViewer} disabled={e.own} />
               </li>
             ))}
           </ol>

@@ -3,10 +3,11 @@ import { athleteTimeline, hasLeaderboard } from "../access";
 import { addDays, canLogDay, dateOfDay, fromDbDate, isDayVisible, toDbDate, todayIn, type IsoDate } from "../dates";
 import { TrainingError } from "../errors";
 import { rank } from "../leaderboard";
-import { currentOneRm, singleAbove } from "../prs";
+import { singleAbove } from "../prs";
 import type { ResultInputValue } from "../schemas";
 import { evaluateScore, formatScore, scoreTarget, type BarbellResult } from "../scoring";
 import { getOwnedProgram, publishedWeeks } from "./programs";
+import { oneRmMap } from "./prs";
 import type { Db } from "./types";
 
 type AthleteRef = { id: string; timezone: string };
@@ -51,16 +52,19 @@ export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInput
 
   let singlePrompt: SinglePrompt | null = null;
   if (block.kind === "barbell" && block.movement) {
-    const records = await db.personalRecord.findMany({ where: { athleteId: athlete.id, movement: block.movement }, select: { kg: true } });
-    const current = currentOneRm(records);
+    const current = (await oneRmMap(db, athlete.id, [block.movement])).get(block.movement) ?? null;
     const top = singleAbove((evaluated.score as BarbellResult).sets, current);
     if (top !== null) singlePrompt = { movement: block.movement, from: current, to: top };
   }
   return { resultId: result.id, singlePrompt };
 }
 
-export async function deleteResult(db: Db, athleteId: string, blockId: string) {
-  await db.result.deleteMany({ where: { blockId, athleteId } });
+/** Same access rule as saving: the block must be visible and its day loggable. */
+export async function deleteResult(db: Db, athlete: AthleteRef, blockId: string, now: Date = new Date()) {
+  const { loggable } = await getVisibleBlock(db, athlete, blockId, now);
+  if (!loggable) throw new TrainingError("not_loggable");
+  const { count } = await db.result.deleteMany({ where: { blockId, athleteId: athlete.id } });
+  if (count === 0) throw new TrainingError("not_found");
 }
 
 export function getMyResult(db: Db, athleteId: string, blockId: string) {
@@ -93,20 +97,21 @@ export type LeaderboardEntry = {
 type Viewer = { athlete: AthleteRef } | { coachId: string };
 
 async function leaderboardBlock(db: Db, viewer: Viewer, blockId: string) {
-  if ("coachId" in viewer) {
-    const block = await db.block.findFirst({ where: { id: blockId, program: { coachId: viewer.coachId } }, include: { program: true } });
-    if (!block) throw new TrainingError("not_found");
-    return block;
-  }
+  if ("coachId" in viewer) return coachBlock(db, viewer.coachId, blockId);
   return (await getVisibleBlock(db, viewer.athlete, blockId)).block;
 }
 
+type BoardBlock = Awaited<ReturnType<typeof leaderboardBlock>>;
+
 export async function getLeaderboard(db: Db, viewer: Viewer, blockId: string) {
   const block = await leaderboardBlock(db, viewer, blockId);
+  return leaderboardOf(db, block, "athlete" in viewer ? viewer.athlete.id : null);
+}
+
+async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null) {
   if (!hasLeaderboard(block, block.program) || !block.program.startDate) throw new TrainingError("not_found");
-  const viewerId = "athlete" in viewer ? viewer.athlete.id : null;
   const results = await db.result.findMany({
-    where: { blockId, athlete: { enrollments: { some: { programId: block.programId, removedAt: null } } } },
+    where: { blockId: block.id, athlete: { enrollments: { some: { programId: block.programId, removedAt: null } } } },
     include: {
       athlete: true,
       _count: { select: { fistBumps: true } },
@@ -133,7 +138,7 @@ export async function toggleFistBump(db: Db, athlete: AthleteRef, resultId: stri
   const key = { resultId_athleteId: { resultId, athleteId: athlete.id } };
   const existing = await db.fistBump.findUnique({ where: key });
   if (existing) {
-    await db.fistBump.delete({ where: key });
+    await db.fistBump.deleteMany({ where: { resultId, athleteId: athlete.id } }); // idempotent on a double tap
   } else {
     try {
       await db.fistBump.create({ data: { resultId, athleteId: athlete.id } });
@@ -145,7 +150,7 @@ export async function toggleFistBump(db: Db, athlete: AthleteRef, resultId: stri
 }
 
 export type CoachResultRow = {
-  id: string; athleteId: string; displayName: string; blockId: string; blockTitle: string | null; blockKind: string; blockScoring: string | null;
+  id: string; athleteId: string; displayName: string; blockId: string; blockTitle: string | null; blockMovement: string | null; blockKind: string; blockScoring: string | null;
   division: string; formatted: string; notes: string | null; performedOn: IsoDate;
 };
 
@@ -157,18 +162,34 @@ type ResultWithRefs = {
 
 const toRow = (r: ResultWithRefs): CoachResultRow => ({
   id: r.id, athleteId: r.athleteId, displayName: r.athlete.displayName, blockId: r.blockId,
-  blockTitle: r.block.title ?? r.block.movement ?? null, blockKind: r.block.kind, blockScoring: r.block.scoring,
+  blockTitle: r.block.title, blockMovement: r.block.movement, blockKind: r.block.kind, blockScoring: r.block.scoring,
   division: r.division,
   formatted: formatScore(scoreTarget(r.block), r.score), notes: r.notes, performedOn: fromDbDate(r.performedOn),
 });
 
-export async function listBlockResults(db: Db, coachId: string, blockId: string) {
+async function coachBlock(db: Db, coachId: string, blockId: string) {
   const block = await db.block.findFirst({ where: { id: blockId, program: { coachId } }, include: { program: true } });
   if (!block) throw new TrainingError("not_found");
+  return block;
+}
+
+/** The coach's view of one block: its leaderboard when it has one, else the plain list. One block lookup either way. */
+export async function getCoachBlockResults(db: Db, coachId: string, blockId: string) {
+  const block = await coachBlock(db, coachId, blockId);
+  if (hasLeaderboard(block, block.program)) return { block, entries: (await leaderboardOf(db, block, null)).entries, results: null };
+  return { block, entries: null, results: await blockResultRows(db, blockId) };
+}
+
+export async function listBlockResults(db: Db, coachId: string, blockId: string) {
+  const block = await coachBlock(db, coachId, blockId);
+  return { block, results: await blockResultRows(db, blockId) };
+}
+
+async function blockResultRows(db: Db, blockId: string) {
   const results = await db.result.findMany({
     where: { blockId }, include: { athlete: true, block: true }, orderBy: [{ performedOn: "desc" }, { createdAt: "asc" }],
   });
-  return { block, results: results.map(toRow) };
+  return results.map(toRow);
 }
 
 export async function listAthleteResults(db: Db, coachId: string, programId: string, athleteId: string) {

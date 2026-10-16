@@ -69,6 +69,8 @@ describe("blocks", () => {
     });
     await expect(updateBlock(tdb.prisma, coach.id, b.id, custom("A", "amrap"))).rejects.toMatchObject({ code: "scoring_locked" });
     await expect(updateBlock(tdb.prisma, coach.id, b.id, barbell())).rejects.toMatchObject({ code: "scoring_locked" });
+    await expect(updateBlock(tdb.prisma, coach.id, b.id, { ...custom("A", "for_time"), timeCapSeconds: 600 } as BlockInputValue))
+      .rejects.toMatchObject({ code: "scoring_locked" });
     expect((await updateBlock(tdb.prisma, coach.id, b.id, custom("Renamed", "for_time"))).title).toBe("Renamed");
   });
 

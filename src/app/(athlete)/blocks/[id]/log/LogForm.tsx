@@ -10,7 +10,7 @@ import { Input, Textarea } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Field";
 import { Segmented } from "@/components/ui/Segmented";
 import type { ErrorCode } from "@/lib/training/errors";
-import { buildScore, type LogDraft } from "@/lib/training/log-draft";
+import { buildScore, hasInvalidNumber, type LogDraft } from "@/lib/training/log-draft";
 import type { ScoreTarget } from "@/lib/training/scoring";
 import { addPrAction } from "../../../pr-actions";
 import { deleteResultAction, saveResultAction } from "../../../result-actions";
@@ -39,7 +39,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
   const [d, setD] = useState(initial);
   const [division, setDivision] = useState(initialDivision);
   const [notes, setNotes] = useState(initialNotes);
-  const [error, setError] = useState<ErrorCode | null>(null);
+  const [error, setError] = useState<ErrorCode | "number" | null>(null);
   const [pending, setPending] = useState(false);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const set = (patch: Partial<LogDraft>) => setD((x) => ({ ...x, ...patch }));
@@ -48,10 +48,12 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (pending) return;
+    const score = buildScore(target, d);
+    if (hasInvalidNumber(score)) return setError("number");
     setPending(true);
     setError(null);
     try {
-      const r = await saveResultAction({ blockId, division, score: buildScore(target, d), notes });
+      const r = await saveResultAction({ blockId, division, score, notes });
       if (!r.ok) return setError(r.code);
       if (r.value.singlePrompt) setPrompt(r.value.singlePrompt);
       else done();
@@ -180,7 +182,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
       <Field label={t("log.notes")}>
         <Textarea rows={4} maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error === "number" ? t("log.invalidNumber") : t(`errors.${error}`)}</p>}
       <Button type="submit" variant="primary" block disabled={pending}>{t("log.save")}</Button>
       {hasResult && <Button type="button" variant="danger" block onClick={remove} disabled={pending}>{t("log.delete")}</Button>}
       {dialog}

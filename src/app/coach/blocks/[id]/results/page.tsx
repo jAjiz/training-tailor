@@ -9,8 +9,7 @@ import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
 import { blockLabel } from "@/lib/training/block-label";
-import { hasLeaderboard } from "@/lib/training/access";
-import { getLeaderboard, listBlockResults } from "@/lib/training/services/results";
+import { getCoachBlockResults } from "@/lib/training/services/results";
 
 const th = "px-4 py-3";
 const td = "px-4 py-3";
@@ -22,7 +21,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const t = await getTranslations();
   const locale = await getLocale();
-  const { block, results } = await orNotFound(listBlockResults(prisma, coach.id, id));
+  const { block, entries, results } = await orNotFound(getCoachBlockResults(prisma, coach.id, id));
   const day = (iso: string) => formatDay(iso, locale, { day: "numeric", month: "short" });
   const back = (
     <div>
@@ -32,8 +31,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
     </div>
   );
 
-  if (hasLeaderboard(block, block.program)) {
-    const { entries } = await getLeaderboard(prisma, { coachId: coach.id }, id);
+  if (entries) {
     return (
       <section className="flex flex-col gap-6">
         {back}
@@ -72,7 +70,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
     <section className="flex flex-col gap-6">
       {back}
       <h1 className="text-3xl font-bold">{blockLabel(block, t)} · {t("coachResults.title")}</h1>
-      {results.length === 0 ? <EmptyState>{t("coachResults.empty")}</EmptyState> : (
+      {!results?.length ? <EmptyState>{t("coachResults.empty")}</EmptyState> : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead className={thead}><tr>

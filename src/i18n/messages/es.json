@@ -36,7 +36,7 @@
     "start_date_locked": "No puedes cambiar la fecha de inicio: ya hay semanas publicadas.",
     "weeks_out_of_range": "Hay bloques fuera de la nueva duración. Bórralos antes de acortar el programa.",
     "day_out_of_range": "Ese día está fuera del programa.",
-    "scoring_locked": "Este bloque ya tiene resultados: no puedes cambiar su tipo de score.",
+    "scoring_locked": "Este bloque ya tiene resultados: no puedes cambiar su tipo de score ni su time cap.",
     "invite_invalid": "Este enlace de invitación no es válido.",
     "enrollment_removed": "Tu coach te ha quitado de este programa.",
     "not_loggable": "Todavía no puedes registrar este bloque.",
@@ -195,7 +195,7 @@
     "coachingTips": "Coaching tips",
     "videoUrl": "Enlace de vídeo",
     "color": "Color",
-    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar.",
+    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo, su score y su time cap no pueden cambiar.",
     "discardConfirm": "¿Descartar los cambios de este bloque?",
     "keepEditing": "Seguir editando",
     "discard": "Descartar"
@@ -268,6 +268,7 @@
     "pickDate": "Elegir fecha"
   },
   "log": {
+    "invalidNumber": "Revisa los números: reps, rondas, calorías, minutos y segundos son enteros; kg y metros admiten decimales.",
     "title": "Registrar resultado",
     "editTitle": "Editar resultado",
     "division": "Categoría",

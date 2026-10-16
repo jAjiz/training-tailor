@@ -43,7 +43,7 @@ export default async function AthleteResultsPage({ params }: { params: Promise<{
               {results.map((r) => (
                 <tr key={r.id} className="border-t">
                   <td className={`${td} tabular-nums`}>{formatDay(r.performedOn, locale, { day: "numeric", month: "short" })}</td>
-                  <td className={td}><Link href={`/coach/blocks/${r.blockId}/results`} className="font-medium underline">{blockLabel({ title: r.blockTitle, movement: null, kind: r.blockKind, scoring: r.blockScoring }, t)}</Link></td>
+                  <td className={td}><Link href={`/coach/blocks/${r.blockId}/results`} className="font-medium underline">{blockLabel({ title: r.blockTitle, movement: r.blockMovement, kind: r.blockKind, scoring: r.blockScoring }, t)}</Link></td>
                   <td className={`${td} tabular-nums`}>{r.formatted}</td>
                   <td className={td}><Pill>{t(`log.${r.division as "rx" | "scaled"}`)}</Pill></td>
                   <td className={`${td} text-muted`}>{r.notes}</td>
