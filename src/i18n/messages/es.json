@@ -21,6 +21,7 @@
   "nav": {
     "today": "Hoy",
     "calendar": "Calendario",
+    "prs": "PRs",
     "me": "Perfil",
     "programs": "Mis programas",
     "main": "Navegación principal",
@@ -35,7 +36,7 @@
     "start_date_locked": "No puedes cambiar la fecha de inicio: ya hay semanas publicadas.",
     "weeks_out_of_range": "Hay bloques fuera de la nueva duración. Bórralos antes de acortar el programa.",
     "day_out_of_range": "Ese día está fuera del programa.",
-    "scoring_locked": "Este bloque ya tiene resultados: no puedes cambiar su tipo de score.",
+    "scoring_locked": "Este bloque ya tiene resultados: no puedes cambiar su tipo de score ni su time cap.",
     "invite_invalid": "Este enlace de invitación no es válido.",
     "enrollment_removed": "Tu coach te ha quitado de este programa.",
     "not_loggable": "Todavía no puedes registrar este bloque.",
@@ -104,6 +105,18 @@
       "distance": "Distancia (m)",
       "max_time": "Tiempo (más es mejor)"
     }
+  },
+  "prs": {
+    "title": "PRs",
+    "search": "Buscar un ejercicio",
+    "noResults": "Ningún ejercicio coincide.",
+    "current": "1RM actual",
+    "history": "Historial",
+    "empty": "Todavía no has registrado ningún 1RM de este ejercicio.",
+    "add": "Añadir 1RM",
+    "kg": "kg",
+    "date": "Fecha",
+    "deleteConfirm": "¿Borrar esta entrada?"
   },
   "patterns": {
     "squat": "Sentadillas",
@@ -182,7 +195,7 @@
     "coachingTips": "Coaching tips",
     "videoUrl": "Enlace de vídeo",
     "color": "Color",
-    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo y su score no pueden cambiar.",
+    "scoringLockedHint": "Este bloque ya tiene resultados: su tipo, su score y su time cap no pueden cambiar.",
     "discardConfirm": "¿Descartar los cambios de este bloque?",
     "keepEditing": "Seguir editando",
     "discard": "Descartar"
@@ -235,12 +248,63 @@
     "nothing": "Nada publicado para este día.",
     "dayOfProgram": "Semana {week} · Día {day}",
     "prevWeek": "Semana anterior",
-    "nextWeek": "Semana siguiente"
+    "nextWeek": "Semana siguiente",
+    "logResult": "Registrar resultado",
+    "editResult": "Editar",
+    "myResult": "Tu resultado: {score}",
+    "scores": "{count, plural, =0 {Sin scores} one {# score} other {# scores}}",
+    "addOneRm": "Añade tu 1RM de {movement} para ver los kg"
+  },
+  "leaderboard": {
+    "title": "Leaderboard",
+    "empty": "Todavía nadie ha registrado este bloque.",
+    "you": "Tú",
+    "fistBump": "Fist bump"
   },
   "calendar": {
     "title": "Calendario",
     "prevMonth": "Mes anterior",
     "nextMonth": "Mes siguiente",
     "pickDate": "Elegir fecha"
+  },
+  "log": {
+    "invalidNumber": "Revisa los números: reps, rondas, calorías, minutos y segundos son enteros; kg y metros admiten decimales.",
+    "title": "Registrar resultado",
+    "editTitle": "Editar resultado",
+    "division": "Categoría",
+    "rx": "Rx",
+    "scaled": "Scaled",
+    "minutes": "Minutos",
+    "seconds": "Segundos",
+    "capped": "No terminé dentro del time cap",
+    "repsDone": "Reps completadas",
+    "rounds": "Rondas",
+    "reps": "Reps",
+    "kg": "kg",
+    "calories": "Calorías",
+    "meters": "Metros",
+    "set": "Serie {n}",
+    "notes": "Notas",
+    "save": "Guardar resultado",
+    "delete": "Borrar resultado",
+    "deleteConfirm": "¿Borrar tu resultado?",
+    "notLoggable": "Este bloque todavía no se puede registrar.",
+    "singlePrompt": "¿Actualizar tu 1RM de {movement} de {from} kg a {to} kg?",
+    "singlePromptFirst": "¿Guardar {to} kg como tu 1RM de {movement}?",
+    "yes": "Sí, actualizar",
+    "no": "No"
+  },
+  "coachResults": {
+    "title": "Resultados",
+    "empty": "Todavía no hay resultados.",
+    "athlete": "Atleta",
+    "block": "Bloque",
+    "date": "Fecha",
+    "score": "Resultado",
+    "division": "Categoría",
+    "notes": "Notas",
+    "rank": "#",
+    "bumps": "Fist bumps",
+    "view": "Ver resultados"
   }
 }
