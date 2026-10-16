@@ -107,7 +107,7 @@ export function BlockEditor(props: Props) {
               </Field>
               {draft.scoring === "for_time" && (
                 <Field label={t("editor.timeCap")}>
-                  <Input type="number" min={1} max={120} step="0.5" value={draft.timeCapMinutes} onChange={(e) => set({ timeCapMinutes: e.target.value })} />
+                  <Input disabled={locked} type="number" min={1} max={120} step="0.5" value={draft.timeCapMinutes} onChange={(e) => set({ timeCapMinutes: e.target.value })} />
                 </Field>
               )}
             </div>

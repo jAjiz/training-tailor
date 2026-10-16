@@ -21,6 +21,7 @@
   "nav": {
     "today": "Today",
     "calendar": "Calendar",
+    "prs": "PRs",
     "me": "Me",
     "programs": "My programs",
     "main": "Main navigation",
@@ -35,7 +36,7 @@
     "start_date_locked": "The start date cannot change: some weeks are already published.",
     "weeks_out_of_range": "Some blocks fall outside the new length. Delete them before shortening the program.",
     "day_out_of_range": "That day is outside the program.",
-    "scoring_locked": "This block already has results: its scoring cannot change.",
+    "scoring_locked": "This block already has results: its scoring and time cap cannot change.",
     "invite_invalid": "This invitation link is not valid.",
     "enrollment_removed": "Your coach removed you from this program.",
     "not_loggable": "You cannot log this block yet.",
@@ -104,6 +105,18 @@
       "distance": "Distance (m)",
       "max_time": "Time (more is better)"
     }
+  },
+  "prs": {
+    "title": "PRs",
+    "search": "Search an exercise",
+    "noResults": "No exercise matches.",
+    "current": "Current 1RM",
+    "history": "History",
+    "empty": "You have not recorded a 1RM for this exercise yet.",
+    "add": "Add 1RM",
+    "kg": "kg",
+    "date": "Date",
+    "deleteConfirm": "Delete this entry?"
   },
   "patterns": {
     "squat": "Squats",
@@ -182,7 +195,7 @@
     "coachingTips": "Coaching tips",
     "videoUrl": "Video link",
     "color": "Color",
-    "scoringLockedHint": "This block already has results: its kind and scoring cannot change.",
+    "scoringLockedHint": "This block already has results: its kind, scoring and time cap cannot change.",
     "discardConfirm": "Discard the changes to this block?",
     "keepEditing": "Keep editing",
     "discard": "Discard"
@@ -235,12 +248,63 @@
     "nothing": "Nothing published for this day.",
     "dayOfProgram": "Week {week} · Day {day}",
     "prevWeek": "Previous week",
-    "nextWeek": "Next week"
+    "nextWeek": "Next week",
+    "logResult": "Log result",
+    "editResult": "Edit",
+    "myResult": "Your result: {score}",
+    "scores": "{count, plural, =0 {No scores} one {# score} other {# scores}}",
+    "addOneRm": "Add your {movement} 1RM to see the kg"
+  },
+  "leaderboard": {
+    "title": "Leaderboard",
+    "empty": "Nobody has logged this block yet.",
+    "you": "You",
+    "fistBump": "Fist bump"
   },
   "calendar": {
     "title": "Calendar",
     "prevMonth": "Previous month",
     "nextMonth": "Next month",
     "pickDate": "Pick a date"
+  },
+  "log": {
+    "invalidNumber": "Check the numbers: reps, rounds, calories, minutes and seconds are whole numbers; kg and meters may have decimals.",
+    "title": "Log result",
+    "editTitle": "Edit result",
+    "division": "Division",
+    "rx": "Rx",
+    "scaled": "Scaled",
+    "minutes": "Minutes",
+    "seconds": "Seconds",
+    "capped": "I did not finish within the time cap",
+    "repsDone": "Reps completed",
+    "rounds": "Rounds",
+    "reps": "Reps",
+    "kg": "kg",
+    "calories": "Calories",
+    "meters": "Meters",
+    "set": "Set {n}",
+    "notes": "Notes",
+    "save": "Save result",
+    "delete": "Delete result",
+    "deleteConfirm": "Delete your result?",
+    "notLoggable": "This block cannot be logged yet.",
+    "singlePrompt": "Update your {movement} 1RM from {from} kg to {to} kg?",
+    "singlePromptFirst": "Save {to} kg as your {movement} 1RM?",
+    "yes": "Yes, update",
+    "no": "No"
+  },
+  "coachResults": {
+    "title": "Results",
+    "empty": "No results yet.",
+    "athlete": "Athlete",
+    "block": "Block",
+    "date": "Date",
+    "score": "Result",
+    "division": "Division",
+    "notes": "Notes",
+    "rank": "#",
+    "bumps": "Fist bumps",
+    "view": "View results"
   }
 }

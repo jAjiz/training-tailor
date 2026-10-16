@@ -74,7 +74,9 @@ export async function createBlock(db: Db, coachId: string, programId: string, da
 
 export async function updateBlock(db: Db, coachId: string, blockId: string, input: BlockInputValue) {
   const block = await getOwnedBlock(db, coachId, blockId);
-  const scoringChanged = input.kind !== block.kind || (input.kind === "custom" && input.scoring !== block.scoring);
+  // The time cap is part of the scoring: existing results were validated (and capped) against it.
+  const scoringChanged = input.kind !== block.kind
+    || (input.kind === "custom" && (input.scoring !== block.scoring || input.timeCapSeconds !== block.timeCapSeconds));
   if (block._count.results > 0 && scoringChanged) throw new TrainingError("scoring_locked");
   if (input.kind === "barbell") await assertLiftMovement(input.movement);
   return db.block.update({ where: { id: blockId }, data: columns(input) });
