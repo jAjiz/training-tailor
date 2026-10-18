@@ -171,6 +171,8 @@ export async function getAthleteDetail(db: Db, athleteId: string): Promise<Admin
 export type AdminProgramRow = {
   id: string; name: string; coachName: string; coachId: string | null; kind: string; activeAthletes: number;
   lastPublishedWeek: number | null; publishedAt: Date | null; archivedAt: Date | null; inviteDisabledAt: Date | null;
+  /** False when there is no coach or the coach is not approved: invitation links are refused whatever the program's own flag says. */
+  coachAvailable: boolean;
 };
 
 export async function listPrograms(
@@ -182,6 +184,7 @@ export async function listPrograms(
       ? { OR: [{ name: { contains: s, mode: "insensitive" } }, { coachName: { contains: s, mode: "insensitive" } }] }
       : {},
     include: {
+      coach: { select: { status: true } },
       weeksPublished: { select: { weekIndex: true } },
       _count: { select: { enrollments: { where: { removedAt: null } } } },
     },
@@ -194,6 +197,7 @@ export async function listPrograms(
       id: p.id, name: p.name, coachName: p.coachName, coachId: p.coachId, kind: p.kind,
       activeAthletes: p._count.enrollments, lastPublishedWeek: lastPublishedWeek(p.kind, p.weeksPublished),
       publishedAt: p.publishedAt, archivedAt: p.archivedAt, inviteDisabledAt: p.inviteDisabledAt,
+      coachAvailable: p.coach?.status === "approved",
     })),
     hasMore: found.length > PAGE_SIZE,
   };

@@ -18,7 +18,7 @@ export function AdminNavLinks() {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(`${href}/`));
   return (
-    <nav aria-label={t("label")}>
+    <nav aria-label={t("label")} className="min-w-0 overflow-x-auto">
       <ul className="flex gap-1">
         {LINKS.map((l) => (
           <li key={l.href}>

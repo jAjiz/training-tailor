@@ -54,7 +54,7 @@ export default async function AdminProgramsPage({ searchParams }: Props) {
                   <td className={`${td} text-right tabular-nums`}>{p.activeAthletes}</td>
                   <td className={`${td} text-muted`}>{p.lastPublishedWeek === null ? "—" : t("coach.week", { week: p.lastPublishedWeek + 1 })}</td>
                   <td className={td}>
-                    {!p.coachId ? "—" : p.inviteDisabledAt ? <Tag color="red">{t("programs.inviteOff")}</Tag> : <Tag color="green">{t("programs.inviteOn")}</Tag>}
+                    {!p.coachId ? "—" : !p.coachAvailable ? <Tag color="neutral">{t("programs.coachUnavailable")}</Tag> : p.inviteDisabledAt ? <Tag color="red">{t("programs.inviteOff")}</Tag> : <Tag color="green">{t("programs.inviteOn")}</Tag>}
                   </td>
                   <td className={td}>
                     {p.coachId && <ProgramActions program={{ id: p.id, name: p.name, inviteDisabled: p.inviteDisabledAt !== null }} />}

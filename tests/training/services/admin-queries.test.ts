@@ -156,4 +156,15 @@ describe("listPrograms", () => {
     expect(c.publishedAt).toBeInstanceOf(Date);
     expect((await listPrograms(db, { search: "legac", page: 0 })).rows.map((r) => r.id)).toEqual([gone.id]);
   });
+
+  it("reports whether the coach can currently issue invitations", async () => {
+    const db = tdb.prisma;
+    const ok = await makeCoach(db);
+    const suspended = await makeCoach(db, "suspended");
+    const a = await makeClosed(db, ok.id);
+    const b = await makeClosed(db, suspended.id);
+    const { rows } = await listPrograms(db, { page: 0 });
+    expect(rows.find((r) => r.id === a.id)!.coachAvailable).toBe(true);
+    expect(rows.find((r) => r.id === b.id)!.coachAvailable).toBe(false);
+  });
 });

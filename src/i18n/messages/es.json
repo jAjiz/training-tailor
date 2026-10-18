@@ -461,6 +461,7 @@
       "invite": "Invitación",
       "inviteOn": "Activa",
       "inviteOff": "Deshabilitada",
+      "coachUnavailable": "Coach no disponible",
       "disableInvite": "Deshabilitar enlace",
       "enableInvite": "Habilitar enlace",
       "regenerate": "Generar enlace nuevo",
