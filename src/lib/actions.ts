@@ -22,11 +22,19 @@ async function auditImpersonation(name: string): Promise<void> {
   }
 }
 
-/** Runs a Server Action body: refusals become codes, anything else is logged and becomes `internal`. `name` is the exported action's name, used for the audit row. */
-export async function runAction<T>(name: string, fn: () => Promise<T>): Promise<ActionResult<T>> {
+/**
+ * Runs a Server Action body: refusals become codes, anything else is logged and becomes `internal`. `name` is the exported action's name, used for the audit row.
+ * `auditImpersonation: false` skips the post-run session read. Required for the actions that start or stop an impersonation: the request still
+ * carries the old session cookie, and reading the session with it makes Better Auth clear or re-set the cookie the action just wrote.
+ */
+export async function runAction<T>(
+  name: string,
+  fn: () => Promise<T>,
+  opts: { auditImpersonation?: boolean } = {},
+): Promise<ActionResult<T>> {
   try {
     const value = await fn();
-    await auditImpersonation(name);
+    if (opts.auditImpersonation !== false) await auditImpersonation(name);
     return { ok: true, value };
   } catch (e) {
     unstable_rethrow(e); // let redirect()/notFound() through

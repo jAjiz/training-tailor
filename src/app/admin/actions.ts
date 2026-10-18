@@ -113,7 +113,7 @@ export async function impersonateAction(userId: unknown, zone: unknown): Promise
       throw e;
     }
     return target === "coach" ? "/coach" : "/";
-  });
+  }, { auditImpersonation: false });
   if (!result.ok) return result;
   redirect(result.value);
 }
@@ -132,7 +132,7 @@ export async function stopImpersonatingAction(): Promise<ActionResult<never>> {
     } catch (e) {
       console.error("[admin] impersonation.stop audit write failed", e);
     }
-  });
+  }, { auditImpersonation: false });
   if (!result.ok) return result;
   redirect("/admin");
 }

@@ -74,6 +74,8 @@ describe("admin actions", () => {
       targetLabel: "coach@test.local", details: { zone: "coach" },
     }));
     expect(writeAudit.mock.invocationCallOrder[0]).toBeLessThan(impersonateUser.mock.invocationCallOrder[0]);
+    // A session read after impersonateUser would let Better Auth overwrite the impersonation cookie.
+    expect(getSessionContext).not.toHaveBeenCalled();
   });
 
   it("does not impersonate when the start cannot be audited", async () => {
@@ -113,6 +115,9 @@ describe("admin actions", () => {
     stopImpersonating.mockResolvedValue({});
     await expect(stopImpersonatingAction()).rejects.toMatchObject({ to: "/admin" });
     expect(stopImpersonating).toHaveBeenCalled();
+    // One read, before stopping: a read afterwards would use the deleted token and clear the restored admin cookie.
+    expect(getSessionContext).toHaveBeenCalledTimes(1);
+    expect(getSessionContext.mock.invocationCallOrder[0]).toBeLessThan(stopImpersonating.mock.invocationCallOrder[0]);
     expect(writeAudit).toHaveBeenCalledTimes(1);
     expect(writeAudit).toHaveBeenCalledWith(prisma, expect.objectContaining({
       actorUserId: "admin1", action: "impersonation.stop", targetUserId: "u2", targetType: "user",

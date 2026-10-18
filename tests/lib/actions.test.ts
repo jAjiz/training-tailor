@@ -42,6 +42,14 @@ describe("runAction audit", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("reads no session after the action when auditImpersonation is false", async () => {
+    getSessionContext.mockResolvedValue({ user, role: null, impersonatedBy: "admin1" });
+    const result = await runAction("stopImpersonatingAction", async () => 3, { auditImpersonation: false });
+    expect(result).toEqual({ ok: true, value: 3 });
+    expect(getSessionContext).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("keeps the result when the audit write fails", async () => {
     getSessionContext.mockResolvedValue({ user, role: null, impersonatedBy: "admin1" });
     create.mockRejectedValue(new Error("db down"));
