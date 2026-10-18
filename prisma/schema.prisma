@@ -14,6 +14,10 @@ model User {
   email          String            @unique
   emailVerified  Boolean           @default(false)
   image          String?
+  role           String?
+  banned         Boolean?          @default(false)
+  banReason      String?
+  banExpires     DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   sessions       Session[]
@@ -28,15 +32,16 @@ model User {
 }
 
 model Session {
-  id        String   @id
-  expiresAt DateTime
-  token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy String?
 
   @@index([userId])
   @@map("session")
@@ -131,7 +136,7 @@ model CoachAccount {
   userId      String    @unique
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   displayName String
-  status      String    @default("pending") // "pending" | "approved" | "suspended"
+  status      String    @default("pending") // "pending" | "approved" | "rejected" | "suspended"
   locale      String? // "es" | "en"
   createdAt   DateTime  @default(now())
   programs    Program[]
@@ -145,6 +150,7 @@ model AthleteAccount {
   avatarUrl   String?
   timezone    String // IANA
   locale      String?
+  disabledAt  DateTime?
   createdAt   DateTime         @default(now())
   enrollments Enrollment[]
   results     Result[]
@@ -153,21 +159,23 @@ model AthleteAccount {
 }
 
 model Program {
-  id             String        @id @default(cuid())
-  coachId        String
-  coach          CoachAccount  @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  kind           String // "continuous" | "closed"
-  startDate      DateTime?     @db.Date // continuous: the Monday of day 0
-  weeks          Int? // closed: length in weeks
-  publishedAt    DateTime? // closed: the whole program is published
-  inviteCode     String        @unique
-  archivedAt     DateTime?
-  createdAt      DateTime      @default(now())
-  weeksPublished ProgramWeek[]
-  blocks         Block[]
-  enrollments    Enrollment[]
+  id               String        @id @default(cuid())
+  coachId          String? // null once the coach is deleted
+  coach            CoachAccount? @relation(fields: [coachId], references: [id], onDelete: SetNull)
+  coachName        String // the coach's display name, kept up to date while the coach exists
+  name             String
+  description      String?
+  kind             String // "continuous" | "closed"
+  startDate        DateTime?     @db.Date // continuous: the Monday of day 0
+  weeks            Int? // closed: length in weeks
+  publishedAt      DateTime? // closed: the whole program is published
+  inviteCode       String        @unique
+  inviteDisabledAt DateTime?
+  archivedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  weeksPublished   ProgramWeek[]
+  blocks           Block[]
+  enrollments      Enrollment[]
 
   @@index([coachId])
 }
@@ -258,4 +266,20 @@ model PersonalRecord {
   createdAt  DateTime       @default(now())
 
   @@index([athleteId, movement])
+}
+
+model AdminAuditLog {
+  id            String   @id @default(cuid())
+  actorUserId   String? // the admin; null for the coach:approve script
+  action        String // e.g. "coach.approve", "athlete.delete", "impersonation.start", "program.regenerate_invite", or the Server Action's name during an impersonation
+  targetUserId  String? // whose account it concerns
+  targetType    String? // "coach" | "athlete" | "program" | ...
+  targetId      String?
+  targetLabel   String? // email or name at the time, readable after a deletion
+  impersonating Boolean  @default(false)
+  details       Json? // small, no workout text or result scores
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetUserId, createdAt])
 }

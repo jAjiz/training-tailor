@@ -10,9 +10,11 @@ export function newInviteCode(): string {
 }
 
 export async function createProgram(db: Db, coachId: string, input: ProgramCreate) {
+  const coach = await db.coachAccount.findUniqueOrThrow({ where: { id: coachId } });
   return db.program.create({
     data: {
       coachId,
+      coachName: coach.displayName,
       name: input.name,
       description: input.description,
       kind: input.kind,

@@ -27,7 +27,7 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
       <Card className="flex flex-col gap-4 p-6">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold">{program.name}</h1>
-          <p className="text-sm text-muted">{t("by", { coach: program.coach.displayName })}</p>
+          <p className="text-sm text-muted">{t("by", { coach: program.coachName })}</p>
         </div>
         {program.description && <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground/80">{program.description}</p>}
         {!user && (

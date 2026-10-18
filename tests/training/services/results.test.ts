@@ -68,7 +68,7 @@ describe("results", () => {
     const { program, ana } = await setup();
     const squat = await makeBarbellBlock(tdb.prisma, program.id, 2);
     await expect(getLeaderboard(tdb.prisma, { athlete: ana }, squat.id)).rejects.toMatchObject({ code: "not_found" });
-    const closed = await makeClosed(tdb.prisma, program.coachId, 2, true);
+    const closed = await makeClosed(tdb.prisma, program.coachId!, 2, true);
     await enroll(tdb.prisma, closed.id, ana.id, "2026-10-05");
     const wod = await makeCustomBlock(tdb.prisma, closed.id, 0);
     await expect(getLeaderboard(tdb.prisma, { athlete: ana }, wod.id)).rejects.toMatchObject({ code: "not_found" });
