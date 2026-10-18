@@ -89,40 +89,49 @@ export async function adminRegenerateInviteAction(programId: unknown): Promise<A
   });
 }
 
-/** Signs in as the user (the plugin keeps the admin session aside) and opens their zone. Redirects on success. */
+/**
+ * Signs in as the user (the plugin keeps the admin session aside) and opens their zone. Redirects on success.
+ * The start is audited first, so an impersonation never begins without its row.
+ */
 export async function impersonateAction(userId: unknown, zone: unknown): Promise<ActionResult<never>> {
   const result = await runAction("impersonateAction", async () => {
     const admin = await requireAdmin();
     const id = parse(Id, userId);
     const target = parse(Zone, zone);
-    let impersonated: { user: { id: string; email: string } };
+    const user = await prisma.user.findUnique({ where: { id }, select: { id: true, email: true, role: true } });
+    if (!user) throw new TrainingError("not_found");
+    if (user.role === "admin") throw new TrainingError("invalid_request");
+    await writeAudit(prisma, {
+      actorUserId: admin.id, action: "impersonation.start", targetUserId: user.id, targetType: "user",
+      targetId: user.id, targetLabel: user.email, details: { zone: target },
+    });
     try {
-      impersonated = await auth.api.impersonateUser({ body: { userId: id }, headers: await headers() });
+      await auth.api.impersonateUser({ body: { userId: id }, headers: await headers() });
     } catch (e) {
-      // The plugin refuses unknown users and other admins.
+      // The plugin also refuses unknown users and other admins.
       if (isAPIError(e)) throw new TrainingError(e.statusCode === 404 ? "not_found" : "invalid_request");
       throw e;
     }
-    await writeAudit(prisma, {
-      actorUserId: admin.id, action: "impersonation.start", targetUserId: impersonated.user.id, targetType: "user",
-      targetId: impersonated.user.id, targetLabel: impersonated.user.email, details: { zone: target },
-    });
     return target === "coach" ? "/coach" : "/";
   });
   if (!result.ok) return result;
   redirect(result.value);
 }
 
-/** Back to the admin's own session and the panel. Redirects on success. */
+/** Back to the admin's own session and the panel. Redirects on success; a failed audit write is logged and does not block the exit. */
 export async function stopImpersonatingAction(): Promise<ActionResult<never>> {
   const result = await runAction("stopImpersonatingAction", async () => {
     const ctx = await getSessionContext();
     if (!ctx?.impersonatedBy) throw new TrainingError("not_found");
     await auth.api.stopImpersonating({ headers: await headers() });
-    await writeAudit(prisma, {
-      actorUserId: ctx.impersonatedBy, action: "impersonation.stop", targetUserId: ctx.user.id, targetType: "user",
-      targetId: ctx.user.id, targetLabel: ctx.user.email,
-    });
+    try {
+      await writeAudit(prisma, {
+        actorUserId: ctx.impersonatedBy, action: "impersonation.stop", targetUserId: ctx.user.id, targetType: "user",
+        targetId: ctx.user.id, targetLabel: ctx.user.email,
+      });
+    } catch (e) {
+      console.error("[admin] impersonation.stop audit write failed", e);
+    }
   });
   if (!result.ok) return result;
   redirect("/admin");

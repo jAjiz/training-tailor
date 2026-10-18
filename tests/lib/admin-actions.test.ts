@@ -8,9 +8,11 @@ const changeCoachStatus = vi.fn();
 const deleteCoach = vi.fn();
 const impersonateUser = vi.fn();
 const stopImpersonating = vi.fn();
+const findUser = vi.fn();
 const redirect = vi.fn((to: string) => { throw Object.assign(new Error("NEXT_REDIRECT"), { to }); });
 
-vi.mock("@/lib/db", () => ({ prisma: {} }));
+const prisma = vi.hoisted(() => ({ user: { findUnique: (...a: unknown[]) => findUser(...a) } }));
+vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/accounts", () => ({ requireAdmin: () => requireAdmin() }));
 vi.mock("@/lib/session", () => ({ getSessionContext: () => getSessionContext() }));
 vi.mock("@/lib/training/services/audit", () => ({ writeAudit: (...a: unknown[]) => writeAudit(...a) }));
@@ -44,7 +46,7 @@ beforeEach(() => {
 describe("admin actions", () => {
   it("changes a coach's status with the admin as actor", async () => {
     expect(await changeCoachStatusAction("c1", "approve")).toEqual({ ok: true, value: undefined });
-    expect(changeCoachStatus).toHaveBeenCalledWith({}, "admin1", "c1", "approve");
+    expect(changeCoachStatus).toHaveBeenCalledWith(prisma, "admin1", "c1", "approve");
   });
 
   it("refuses an unknown transition or a bad id without calling the service", async () => {
@@ -61,17 +63,39 @@ describe("admin actions", () => {
     expect(changeCoachStatus).not.toHaveBeenCalled();
   });
 
-  it("impersonates, audits the start with the zone and redirects to the zone", async () => {
+  it("audits the start with the zone, then impersonates and redirects to the zone", async () => {
+    findUser.mockResolvedValue({ id: "u2", email: "coach@test.local", role: null });
     impersonateUser.mockResolvedValue({ user: { id: "u2", email: "coach@test.local" } });
     await expect(impersonateAction("u2", "coach")).rejects.toMatchObject({ to: "/coach" });
     expect(impersonateUser).toHaveBeenCalledWith({ body: { userId: "u2" }, headers: expect.any(Headers) });
-    expect(writeAudit).toHaveBeenCalledWith({}, expect.objectContaining({
-      actorUserId: "admin1", action: "impersonation.start", targetUserId: "u2", targetLabel: "coach@test.local",
-      details: { zone: "coach" },
+    expect(writeAudit).toHaveBeenCalledTimes(1);
+    expect(writeAudit).toHaveBeenCalledWith(prisma, expect.objectContaining({
+      actorUserId: "admin1", action: "impersonation.start", targetUserId: "u2", targetType: "user", targetId: "u2",
+      targetLabel: "coach@test.local", details: { zone: "coach" },
     }));
+    expect(writeAudit.mock.invocationCallOrder[0]).toBeLessThan(impersonateUser.mock.invocationCallOrder[0]);
+  });
+
+  it("does not impersonate when the start cannot be audited", async () => {
+    findUser.mockResolvedValue({ id: "u2", email: "coach@test.local", role: null });
+    writeAudit.mockRejectedValueOnce(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await impersonateAction("u2", "coach")).toEqual({ ok: false, code: "internal" });
+    expect(impersonateUser).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("refuses an unknown user or another admin without auditing or impersonating", async () => {
+    findUser.mockResolvedValueOnce(null);
+    expect(await impersonateAction("nobody", "coach")).toEqual({ ok: false, code: "not_found" });
+    findUser.mockResolvedValueOnce({ id: "a2", email: "other@test.local", role: "admin" });
+    expect(await impersonateAction("a2", "coach")).toEqual({ ok: false, code: "invalid_request" });
+    expect(writeAudit).not.toHaveBeenCalled();
+    expect(impersonateUser).not.toHaveBeenCalled();
   });
 
   it("redirects an athlete impersonation to the athlete zone", async () => {
+    findUser.mockResolvedValue({ id: "u3", email: "ath@test.local", role: null });
     impersonateUser.mockResolvedValue({ user: { id: "u3", email: "ath@test.local" } });
     await expect(impersonateAction("u3", "athlete")).rejects.toMatchObject({ to: "/" });
   });
@@ -81,14 +105,29 @@ describe("admin actions", () => {
     expect(impersonateUser).not.toHaveBeenCalled();
   });
 
-  it("stops impersonating, audits the stop for the real admin and returns to the panel", async () => {
-    getSessionContext.mockResolvedValue({ user: { ...admin, id: "u2", email: "coach@test.local" }, role: null, impersonatedBy: "admin1" });
+  const impersonated = { user: { ...admin, id: "u2", email: "coach@test.local" }, role: null, impersonatedBy: "admin1" };
+
+  it("stops impersonating, audits the stop once for the real admin and returns to the panel", async () => {
+    // After the stop, runAction's own audit check sees the admin's session again.
+    getSessionContext.mockResolvedValueOnce(impersonated).mockResolvedValue(null);
     stopImpersonating.mockResolvedValue({});
     await expect(stopImpersonatingAction()).rejects.toMatchObject({ to: "/admin" });
     expect(stopImpersonating).toHaveBeenCalled();
-    expect(writeAudit).toHaveBeenCalledWith({}, expect.objectContaining({
-      actorUserId: "admin1", action: "impersonation.stop", targetUserId: "u2",
+    expect(writeAudit).toHaveBeenCalledTimes(1);
+    expect(writeAudit).toHaveBeenCalledWith(prisma, expect.objectContaining({
+      actorUserId: "admin1", action: "impersonation.stop", targetUserId: "u2", targetType: "user",
+      targetLabel: "coach@test.local",
     }));
+  });
+
+  it("still exits when the stop cannot be audited, and logs it", async () => {
+    getSessionContext.mockResolvedValueOnce(impersonated).mockResolvedValue(null);
+    stopImpersonating.mockResolvedValue({});
+    writeAudit.mockRejectedValueOnce(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(stopImpersonatingAction()).rejects.toMatchObject({ to: "/admin" });
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("refuses to stop when not impersonating", async () => {
