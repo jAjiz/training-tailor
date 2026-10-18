@@ -244,6 +244,35 @@ describe("athlete administration", () => {
   });
 });
 
+describe("deleting a profile owned by an admin", () => {
+  async function adminOwned(db: PrismaClient) {
+    const owner = await makeAdmin(db);
+    const coach = await db.coachAccount.create({ data: { userId: owner.id, displayName: owner.name, status: "approved" } });
+    const athlete = await db.athleteAccount.create({ data: { userId: owner.id, displayName: owner.name, timezone: "UTC" } });
+    const session = await makeSession(db, owner.id);
+    return { owner, coach, athlete, session };
+  }
+
+  it("keeps the admin user when their last coach profile is deleted", async () => {
+    const db = tdb.prisma;
+    const actor = await makeAdmin(db);
+    const { owner, coach, athlete, session } = await adminOwned(db);
+    await db.athleteAccount.delete({ where: { id: athlete.id } });
+    await deleteCoach(db, actor.id, coach.id, owner.email);
+    expect(await db.user.findUnique({ where: { id: owner.id } })).toMatchObject({ role: "admin" });
+    expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+  });
+
+  it("keeps the admin user when their last athlete profile is deleted", async () => {
+    const db = tdb.prisma;
+    const { owner, coach, athlete, session } = await adminOwned(db);
+    await db.coachAccount.delete({ where: { id: coach.id } });
+    await deleteAthlete(db, owner.id, athlete.id, owner.email);
+    expect(await db.user.findUnique({ where: { id: owner.id } })).toMatchObject({ role: "admin" });
+    expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
+  });
+});
+
 describe("program invitation controls", () => {
   it("disables, enables and regenerates a program's link", async () => {
     const db = tdb.prisma;

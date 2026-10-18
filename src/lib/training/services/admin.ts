@@ -84,10 +84,10 @@ export async function previewCoachDeletion(db: Db, coachId: string): Promise<Coa
   return (await planCoachDeletion(db, coachId)).preview;
 }
 
-/** Deletes the `User` (sessions, Google link, engine data) when it has neither a coach nor an athlete profile. */
+/** Deletes the `User` (sessions, Google link, engine data) when it has neither a coach nor an athlete profile. An admin's `User` is always kept. */
 export async function deleteUserIfNoProfiles(tx: DbOrTx, userId: string): Promise<boolean> {
   const user = await tx.user.findUnique({ where: { id: userId }, include: { coachAccount: true, athleteAccount: true } });
-  if (!user || user.coachAccount || user.athleteAccount) return false;
+  if (!user || user.role === "admin" || user.coachAccount || user.athleteAccount) return false;
   await tx.user.delete({ where: { id: userId } });
   return true;
 }
