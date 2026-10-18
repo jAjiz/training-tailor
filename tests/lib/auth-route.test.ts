@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const handler = vi.hoisted(() => vi.fn(async (_req: Request) => new Response("ok")));
+const handler = vi.hoisted(() => vi.fn<(req: Request) => Promise<Response>>(async () => new Response("ok")));
 vi.mock("@/lib/auth", () => ({ auth: {} }));
 vi.mock("better-auth/next-js", () => ({ toNextJsHandler: () => ({ GET: (r: Request) => handler(r), POST: (r: Request) => handler(r) }) }));
 
