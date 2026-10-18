@@ -75,6 +75,11 @@ describe("ConfirmDialog with a typed confirmation", () => {
     );
   };
 
+  it("names the typed-confirmation input by its label", () => {
+    renderTyped();
+    expect(screen.getByRole("textbox", { name: "Type the email" })).toBeInTheDocument();
+  });
+
   it("keeps the confirm button disabled until the expected text is typed", () => {
     renderTyped();
     const confirmButton = screen.getByRole("button", { name: "Delete" });

@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "./Button";
 import { Input } from "./controls";
-import { Field } from "./Field";
 import { Modal } from "./Modal";
 
 export type ConfirmOptions = {
@@ -33,6 +32,7 @@ export function ConfirmDialog({ title, message, confirmLabel, danger = true, onA
   const t = useTranslations("common");
   const cancel = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
+  const inputId = useId();
   useEffect(() => { cancel.current?.focus(); }, []);
   const ready = !typed || sameText(text, typed.expected);
   return (
@@ -45,9 +45,10 @@ export function ConfirmDialog({ title, message, confirmLabel, danger = true, onA
         <p className="text-[15px] leading-relaxed text-muted">{message}</p>
         {details}
         {typed && (
-          <Field label={typed.label}>
-            <Input type="text" autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
-          </Field>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={inputId} className="text-sm font-medium">{typed.label}</label>
+            <Input id={inputId} type="text" autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
+          </div>
         )}
       </div>
     </Modal>
