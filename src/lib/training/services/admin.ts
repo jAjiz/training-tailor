@@ -116,3 +116,50 @@ export async function deleteCoach(db: Db, actor: string, coachId: string, confir
     return preview;
   });
 }
+
+export async function setAthleteDisabled(db: Db, actor: string, athleteId: string, disabled: boolean): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const athlete = await tx.athleteAccount.findUnique({ where: { id: athleteId }, include: { user: true } });
+    if (!athlete) throw new TrainingError("not_found");
+    if ((athlete.disabledAt !== null) === disabled) throw new TrainingError("invalid_status_change");
+    await tx.athleteAccount.update({ where: { id: athleteId }, data: { disabledAt: disabled ? new Date() : null } });
+    await writeAudit(tx, {
+      actorUserId: actor, action: disabled ? "athlete.disable" : "athlete.enable", targetUserId: athlete.userId,
+      targetType: "athlete", targetId: athlete.id, targetLabel: athlete.user.email,
+    });
+  });
+}
+
+export type AthleteDeletionPreview = { enrollments: number; results: number; prs: number };
+
+async function countAthleteData(db: DbOrTx, athleteId: string): Promise<AthleteDeletionPreview> {
+  const [enrollments, results, prs] = await Promise.all([
+    db.enrollment.count({ where: { athleteId } }),
+    db.result.count({ where: { athleteId } }),
+    db.personalRecord.count({ where: { athleteId } }),
+  ]);
+  return { enrollments, results, prs };
+}
+
+export async function previewAthleteDeletion(db: Db, athleteId: string): Promise<AthleteDeletionPreview> {
+  if (!(await db.athleteAccount.findUnique({ where: { id: athleteId } }))) throw new TrainingError("not_found");
+  return countAthleteData(db, athleteId);
+}
+
+/** Deletes the athlete profile (enrollments, results, fist bumps and 1RMs cascade) and the User when it was the last profile. */
+export async function deleteAthlete(db: Db, actor: string, athleteId: string, confirmEmail: string): Promise<AthleteDeletionPreview> {
+  return db.$transaction(async (tx) => {
+    const athlete = await tx.athleteAccount.findUnique({ where: { id: athleteId }, include: { user: true } });
+    if (!athlete) throw new TrainingError("not_found");
+    if (confirmEmail.trim().toLowerCase() !== athlete.user.email.toLowerCase()) throw new TrainingError("invalid_request");
+
+    const preview = await countAthleteData(tx, athleteId);
+    await tx.athleteAccount.delete({ where: { id: athleteId } });
+    await deleteUserIfNoProfiles(tx, athlete.userId);
+    await writeAudit(tx, {
+      actorUserId: actor, action: "athlete.delete", targetUserId: athlete.userId, targetType: "athlete",
+      targetId: athlete.id, targetLabel: athlete.user.email, details: preview,
+    });
+    return preview;
+  });
+}

@@ -7,7 +7,8 @@ import {
 } from "../../helpers/factories";
 import { ensureCoachAccount, getCoachByUserId } from "@/lib/training/services/accounts";
 import {
-  approveCoach, changeCoachStatus, deleteCoach, grantAdmin, previewCoachDeletion, type CoachTransition,
+  approveCoach, changeCoachStatus, deleteAthlete, deleteCoach, grantAdmin, previewAthleteDeletion, previewCoachDeletion, setAthleteDisabled,
+  type CoachTransition,
 } from "@/lib/training/services/admin";
 
 let tdb: TestDb;
@@ -163,5 +164,82 @@ describe("deleteCoach", () => {
     expect(await db.coachAccount.findUnique({ where: { id: coach.id } })).not.toBeNull();
     expect(await db.program.findUnique({ where: { id: program.id } })).not.toBeNull();
     expect(await db.adminAuditLog.count()).toBe(0);
+  });
+});
+
+describe("athlete administration", () => {
+  it("disables and enables an athlete", async () => {
+    const db = tdb.prisma;
+    const admin = await makeAdmin(db);
+    const athlete = await makeAthlete(db);
+    const user = await db.user.findUniqueOrThrow({ where: { id: athlete.userId } });
+    await setAthleteDisabled(db, admin.id, athlete.id, true);
+    expect((await db.athleteAccount.findUniqueOrThrow({ where: { id: athlete.id } })).disabledAt).not.toBeNull();
+    await expect(setAthleteDisabled(db, admin.id, athlete.id, true)).rejects.toMatchObject({ code: "invalid_status_change" });
+    await setAthleteDisabled(db, admin.id, athlete.id, false);
+    expect((await db.athleteAccount.findUniqueOrThrow({ where: { id: athlete.id } })).disabledAt).toBeNull();
+    await expect(setAthleteDisabled(db, admin.id, athlete.id, false)).rejects.toMatchObject({ code: "invalid_status_change" });
+    const rows = await db.adminAuditLog.findMany({ orderBy: { createdAt: "asc" } });
+    expect(rows.map((r) => r.action)).toEqual(["athlete.disable", "athlete.enable"]);
+    expect(rows[0]).toMatchObject({
+      actorUserId: admin.id, targetType: "athlete", targetId: athlete.id, targetUserId: user.id, targetLabel: user.email,
+    });
+  });
+
+  it("refuses a missing profile", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    await expect(setAthleteDisabled(tdb.prisma, admin.id, "nope", true)).rejects.toMatchObject({ code: "not_found" });
+    await expect(deleteAthlete(tdb.prisma, admin.id, "nope", "x@test.local")).rejects.toMatchObject({ code: "not_found" });
+    await expect(previewAthleteDeletion(tdb.prisma, "nope")).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("deletes an athlete with their results, fist bumps and 1RMs, keeping their coach profile", async () => {
+    const db = tdb.prisma;
+    const admin = await makeAdmin(db);
+    const coach = await makeCoach(db);
+    const program = await makeContinuous(db, coach.id);
+    await publishWeek(db, program.id, 0);
+    const block = await makeCustomBlock(db, program.id, 1, { scoring: "for_time", timeCapSeconds: 900 });
+    const athlete = await makeAthlete(db);
+    const other = await makeAthlete(db);
+    const user = await db.user.findUniqueOrThrow({ where: { id: athlete.userId } });
+    await db.coachAccount.create({ data: { userId: user.id, displayName: "Both", status: "approved" } });
+    await enroll(db, program.id, athlete.id);
+    await enroll(db, program.id, other.id);
+    const mine = await makeResult(db, block.id, athlete.id);
+    const theirs = await makeResult(db, block.id, other.id);
+    await db.fistBump.create({ data: { resultId: theirs.id, athleteId: athlete.id } });
+    await db.fistBump.create({ data: { resultId: mine.id, athleteId: other.id } });
+    await db.personalRecord.create({ data: { athleteId: athlete.id, movement: "Back Squat", kg: 100, achievedOn: new Date("2026-10-05T00:00:00Z") } });
+
+    expect(await previewAthleteDeletion(db, athlete.id)).toEqual({ enrollments: 1, results: 1, prs: 1 });
+    await expect(deleteAthlete(db, admin.id, athlete.id, "wrong@test.local")).rejects.toMatchObject({ code: "invalid_request" });
+    expect(await db.adminAuditLog.count()).toBe(0);
+
+    const preview = await deleteAthlete(db, admin.id, athlete.id, ` ${user.email.toUpperCase()} `);
+    expect(preview).toEqual({ enrollments: 1, results: 1, prs: 1 });
+    expect(await db.athleteAccount.findUnique({ where: { id: athlete.id } })).toBeNull();
+    expect(await db.enrollment.count({ where: { athleteId: athlete.id } })).toBe(0);
+    expect(await db.result.findUnique({ where: { id: mine.id } })).toBeNull();
+    expect(await db.fistBump.count()).toBe(0);
+    expect(await db.personalRecord.count()).toBe(0);
+    expect(await db.result.findUnique({ where: { id: theirs.id } })).not.toBeNull();
+    expect(await db.user.findUnique({ where: { id: user.id } })).not.toBeNull();
+    expect(await db.coachAccount.count({ where: { userId: user.id } })).toBe(1);
+    expect(await db.adminAuditLog.findFirstOrThrow()).toMatchObject({
+      action: "athlete.delete", actorUserId: admin.id, targetType: "athlete", targetId: athlete.id,
+      targetUserId: user.id, targetLabel: user.email, details: preview,
+    });
+  });
+
+  it("deletes the user when the athlete was their only profile", async () => {
+    const db = tdb.prisma;
+    const admin = await makeAdmin(db);
+    const athlete = await makeAthlete(db);
+    const user = await db.user.findUniqueOrThrow({ where: { id: athlete.userId } });
+    await makeSession(db, user.id);
+    await deleteAthlete(db, admin.id, athlete.id, user.email);
+    expect(await db.user.findUnique({ where: { id: user.id } })).toBeNull();
+    expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
   });
 });

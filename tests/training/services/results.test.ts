@@ -143,4 +143,25 @@ describe("results", () => {
     expect(await getCoachBlockResults(tdb.prisma, coach.id, wod.id)).toMatchObject({ results: null, entries: [{ rank: 1, formatted: "10:40" }] });
     expect(await getCoachBlockResults(tdb.prisma, coach.id, squat.id)).toMatchObject({ entries: null, results: [] });
   });
+
+  it("hides a disabled athlete's results from leaderboards, counts and coach views", async () => {
+    const { coach, program, ana, ben, wod } = await setup();
+    await log(ana, wod.id, { seconds: 600 });
+    await log(ben, wod.id, { seconds: 700 });
+    const anaResult = await tdb.prisma.result.findFirstOrThrow({ where: { athleteId: ana.id } });
+    await toggleFistBump(tdb.prisma, ben, anaResult.id);
+    const benResult = await tdb.prisma.result.findFirstOrThrow({ where: { athleteId: ben.id } });
+    await tdb.prisma.fistBump.create({ data: { resultId: benResult.id, athleteId: ana.id } });
+
+    await tdb.prisma.athleteAccount.update({ where: { id: ana.id }, data: { disabledAt: new Date() } });
+
+    const board = await getLeaderboard(tdb.prisma, { athlete: ben }, wod.id);
+    expect(board.entries).toHaveLength(1);
+    expect(board.entries[0]).toMatchObject({ athleteId: ben.id, bumps: 1 }); // the disabled athlete's bump still counts
+    const { counts } = await getDayResults(tdb.prisma, ben.id, program.id, [wod.id]);
+    expect(counts.get(wod.id)).toBe(1);
+    expect((await listBlockResults(tdb.prisma, coach.id, wod.id)).results).toHaveLength(1);
+    expect((await getCoachBlockResults(tdb.prisma, coach.id, wod.id)).entries).toHaveLength(1);
+    expect((await listAthleteResults(tdb.prisma, coach.id, program.id, ana.id)).results).toHaveLength(0);
+  });
 });
