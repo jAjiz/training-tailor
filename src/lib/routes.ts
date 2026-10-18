@@ -1,10 +1,11 @@
-const PUBLIC_PATHS = [/^\/signin$/, /^\/coach\/signin$/, /^\/join\/[^/]+$/];
+const PUBLIC_PATHS = [/^\/signin$/, /^\/coach\/signin$/, /^\/admin\/signin$/, /^\/join\/[^/]+$/];
 
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((re) => re.test(pathname));
 }
 
-export function signinPathFor(pathname: string): "/signin" | "/coach/signin" {
+export function signinPathFor(pathname: string): "/signin" | "/coach/signin" | "/admin/signin" {
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return "/admin/signin";
   return pathname === "/coach" || pathname.startsWith("/coach/") ? "/coach/signin" : "/signin";
 }
 

@@ -42,6 +42,10 @@
     "not_loggable": "Todavía no puedes registrar este bloque.",
     "invalid_score": "El resultado no es válido para este bloque.",
     "own_result": "No puedes dar un fist bump a tu propio resultado.",
+    "account_disabled": "Tu cuenta está deshabilitada.",
+    "invite_required": "Necesitas una invitación de tu coach para entrar.",
+    "invalid_status_change": "Ese cambio de estado no está permitido.",
+    "invite_disabled": "El administrador ha desactivado el enlace de invitación.",
     "internal": "Algo ha fallado. Inténtalo de nuevo."
   },
   "onboarding": {
@@ -62,7 +66,12 @@
   "coachPending": {
     "title": "Cuenta pendiente de aprobación",
     "pending": "Hemos recibido tu solicitud. Podrás crear programas cuando aprobemos tu cuenta.",
-    "suspended": "Tu cuenta de coach está suspendida. Escríbenos si crees que es un error."
+    "suspended": "Tu cuenta de coach está deshabilitada.",
+    "rejected": "Tu solicitud no ha sido aceptada."
+  },
+  "accountDisabled": {
+    "title": "Cuenta deshabilitada",
+    "body": "Tu cuenta está deshabilitada."
   },
   "programs": {
     "title": "Mis programas",

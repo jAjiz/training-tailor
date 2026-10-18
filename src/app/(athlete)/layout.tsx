@@ -7,7 +7,9 @@ import { AthleteTabBar } from "./AthleteTabBar";
 
 export default async function AthleteLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
-  const athlete = user ? await getAthleteByUserId(prisma, user.id) : null;
+  const account = user ? await getAthleteByUserId(prisma, user.id) : null;
+  // A disabled athlete only sees the /disabled page, so no tab bar.
+  const athlete = account && !account.disabledAt ? account : null;
   return (
     <>
       <main className={cx("mx-auto max-w-md px-4 pt-4", athlete ? "pb-28" : "pb-8")}>{children}</main>

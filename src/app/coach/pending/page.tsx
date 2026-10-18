@@ -16,7 +16,7 @@ export default async function CoachPendingPage() {
     <section className="mx-auto max-w-lg pt-12">
       <Card className="flex flex-col gap-3 p-6">
         <h1 className="text-2xl font-bold">{t("title")}</h1>
-        <p className="text-[15px] text-muted">{coach.status === "suspended" ? t("suspended") : t("pending")}</p>
+        <p className="text-[15px] text-muted">{t(coach.status === "rejected" ? "rejected" : coach.status === "suspended" ? "suspended" : "pending")}</p>
       </Card>
     </section>
   );

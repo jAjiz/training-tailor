@@ -42,6 +42,10 @@
     "not_loggable": "You cannot log this block yet.",
     "invalid_score": "The result is not valid for this block.",
     "own_result": "You cannot fist bump your own result.",
+    "account_disabled": "Your account is disabled.",
+    "invite_required": "You need an invitation from your coach to sign in.",
+    "invalid_status_change": "That status change is not allowed.",
+    "invite_disabled": "The administrator has turned off the invitation link.",
     "internal": "Something went wrong. Try again."
   },
   "onboarding": {
@@ -62,7 +66,12 @@
   "coachPending": {
     "title": "Account awaiting approval",
     "pending": "We received your request. You can create programs once your account is approved.",
-    "suspended": "Your coach account is suspended. Contact us if you think this is a mistake."
+    "suspended": "Your coach account is disabled.",
+    "rejected": "Your request was not accepted."
+  },
+  "accountDisabled": {
+    "title": "Account disabled",
+    "body": "Your account is disabled."
   },
   "programs": {
     "title": "My programs",
