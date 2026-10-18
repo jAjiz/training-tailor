@@ -15,7 +15,7 @@ import { ensureAthleteAccount, updateAthleteSettings } from "@/lib/training/serv
 import { joinByCode } from "@/lib/training/services/enrollments";
 
 export async function completeAthleteOnboarding(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("completeAthleteOnboarding", async () => {
     const user = await getSessionUser();
     if (!user) throw new TrainingError("unauthorized");
     const { timezone } = parse(OnboardingInput, raw);
@@ -26,7 +26,7 @@ export async function completeAthleteOnboarding(raw: unknown): Promise<ActionRes
 }
 
 export async function updateSettingsAction(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("updateSettingsAction", async () => {
     const athlete = await requireAthlete();
     const settings = parse(AthleteSettingsInput, raw);
     await updateAthleteSettings(prisma, athlete.id, settings);
@@ -36,7 +36,7 @@ export async function updateSettingsAction(raw: unknown): Promise<ActionResult> 
 }
 
 export async function joinProgramAction(code: unknown): Promise<ActionResult<{ programId: string }>> {
-  return runAction(async () => {
+  return runAction("joinProgramAction", async () => {
     const athlete = await requireAthlete();
     const { programId } = await joinByCode(prisma, athlete, parse(z.string().min(1).max(64), code));
     revalidatePath("/");

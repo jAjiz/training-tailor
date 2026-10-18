@@ -9,8 +9,8 @@ import type { ActionResult } from "@/lib/training/errors";
 import { parse } from "@/lib/training/schemas";
 import { setEnrollmentRemoved } from "@/lib/training/services/enrollments";
 
-async function setRemoved(enrollmentId: unknown, removed: boolean): Promise<ActionResult> {
-  return runAction(async () => {
+async function setRemoved(name: string, enrollmentId: unknown, removed: boolean): Promise<ActionResult> {
+  return runAction(name, async () => {
     const coach = await requireCoach();
     await setEnrollmentRemoved(prisma, coach.id, parse(z.string().min(1).max(64), enrollmentId), removed);
     revalidatePath("/coach/programs/[id]/athletes", "page");
@@ -18,9 +18,9 @@ async function setRemoved(enrollmentId: unknown, removed: boolean): Promise<Acti
 }
 
 export async function removeAthleteAction(enrollmentId: unknown) {
-  return setRemoved(enrollmentId, true);
+  return setRemoved("removeAthleteAction", enrollmentId, true);
 }
 
 export async function restoreAthleteAction(enrollmentId: unknown) {
-  return setRemoved(enrollmentId, false);
+  return setRemoved("restoreAthleteAction", enrollmentId, false);
 }

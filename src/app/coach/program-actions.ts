@@ -14,7 +14,7 @@ import {
 const Id = z.string().min(1).max(64);
 
 export async function createProgramAction(raw: unknown): Promise<ActionResult<{ id: string }>> {
-  return runAction(async () => {
+  return runAction("createProgramAction", async () => {
     const coach = await requireCoach();
     const program = await createProgram(prisma, coach.id, parse(ProgramCreateInput, raw));
     revalidatePath("/coach");
@@ -23,7 +23,7 @@ export async function createProgramAction(raw: unknown): Promise<ActionResult<{ 
 }
 
 export async function updateProgramAction(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("updateProgramAction", async () => {
     const coach = await requireCoach();
     const { programId, program } = parse(z.object({ programId: Id, program: ProgramUpdateInput }), raw);
     await updateProgram(prisma, coach.id, programId, program);
@@ -32,7 +32,7 @@ export async function updateProgramAction(raw: unknown): Promise<ActionResult> {
 }
 
 export async function archiveProgramAction(programId: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("archiveProgramAction", async () => {
     const coach = await requireCoach();
     await archiveProgram(prisma, coach.id, parse(Id, programId));
     revalidatePath("/coach", "layout");
@@ -40,7 +40,7 @@ export async function archiveProgramAction(programId: unknown): Promise<ActionRe
 }
 
 export async function regenerateInviteAction(programId: unknown): Promise<ActionResult<{ code: string }>> {
-  return runAction(async () => {
+  return runAction("regenerateInviteAction", async () => {
     const coach = await requireCoach();
     const id = parse(Id, programId);
     const code = await regenerateInvite(prisma, coach.id, id);
@@ -50,7 +50,7 @@ export async function regenerateInviteAction(programId: unknown): Promise<Action
 }
 
 export async function setWeekPublishedAction(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("setWeekPublishedAction", async () => {
     const coach = await requireCoach();
     const { programId, weekIndex, published } = parse(
       z.object({ programId: Id, weekIndex: z.number().int().min(0), published: z.boolean() }), raw);
@@ -60,7 +60,7 @@ export async function setWeekPublishedAction(raw: unknown): Promise<ActionResult
 }
 
 export async function setProgramPublishedAction(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("setProgramPublishedAction", async () => {
     const coach = await requireCoach();
     const { programId, published } = parse(z.object({ programId: Id, published: z.boolean() }), raw);
     await setProgramPublished(prisma, coach.id, programId, published);
