@@ -7,7 +7,7 @@ import {
 } from "../../helpers/factories";
 import { ensureCoachAccount, getCoachByUserId } from "@/lib/training/services/accounts";
 import {
-  approveCoach, changeCoachStatus, deleteAthlete, deleteCoach, grantAdmin, previewAthleteDeletion, previewCoachDeletion, setAthleteDisabled,
+  approveCoach, changeCoachStatus, deleteAthlete, deleteCoach, adminRegenerateInvite, grantAdmin, previewAthleteDeletion, previewCoachDeletion, setAthleteDisabled, setInviteDisabled,
   type CoachTransition,
 } from "@/lib/training/services/admin";
 
@@ -241,5 +241,38 @@ describe("athlete administration", () => {
     await deleteAthlete(db, admin.id, athlete.id, user.email);
     expect(await db.user.findUnique({ where: { id: user.id } })).toBeNull();
     expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+  });
+});
+
+describe("program invitation controls", () => {
+  it("disables, enables and regenerates a program's link", async () => {
+    const db = tdb.prisma;
+    const admin = await makeAdmin(db);
+    const coach = await makeCoach(db);
+    const program = await makeContinuous(db, coach.id);
+    const audit = () => db.adminAuditLog.findMany({ orderBy: { createdAt: "asc" } });
+
+    await setInviteDisabled(db, admin.id, program.id, true);
+    expect((await db.program.findUniqueOrThrow({ where: { id: program.id } })).inviteDisabledAt).not.toBeNull();
+    await expect(setInviteDisabled(db, admin.id, program.id, true)).rejects.toMatchObject({ code: "invalid_status_change" });
+
+    const code = await adminRegenerateInvite(db, admin.id, program.id); // allowed while disabled
+    const after = await db.program.findUniqueOrThrow({ where: { id: program.id } });
+    expect(code).toBe(after.inviteCode);
+    expect(code).not.toBe(program.inviteCode);
+    expect(after.inviteDisabledAt).not.toBeNull();
+
+    await setInviteDisabled(db, admin.id, program.id, false);
+    expect((await db.program.findUniqueOrThrow({ where: { id: program.id } })).inviteDisabledAt).toBeNull();
+    await expect(setInviteDisabled(db, admin.id, program.id, false)).rejects.toMatchObject({ code: "invalid_status_change" });
+
+    expect((await audit()).map((a) => a.action)).toEqual([
+      "program.invite_disable", "program.regenerate_invite", "program.invite_enable",
+    ]);
+    expect((await audit())[0]).toMatchObject({
+      actorUserId: admin.id, targetType: "program", targetId: program.id, targetLabel: program.name,
+    });
+    await expect(setInviteDisabled(db, admin.id, "nope", true)).rejects.toMatchObject({ code: "not_found" });
+    await expect(adminRegenerateInvite(db, admin.id, "nope")).rejects.toMatchObject({ code: "not_found" });
   });
 });

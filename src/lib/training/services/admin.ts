@@ -1,5 +1,6 @@
 import { TrainingError } from "../errors";
 import { writeAudit } from "./audit";
+import { newInviteCode } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
 export async function grantAdmin(db: Db, email: string): Promise<"granted" | "not_found"> {
@@ -127,6 +128,34 @@ export async function setAthleteDisabled(db: Db, actor: string, athleteId: strin
       actorUserId: actor, action: disabled ? "athlete.disable" : "athlete.enable", targetUserId: athlete.userId,
       targetType: "athlete", targetId: athlete.id, targetLabel: athlete.user.email,
     });
+  });
+}
+
+export async function setInviteDisabled(db: Db, actor: string, programId: string, disabled: boolean): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const program = await tx.program.findUnique({ where: { id: programId } });
+    if (!program) throw new TrainingError("not_found");
+    if ((program.inviteDisabledAt !== null) === disabled) throw new TrainingError("invalid_status_change");
+    await tx.program.update({ where: { id: programId }, data: { inviteDisabledAt: disabled ? new Date() : null } });
+    await writeAudit(tx, {
+      actorUserId: actor, action: disabled ? "program.invite_disable" : "program.invite_enable",
+      targetType: "program", targetId: program.id, targetLabel: program.name,
+    });
+  });
+}
+
+/** Allowed while the link is disabled; the link stays disabled. */
+export async function adminRegenerateInvite(db: Db, actor: string, programId: string): Promise<string> {
+  return db.$transaction(async (tx) => {
+    const program = await tx.program.findUnique({ where: { id: programId } });
+    if (!program) throw new TrainingError("not_found");
+    const code = newInviteCode();
+    await tx.program.update({ where: { id: programId }, data: { inviteCode: code } });
+    await writeAudit(tx, {
+      actorUserId: actor, action: "program.regenerate_invite", targetType: "program", targetId: program.id,
+      targetLabel: program.name,
+    });
+    return code;
   });
 }
 
