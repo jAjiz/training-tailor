@@ -23,7 +23,8 @@ describe("runAction audit", () => {
     expect(result).toEqual({ ok: true, value: 42 });
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        actorUserId: "admin1", action: "saveResultAction", targetUserId: "u1", impersonating: true,
+        actorUserId: "admin1", action: "saveResultAction", targetUserId: "u1", targetType: "user",
+        targetLabel: "u@test.local", impersonating: true,
       }),
     });
   });

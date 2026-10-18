@@ -13,6 +13,8 @@ async function auditImpersonation(name: string): Promise<void> {
       actorUserId: ctx.impersonatedBy,
       action: name,
       targetUserId: ctx.user.id,
+      targetType: "user",
+      targetLabel: ctx.user.email,
       impersonating: true,
     });
   } catch (e) {
