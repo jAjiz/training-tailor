@@ -15,7 +15,7 @@ export function OnboardingRunner({ next }: { next: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    completeAthleteOnboarding({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }).then((r) => {
+    completeAthleteOnboarding({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, next }).then((r) => {
       if (cancelled) return;
       if (r.ok) {
         router.replace(next);
@@ -31,7 +31,9 @@ export function OnboardingRunner({ next }: { next: string }) {
   return (
     <div className="flex flex-col items-center gap-4 py-16 text-center">
       <p role="alert" className="text-danger">{t(`errors.${error}`)}</p>
-      <Button type="button" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>{t("onboarding.retry")}</Button>
+      {error !== "invite_required" && (
+        <Button type="button" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>{t("onboarding.retry")}</Button>
+      )}
     </div>
   );
 }
