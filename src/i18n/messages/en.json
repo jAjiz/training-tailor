@@ -66,7 +66,11 @@
     }
   },
   "coachPending": {
-    "title": "Account awaiting approval",
+    "titles": {
+      "pending": "Account awaiting approval",
+      "rejected": "Request not accepted",
+      "suspended": "Account disabled"
+    },
     "pending": "We received your request. You can create programs once your account is approved.",
     "suspended": "Your coach account is disabled.",
     "rejected": "Your request was not accepted."
@@ -236,6 +240,7 @@
     "copied": "Copied",
     "regenerate": "Generate a new link",
     "regenerateConfirm": "The current link will stop working. Continue?",
+    "inviteDisabled": "Invitation disabled by the admin. Nobody can join with the link, and you can generate a new one once the admin enables it.",
     "empty": "No athletes yet. Share the invitation link.",
     "athlete": "Athlete",
     "since": "Since",

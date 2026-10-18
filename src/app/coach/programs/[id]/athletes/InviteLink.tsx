@@ -11,7 +11,10 @@ import { Input } from "@/components/ui/controls";
 import type { ErrorCode } from "@/lib/training/errors";
 import { regenerateInviteAction } from "../../../program-actions";
 
-export function InviteLink({ programId, url, readOnly }: { programId: string; url: string; readOnly: boolean }) {
+type Props = { programId: string; url: string; readOnly: boolean; inviteDisabled: boolean };
+
+/** `inviteDisabled`: the admin disabled the link; the coach can neither share nor regenerate it until it is enabled. */
+export function InviteLink({ programId, url, readOnly, inviteDisabled }: Props) {
   const t = useTranslations();
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
@@ -34,16 +37,18 @@ export function InviteLink({ programId, url, readOnly }: { programId: string; ur
   return (
     <Card className="flex flex-col gap-3 p-5">
       <span className="text-sm font-semibold">{t("roster.inviteLink")}</span>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input readOnly value={url} aria-label={t("roster.inviteLink")} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 font-mono" />
-        <Button type="button" variant="primary" onClick={copy}>
-          {copied ? <Check size={18} aria-hidden /> : <Copy size={18} aria-hidden />}
-          {copied ? t("roster.copied") : t("roster.copy")}
-        </Button>
-        {!readOnly && (
-          <Button type="button" variant="ghost" onClick={regenerate}><RefreshCw size={16} aria-hidden />{t("roster.regenerate")}</Button>
-        )}
-      </div>
+      {inviteDisabled ? <p className="text-sm text-muted">{t("roster.inviteDisabled")}</p> : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input readOnly value={url} aria-label={t("roster.inviteLink")} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 font-mono" />
+          <Button type="button" variant="primary" onClick={copy}>
+            {copied ? <Check size={18} aria-hidden /> : <Copy size={18} aria-hidden />}
+            {copied ? t("roster.copied") : t("roster.copy")}
+          </Button>
+          {!readOnly && (
+            <Button type="button" variant="ghost" onClick={regenerate}><RefreshCw size={16} aria-hidden />{t("roster.regenerate")}</Button>
+          )}
+        </div>
+      )}
       {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       {dialog}
     </Card>

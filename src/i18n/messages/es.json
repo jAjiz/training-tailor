@@ -66,7 +66,11 @@
     }
   },
   "coachPending": {
-    "title": "Cuenta pendiente de aprobación",
+    "titles": {
+      "pending": "Cuenta pendiente de aprobación",
+      "rejected": "Solicitud no aceptada",
+      "suspended": "Cuenta deshabilitada"
+    },
     "pending": "Hemos recibido tu solicitud. Podrás crear programas cuando aprobemos tu cuenta.",
     "suspended": "Tu cuenta de coach está deshabilitada.",
     "rejected": "Tu solicitud no ha sido aceptada."
@@ -236,6 +240,7 @@
     "copied": "Copiado",
     "regenerate": "Generar un enlace nuevo",
     "regenerateConfirm": "El enlace actual dejará de funcionar. ¿Continuar?",
+    "inviteDisabled": "Invitación deshabilitada por el administrador. Nadie puede unirse con el enlace y podrás generar uno nuevo cuando el administrador la habilite.",
     "empty": "Todavía no hay atletas. Comparte el enlace de invitación.",
     "athlete": "Atleta",
     "since": "Desde",
