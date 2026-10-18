@@ -1,5 +1,5 @@
 import type { AdminAuditLog } from "@/generated/prisma/client";
-import type { Db } from "./types";
+import type { Db, DbOrTx } from "./types";
 
 export type AuditEntry = {
   actorUserId: string | null;
@@ -14,7 +14,7 @@ export type AuditEntry = {
 
 const PAGE_SIZE = 50;
 
-export async function writeAudit(db: Db, entry: AuditEntry): Promise<void> {
+export async function writeAudit(db: DbOrTx, entry: AuditEntry): Promise<void> {
   await db.adminAuditLog.create({ data: entry });
 }
 

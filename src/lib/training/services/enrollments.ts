@@ -8,6 +8,7 @@ const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code 
 export async function findProgramByCode(db: Db, code: string) {
   const program = await db.program.findUnique({ where: { inviteCode: code }, include: { coach: true } });
   if (!program || program.archivedAt || (program.kind === "closed" && !program.publishedAt)) return null;
+  if (program.coach?.status !== "approved" || program.inviteDisabledAt) return null;
   return program;
 }
 

@@ -42,6 +42,21 @@ describe("enrollments", () => {
     }
   });
 
+  it("rejects invitations of programs without an approved coach or with the link disabled", async () => {
+    const athlete = await makeAthlete(tdb.prisma);
+    const suspended = await makeCoach(tdb.prisma, "suspended");
+    const coach = await makeCoach(tdb.prisma);
+    const ofSuspended = await makeContinuous(tdb.prisma, suspended.id);
+    const coachless = await makeContinuous(tdb.prisma, coach.id);
+    await tdb.prisma.program.update({ where: { id: coachless.id }, data: { coachId: null } });
+    const disabled = await makeContinuous(tdb.prisma, coach.id);
+    await tdb.prisma.program.update({ where: { id: disabled.id }, data: { inviteDisabledAt: new Date() } });
+    for (const code of [ofSuspended.inviteCode, coachless.inviteCode, disabled.inviteCode]) {
+      await expect(joinByCode(tdb.prisma, athlete, code)).rejects.toMatchObject({ code: "invite_invalid" });
+      expect(await findProgramByCode(tdb.prisma, code)).toBeNull();
+    }
+  });
+
   it("keeps removed athletes out until the coach restores them", async () => {
     const coach = await makeCoach(tdb.prisma);
     const athlete = await makeAthlete(tdb.prisma);

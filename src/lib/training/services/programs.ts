@@ -67,6 +67,7 @@ export async function archiveProgram(db: Db, coachId: string, programId: string)
 export async function regenerateInvite(db: Db, coachId: string, programId: string) {
   const program = await getOwnedProgram(db, coachId, programId);
   assertWritable(program);
+  if (program.inviteDisabledAt) throw new TrainingError("invite_disabled");
   const code = newInviteCode();
   await db.program.update({ where: { id: programId }, data: { inviteCode: code } });
   return code;
