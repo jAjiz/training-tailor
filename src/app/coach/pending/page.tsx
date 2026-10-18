@@ -12,11 +12,12 @@ export default async function CoachPendingPage() {
   if (!coach) redirect("/coach/onboarding");
   if (coach.status === "approved") redirect("/coach");
   const t = await getTranslations("coachPending");
+  const status = coach.status === "rejected" || coach.status === "suspended" ? coach.status : "pending";
   return (
     <section className="mx-auto max-w-lg pt-12">
       <Card className="flex flex-col gap-3 p-6">
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
-        <p className="text-[15px] text-muted">{t(coach.status === "rejected" ? "rejected" : coach.status === "suspended" ? "suspended" : "pending")}</p>
+        <h1 className="text-2xl font-bold">{t(`titles.${status}`)}</h1>
+        <p className="text-[15px] text-muted">{t(status)}</p>
       </Card>
     </section>
   );
