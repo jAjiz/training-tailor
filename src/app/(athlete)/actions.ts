@@ -12,19 +12,15 @@ import { getSessionUser } from "@/lib/session";
 import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { AthleteSettingsInput, OnboardingInput, parse } from "@/lib/training/schemas";
 import { ensureAthleteAccount, updateAthleteSettings } from "@/lib/training/services/accounts";
-import { athleteSignupMode, inviteCodeFromNext } from "@/lib/signup";
-import { findProgramByCode, joinByCode } from "@/lib/training/services/enrollments";
+import { athleteSignupMode } from "@/lib/signup";
+import { canCreateAthleteProfile, joinByCode } from "@/lib/training/services/enrollments";
 
 export async function completeAthleteOnboarding(raw: unknown): Promise<ActionResult> {
   return runAction("completeAthleteOnboarding", async () => {
     const user = await getSessionUser();
     if (!user) throw new TrainingError("unauthorized");
     const { timezone, next } = parse(OnboardingInput, raw);
-    const hasProfile = await prisma.athleteAccount.findUnique({ where: { userId: user.id }, select: { id: true } });
-    if (!hasProfile && athleteSignupMode() !== "open") {
-      const code = inviteCodeFromNext(next);
-      if (!code || !(await findProgramByCode(prisma, code))) throw new TrainingError("invite_required");
-    }
+    if (!(await canCreateAthleteProfile(prisma, user.id, next, athleteSignupMode()))) throw new TrainingError("invite_required");
     const current = await getLocale();
     const athlete = await ensureAthleteAccount(prisma, user, { timezone, locale: isLocale(current) ? current : DEFAULT_LOCALE });
     if (isLocale(athlete.locale)) await setLocaleCookie(athlete.locale);
