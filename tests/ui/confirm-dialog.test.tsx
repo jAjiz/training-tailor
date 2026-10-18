@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { beforeAll, describe, it, expect } from "vitest";
-import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { ConfirmDialog, useConfirm } from "@/components/ui/ConfirmDialog";
 
 beforeAll(() => {
   // jsdom does not implement the modal dialog API.
@@ -59,5 +59,31 @@ describe("useConfirm", () => {
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     await act(async () => { expect(await answer).toBe(false); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("ConfirmDialog with a typed confirmation", () => {
+  let answered: [boolean, string | undefined][] = [];
+
+  const renderTyped = () => {
+    answered = [];
+    render(
+      <NextIntlClientProvider locale="en" messages={{ common: { cancel: "Cancel", close: "Close" } }}>
+        <ConfirmDialog title="Delete coach" message="This cannot be undone." confirmLabel="Delete"
+          typed={{ expected: "Coach@Test.local", label: "Type the email" }} onAnswer={(yes, text) => answered.push([yes, text])} />
+      </NextIntlClientProvider>,
+    );
+  };
+
+  it("keeps the confirm button disabled until the expected text is typed", () => {
+    renderTyped();
+    const confirmButton = screen.getByRole("button", { name: "Delete" });
+    expect(confirmButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Type the email"), { target: { value: "other@test.local" } });
+    expect(confirmButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Type the email"), { target: { value: " coach@test.local " } });
+    expect(confirmButton).toBeEnabled();
+    fireEvent.click(confirmButton);
+    expect(answered).toEqual([[true, " coach@test.local "]]);
   });
 });

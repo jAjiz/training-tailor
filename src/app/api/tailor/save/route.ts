@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { MAX_RESULT_BODY_CHARS, SaveBodySchema } from "@/lib/api-schemas";
 import { prisma } from "@/lib/db";
+import { engineUserId } from "@/lib/engine-access";
 import { jsonError, readJsonBody } from "@/lib/http";
 import { toJson } from "@/lib/json";
-import { getUserId } from "@/lib/session";
 
 // Persists exactly what the athlete reviewed; never re-runs the nondeterministic engine.
 export async function POST(req: Request) {
-  const userId = await getUserId();
-  if (!userId) return jsonError("unauthorized", 401);
+  const user = await engineUserId();
+  if (!user.ok) return user.response;
+  const { userId } = user;
   const raw = await readJsonBody(req, MAX_RESULT_BODY_CHARS);
   if (!raw.ok) return jsonError(raw.code, raw.status);
   const body = SaveBodySchema.safeParse(raw.value);

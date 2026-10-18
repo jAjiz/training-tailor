@@ -16,7 +16,9 @@
     "athleteTitle": "Entrar",
     "athleteIntro": "Sigue la programación de tu coach, registra tus resultados y compáralos.",
     "coachTitle": "Entrar como coach",
-    "coachIntro": "Crea y publica tus programaciones. Las cuentas de coach se aprueban manualmente."
+    "coachIntro": "Crea y publica tus programaciones. Las cuentas de coach se aprueban manualmente.",
+    "adminTitle": "Entrar al panel de administración",
+    "adminIntro": "Solo para la cuenta de administración de Training Tailor."
   },
   "nav": {
     "today": "Hoy",
@@ -262,7 +264,8 @@
     "editResult": "Editar",
     "myResult": "Tu resultado: {score}",
     "scores": "{count, plural, =0 {Sin scores} one {# score} other {# scores}}",
-    "addOneRm": "Añade tu 1RM de {movement} para ver los kg"
+    "addOneRm": "Añade tu 1RM de {movement} para ver los kg",
+    "noNewSessions": "Este programa ya no recibe sesiones nuevas."
   },
   "leaderboard": {
     "title": "Leaderboard",
@@ -315,5 +318,189 @@
     "rank": "#",
     "bumps": "Fist bumps",
     "view": "Ver resultados"
+  },
+  "impersonation": {
+    "viewing": "Estás viendo la cuenta de {name}",
+    "exit": "Salir",
+    "exiting": "Saliendo…"
+  },
+  "admin": {
+    "nav": {
+      "overview": "Resumen",
+      "coaches": "Coaches",
+      "athletes": "Atletas",
+      "programs": "Programas",
+      "audit": "Registro",
+      "label": "Panel de administración"
+    },
+    "badge": "Admin",
+    "common": {
+      "search": "Buscar",
+      "searchPlaceholder": "Nombre o email",
+      "clear": "Quitar filtros",
+      "prev": "Anterior",
+      "next": "Siguiente",
+      "name": "Nombre",
+      "email": "Email",
+      "signedUp": "Alta",
+      "status": "Estado",
+      "viewAudit": "Ver registro",
+      "language": "Idioma",
+      "timezone": "Zona horaria",
+      "languages": {
+        "es": "Español",
+        "en": "English"
+      },
+      "noLanguage": "Sin elegir",
+      "typeEmail": "Escribe {email} para confirmar",
+      "pagination": "Paginación"
+    },
+    "overview": {
+      "title": "Resumen",
+      "pending": "{count, plural, one {coach pendiente de aprobación} other {coaches pendientes de aprobación}}",
+      "pendingNone": "No hay solicitudes por revisar.",
+      "review": "Revisar solicitudes",
+      "approvedCoaches": "Coaches aprobados",
+      "athletes": "Atletas",
+      "activePrograms": "Programas activos",
+      "results7d": "Resultados en los últimos 7 días"
+    },
+    "coaches": {
+      "title": "Coaches",
+      "empty": "Ningún coach coincide.",
+      "programs": "Programas",
+      "all": "Todos",
+      "filter": "Filtrar por estado",
+      "statuses": {
+        "pending": "Pendiente",
+        "approved": "Aprobado",
+        "rejected": "Rechazado",
+        "suspended": "Deshabilitado"
+      },
+      "statusFilters": {
+        "pending": "Pendientes",
+        "approved": "Aprobados",
+        "rejected": "Rechazados",
+        "suspended": "Deshabilitados"
+      }
+    },
+    "coach": {
+      "back": "Coaches",
+      "programsTitle": "Programas",
+      "noPrograms": "Este coach no tiene programas.",
+      "athleteProfile": "Ver su perfil de atleta",
+      "program": "Programa",
+      "kind": "Tipo",
+      "athletes": "Atletas",
+      "lastWeek": "Última semana publicada",
+      "week": "Semana {week}",
+      "published": "Publicado",
+      "unpublished": "Sin publicar",
+      "archived": "Archivado",
+      "approve": "Aprobar",
+      "reject": "Rechazar",
+      "suspend": "Deshabilitar",
+      "enable": "Habilitar",
+      "delete": "Borrar coach",
+      "enter": "Entrar como este coach",
+      "rejectTitle": "Rechazar a {name}",
+      "rejectConfirm": "No podrá crear programas. Podrás aprobarlo más adelante.",
+      "suspendTitle": "Deshabilitar a {name}",
+      "suspendConfirm": "Perderá el acceso a la zona de coach y sus enlaces de invitación dejarán de funcionar. Sus atletas siguen viendo lo publicado.",
+      "deleteTitle": "Borrar el coach {name}",
+      "deleteConfirm": "Se borra el perfil de coach y el email queda libre. Lo publicado se conserva para sus atletas; lo no publicado se borra con sus resultados.",
+      "kept": "Programas que se conservan",
+      "deleted": "Programas que se borran",
+      "enrolled": "Atletas inscritos",
+      "resultsDeleted": "Resultados que se borran"
+    },
+    "athletes": {
+      "title": "Atletas",
+      "empty": "Ningún atleta coincide.",
+      "enrollments": "Programas",
+      "active": "Activo",
+      "disabled": "Deshabilitado"
+    },
+    "athlete": {
+      "back": "Atletas",
+      "enrollmentsTitle": "Programas",
+      "noEnrollments": "No sigue ningún programa.",
+      "coachProfile": "Ver su perfil de coach",
+      "program": "Programa",
+      "coach": "Coach",
+      "joined": "Desde",
+      "removed": "Quitado",
+      "results": "Resultados registrados",
+      "disable": "Deshabilitar",
+      "enable": "Habilitar",
+      "delete": "Borrar atleta",
+      "enter": "Entrar como este atleta",
+      "disableTitle": "Deshabilitar a {name}",
+      "disableConfirm": "No podrá usar la zona de atleta y sus resultados se ocultan de los leaderboards mientras esté deshabilitado.",
+      "deleteTitle": "Borrar el atleta {name}",
+      "deleteConfirm": "Se borran el perfil de atleta, sus inscripciones, resultados, fist bumps y 1RMs. El email queda libre.",
+      "enrollments": "Inscripciones",
+      "resultsDeleted": "Resultados",
+      "prs": "1RMs"
+    },
+    "programs": {
+      "title": "Programas",
+      "empty": "Ningún programa coincide.",
+      "searchPlaceholder": "Programa o coach",
+      "coach": "Coach",
+      "deletedCoach": "Coach eliminado",
+      "kind": "Tipo",
+      "athletes": "Atletas",
+      "lastWeek": "Última semana",
+      "archived": "Archivado",
+      "invite": "Invitación",
+      "inviteOn": "Activa",
+      "inviteOff": "Deshabilitada",
+      "disableInvite": "Deshabilitar enlace",
+      "enableInvite": "Habilitar enlace",
+      "regenerate": "Generar enlace nuevo",
+      "disableInviteTitle": "Deshabilitar el enlace de {name}",
+      "disableInviteConfirm": "Nadie podrá unirse con el enlace y el coach no podrá generar otro hasta que lo habilites.",
+      "regenerateTitle": "Generar un enlace nuevo para {name}",
+      "regenerateConfirm": "El enlace actual dejará de funcionar.",
+      "actions": "Acciones"
+    },
+    "audit": {
+      "title": "Registro",
+      "empty": "No hay entradas.",
+      "when": "Fecha (UTC)",
+      "actor": "Quién",
+      "action": "Acción",
+      "target": "Sobre",
+      "details": "Detalles",
+      "script": "Script",
+      "impersonating": "Suplantando",
+      "filterAction": "Acción",
+      "filterUser": "Usuario (id)",
+      "filter": "Filtrar",
+      "actions": {
+        "coach": {
+          "approve": "Coach aprobado",
+          "reject": "Coach rechazado",
+          "suspend": "Coach deshabilitado",
+          "enable": "Coach habilitado",
+          "delete": "Coach borrado"
+        },
+        "athlete": {
+          "disable": "Atleta deshabilitado",
+          "enable": "Atleta habilitado",
+          "delete": "Atleta borrado"
+        },
+        "program": {
+          "invite_disable": "Invitación deshabilitada",
+          "invite_enable": "Invitación habilitada",
+          "regenerate_invite": "Enlace regenerado"
+        },
+        "impersonation": {
+          "start": "Entrada en una cuenta",
+          "stop": "Salida de una cuenta"
+        }
+      }
+    }
   }
 }
