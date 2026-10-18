@@ -11,7 +11,8 @@ export default async function CoachLayout({ children }: { children: React.ReactN
   return (
     <>
       {ctx?.impersonatedBy && <ImpersonationBanner name={ctx.user.name} />}
-      <CoachNav user={user && { name: user.name, image: user.image }} approved={coach?.status === "approved"} />
+      <CoachNav user={user && { name: user.name, image: user.image }} approved={coach?.status === "approved"}
+        impersonating={Boolean(ctx?.impersonatedBy)} />
       <main className="px-6 py-8 lg:px-8">{children}</main>
     </>
   );

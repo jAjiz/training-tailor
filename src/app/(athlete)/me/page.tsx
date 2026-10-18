@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { SignOutButton } from "@/components/SignOutButton";
+import { AccountSignOut } from "@/components/AccountSignOut";
 import { Card } from "@/components/ui/Card";
 import { isLocale } from "@/i18n/locale";
 import { requireAthletePage } from "@/lib/accounts";
@@ -18,7 +18,7 @@ export default async function MePage() {
           timeZones={timeZones.includes(athlete.timezone) ? timeZones : [athlete.timezone, ...timeZones]}
         />
       </Card>
-      <SignOutButton />
+      <AccountSignOut />
     </section>
   );
 }
