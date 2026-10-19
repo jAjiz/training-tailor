@@ -1,11 +1,11 @@
 # Training Tailor — Notifications and Announcements Design (Closed Beta)
 
 > Revision 1 (2026-10-19), after a builder review. Second part of the closed-beta preparation decided on 2026-10-18: the
-> admin panel (`training-tailor-admin-design.md`, PR #11, branch `feat/admin-panel`) is the
+> admin panel (`training-tailor-admin-design.md`, merged in #11 on 2026-10-19) is the
 > first part; the production deploy comes after both. This spec **builds on the admin
 > spec**: it uses its `rejected`/`suspended` coach statuses, `AthleteAccount.disabledAt`,
 > nullable `Program.coachId` with `coachName`, `runAction(name, …)` and the impersonation
-> session. Its implementation starts once `feat/admin-panel` is merged into `main`.
+> session.
 > It lifts two items out of the coaching spec's "Out" list: notifications, and a way for
 > coaches to write to their athletes (not comments).
 

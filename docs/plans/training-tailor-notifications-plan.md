@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Base branch:** start from `main` **after `feat/admin-panel` (PR #11) is merged**. Every file path and signature below is as it stands on `feat/admin-panel` (for example `runAction(name, fn(session))`, nullable `Program.coachId`, `AthleteAccount.disabledAt`). If #11 is not merged yet, stop and ask.
+- **Base branch:** `main`, which includes the admin panel (#11, merged 2026-10-19). Every file path and signature below is as it stands there (for example `runAction(name, fn(session))`, nullable `Program.coachId`, `AthleteAccount.disabledAt`).
 - Package manager **pnpm**; platform Windows. Prisma client import is `@/generated/prisma/client`; after editing the schema run `pnpm exec prisma generate`.
 - **Migrations are generated offline** with `prisma migrate diff` (Task 2); never `db push`. `pnpm db:deploy` against Neon needs the corporate VPN **off**; local `.env` points at Neon `dev`, never `production`.
 - **Tests** stay deterministic: no network, no Neon. Service tests use PGlite (`tests/helpers/db.ts`). Pushes in tests go through a fake `PushSender`; nothing imports `web-push` in a test. TDD for every code task.
