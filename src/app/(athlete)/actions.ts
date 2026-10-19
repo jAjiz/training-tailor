@@ -12,13 +12,15 @@ import { getSessionUser } from "@/lib/session";
 import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { AthleteSettingsInput, OnboardingInput, parse } from "@/lib/training/schemas";
 import { ensureAthleteAccount, updateAthleteSettings } from "@/lib/training/services/accounts";
-import { joinByCode } from "@/lib/training/services/enrollments";
+import { athleteSignupMode } from "@/lib/signup";
+import { canCreateAthleteProfile, joinByCode } from "@/lib/training/services/enrollments";
 
 export async function completeAthleteOnboarding(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("completeAthleteOnboarding", async () => {
     const user = await getSessionUser();
     if (!user) throw new TrainingError("unauthorized");
-    const { timezone } = parse(OnboardingInput, raw);
+    const { timezone, next } = parse(OnboardingInput, raw);
+    if (!(await canCreateAthleteProfile(prisma, user.id, next, athleteSignupMode()))) throw new TrainingError("invite_required");
     const current = await getLocale();
     const athlete = await ensureAthleteAccount(prisma, user, { timezone, locale: isLocale(current) ? current : DEFAULT_LOCALE });
     if (isLocale(athlete.locale)) await setLocaleCookie(athlete.locale);
@@ -26,7 +28,7 @@ export async function completeAthleteOnboarding(raw: unknown): Promise<ActionRes
 }
 
 export async function updateSettingsAction(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("updateSettingsAction", async () => {
     const athlete = await requireAthlete();
     const settings = parse(AthleteSettingsInput, raw);
     await updateAthleteSettings(prisma, athlete.id, settings);
@@ -36,7 +38,7 @@ export async function updateSettingsAction(raw: unknown): Promise<ActionResult> 
 }
 
 export async function joinProgramAction(code: unknown): Promise<ActionResult<{ programId: string }>> {
-  return runAction(async () => {
+  return runAction("joinProgramAction", async () => {
     const athlete = await requireAthlete();
     const { programId } = await joinByCode(prisma, athlete, parse(z.string().min(1).max(64), code));
     revalidatePath("/");

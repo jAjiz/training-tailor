@@ -80,6 +80,14 @@ describe("programs", () => {
     expect((await getOwnedProgram(tdb.prisma, coach.id, p.id)).inviteCode).toBe(code);
   });
 
+  it("refuses to regenerate a link the admin disabled", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await createProgram(tdb.prisma, coach.id, continuous);
+    await tdb.prisma.program.update({ where: { id: p.id }, data: { inviteDisabledAt: new Date() } });
+    await expect(regenerateInvite(tdb.prisma, coach.id, p.id)).rejects.toMatchObject({ code: "invite_disabled" });
+    expect((await getOwnedProgram(tdb.prisma, coach.id, p.id)).inviteCode).toBe(p.inviteCode);
+  });
+
   it("makes archived programs read-only", async () => {
     const coach = await makeCoach(tdb.prisma);
     const p = await createProgram(tdb.prisma, coach.id, continuous);

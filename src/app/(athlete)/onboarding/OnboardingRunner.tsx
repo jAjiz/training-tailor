@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/Button";
 import type { ErrorCode } from "@/lib/training/errors";
 import { completeAthleteOnboarding } from "../actions";
 
-export function OnboardingRunner({ next }: { next: string }) {
+/** `signOut`: shown when there is no invitation, the only way to switch to another Google account. */
+export function OnboardingRunner({ next, signOut }: { next: string; signOut: React.ReactNode }) {
   const t = useTranslations();
   const router = useRouter();
   const [error, setError] = useState<ErrorCode | null>(null);
@@ -15,7 +16,7 @@ export function OnboardingRunner({ next }: { next: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    completeAthleteOnboarding({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }).then((r) => {
+    completeAthleteOnboarding({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, next }).then((r) => {
       if (cancelled) return;
       if (r.ok) {
         router.replace(next);
@@ -31,7 +32,9 @@ export function OnboardingRunner({ next }: { next: string }) {
   return (
     <div className="flex flex-col items-center gap-4 py-16 text-center">
       <p role="alert" className="text-danger">{t(`errors.${error}`)}</p>
-      <Button type="button" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>{t("onboarding.retry")}</Button>
+      {error === "invite_required" ? signOut : (
+        <Button type="button" onClick={() => { setError(null); setAttempt((a) => a + 1); }}>{t("onboarding.retry")}</Button>
+      )}
     </div>
   );
 }

@@ -25,7 +25,8 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   return (
     <section className="flex flex-col gap-6">
       <ProgramHeader programId={program.id} name={program.name} />
-      <InviteLink programId={program.id} url={`${base}/join/${program.inviteCode}`} readOnly={program.archivedAt !== null} />
+      <InviteLink programId={program.id} url={`${base}/join/${program.inviteCode}`} readOnly={program.archivedAt !== null}
+        inviteDisabled={program.inviteDisabledAt !== null} />
       {program.kind === "closed" && !program.publishedAt && (
         <p data-color="yellow" className="rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">{t("roster.notPublishedHint")}</p>
       )}

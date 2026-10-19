@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { makeAthlete, makeClosed, makeCoach, makeContinuous } from "../../helpers/factories";
+import { enroll, makeAthlete, makeClosed, makeCoach, makeContinuous, makeUser } from "../../helpers/factories";
 import {
-  findProgramByCode, getEnrollmentStatus, joinByCode, listAthletePrograms, listRoster, setEnrollmentRemoved,
+  canCreateAthleteProfile, findProgramByCode, getEnrollmentStatus, joinByCode, listAthletePrograms, listRoster, setEnrollmentRemoved,
 } from "@/lib/training/services/enrollments";
 
 let tdb: TestDb;
@@ -37,6 +37,21 @@ describe("enrollments", () => {
     const archived = await makeContinuous(tdb.prisma, coach.id);
     await tdb.prisma.program.update({ where: { id: archived.id }, data: { archivedAt: new Date() } });
     for (const code of ["nope", draft.inviteCode, archived.inviteCode]) {
+      await expect(joinByCode(tdb.prisma, athlete, code)).rejects.toMatchObject({ code: "invite_invalid" });
+      expect(await findProgramByCode(tdb.prisma, code)).toBeNull();
+    }
+  });
+
+  it("rejects invitations of programs without an approved coach or with the link disabled", async () => {
+    const athlete = await makeAthlete(tdb.prisma);
+    const suspended = await makeCoach(tdb.prisma, "suspended");
+    const coach = await makeCoach(tdb.prisma);
+    const ofSuspended = await makeContinuous(tdb.prisma, suspended.id);
+    const coachless = await makeContinuous(tdb.prisma, coach.id);
+    await tdb.prisma.program.update({ where: { id: coachless.id }, data: { coachId: null } });
+    const disabled = await makeContinuous(tdb.prisma, coach.id);
+    await tdb.prisma.program.update({ where: { id: disabled.id }, data: { inviteDisabledAt: new Date() } });
+    for (const code of [ofSuspended.inviteCode, coachless.inviteCode, disabled.inviteCode]) {
       await expect(joinByCode(tdb.prisma, athlete, code)).rejects.toMatchObject({ code: "invite_invalid" });
       expect(await findProgramByCode(tdb.prisma, code)).toBeNull();
     }
@@ -78,5 +93,55 @@ describe("enrollments", () => {
     expect((await listAthletePrograms(tdb.prisma, athlete.id)).map((e) => e.programId)).toEqual([b.id, a.id]);
     await tdb.prisma.program.update({ where: { id: b.id }, data: { archivedAt: new Date() } });
     expect((await listAthletePrograms(tdb.prisma, athlete.id)).map((e) => e.programId)).toEqual([a.id]);
+  });
+});
+
+describe("canCreateAthleteProfile", () => {
+  it("lets an athlete who already has a profile through in any mode", async () => {
+    const athlete = await makeAthlete(tdb.prisma);
+    expect(await canCreateAthleteProfile(tdb.prisma, athlete.userId, "/", "invite_only")).toBe(true);
+  });
+
+  it("lets anyone through in open mode", async () => {
+    const user = await makeUser(tdb.prisma);
+    expect(await canCreateAthleteProfile(tdb.prisma, user.id, "/", "open")).toBe(true);
+  });
+
+  it("in invite_only mode, needs next to be /join/<a code that can be joined>", async () => {
+    const db = tdb.prisma;
+    const user = await makeUser(db);
+    const coach = await makeCoach(db);
+    const valid = await makeContinuous(db, coach.id);
+    expect(await canCreateAthleteProfile(db, user.id, `/join/${valid.inviteCode}`, "invite_only")).toBe(true);
+
+    const archived = await makeContinuous(db, coach.id);
+    await db.program.update({ where: { id: archived.id }, data: { archivedAt: new Date() } });
+    const disabled = await makeContinuous(db, coach.id);
+    await db.program.update({ where: { id: disabled.id }, data: { inviteDisabledAt: new Date() } });
+    const coachless = await makeContinuous(db, coach.id);
+    await db.program.update({ where: { id: coachless.id }, data: { coachId: null } });
+    const refused = [
+      "/", "/join/nope", `/join/${archived.inviteCode}`, `/join/${disabled.inviteCode}`, `/join/${coachless.inviteCode}`,
+      `/join/${valid.inviteCode}/x`, `//evil/join/${valid.inviteCode}`, `/join/x/../${valid.inviteCode}`,
+      `https://evil.test/join/${valid.inviteCode}`,
+    ];
+    for (const next of refused) {
+      expect(await canCreateAthleteProfile(db, user.id, next, "invite_only"), next).toBe(false);
+    }
+  });
+});
+
+describe("coachless programs", () => {
+  it("are still listed for their enrolled athlete after the coach is deleted", async () => {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const athlete = await makeAthlete(db);
+    const p = await makeClosed(db, coach.id, 4, true);
+    await enroll(db, p.id, athlete.id, "2026-10-05");
+    await db.program.update({ where: { id: p.id }, data: { coachId: null, coachName: coach.displayName } });
+    await db.coachAccount.delete({ where: { id: coach.id } });
+    const listed = await listAthletePrograms(db, athlete.id);
+    expect(listed.map((e) => e.programId)).toEqual([p.id]);
+    expect(listed[0].program).toMatchObject({ coach: null, coachName: coach.displayName });
   });
 });

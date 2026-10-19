@@ -10,7 +10,7 @@ import { PrInput, parse } from "@/lib/training/schemas";
 import { addPr, deletePr } from "@/lib/training/services/prs";
 
 export async function addPrAction(raw: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("addPrAction", async () => {
     const athlete = await requireAthlete();
     await addPr(prisma, athlete, parse(PrInput, raw));
     revalidatePath("/", "layout");
@@ -18,7 +18,7 @@ export async function addPrAction(raw: unknown): Promise<ActionResult> {
 }
 
 export async function deletePrAction(prId: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("deletePrAction", async () => {
     const athlete = await requireAthlete();
     await deletePr(prisma, athlete.id, parse(z.string().min(1).max(64), prId));
     revalidatePath("/", "layout");

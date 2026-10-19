@@ -1,3 +1,4 @@
+import { inviteCodeFromNext, type SignupMode } from "@/lib/signup";
 import { toDbDate, todayIn } from "../dates";
 import { TrainingError } from "../errors";
 import { getOwnedProgram } from "./programs";
@@ -8,7 +9,16 @@ const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code 
 export async function findProgramByCode(db: Db, code: string) {
   const program = await db.program.findUnique({ where: { inviteCode: code }, include: { coach: true } });
   if (!program || program.archivedAt || (program.kind === "closed" && !program.publishedAt)) return null;
+  if (program.coach?.status !== "approved" || program.inviteDisabledAt) return null;
   return program;
+}
+
+/** The sign-up gate: an athlete profile may be created when one exists already, sign-up is open, or `next` is `/join/<a joinable code>`. */
+export async function canCreateAthleteProfile(db: Db, userId: string, next: string, mode: SignupMode): Promise<boolean> {
+  if (await db.athleteAccount.findUnique({ where: { userId }, select: { id: true } })) return true;
+  if (mode === "open") return true;
+  const code = inviteCodeFromNext(next);
+  return code !== null && (await findProgramByCode(db, code)) !== null;
 }
 
 export async function joinByCode(db: Db, athlete: { id: string; timezone: string }, code: string, now: Date = new Date()) {

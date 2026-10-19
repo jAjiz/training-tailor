@@ -80,7 +80,7 @@ export const BlockInput = z.discriminatedUnion("kind", [
 });
 export type BlockInputValue = z.output<typeof BlockInput>;
 
-export const OnboardingInput = z.object({ timezone: z.string().max(64) });
+export const OnboardingInput = z.object({ timezone: z.string().max(64), next: z.string().max(512) });
 
 export const AthleteSettingsInput = z.object({
   displayName: Name(60),
