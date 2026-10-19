@@ -17,6 +17,7 @@
     "eval": "tsx scripts/eval.ts",
     "coverage": "tsx scripts/coverage.ts",
     "review:movements": "tsx scripts/review-movements.ts",
+    "admin:grant": "tsx scripts/grant-admin.ts",
     "coach:approve": "tsx scripts/approve-coach.ts"
   },
   "dependencies": {

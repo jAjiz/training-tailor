@@ -12,7 +12,7 @@ import { deleteResult, saveResult, toggleFistBump, type SinglePrompt } from "@/l
 const Id = z.string().min(1).max(64);
 
 export async function saveResultAction(raw: unknown): Promise<ActionResult<{ singlePrompt: SinglePrompt | null }>> {
-  return runAction(async () => {
+  return runAction("saveResultAction", async () => {
     const athlete = await requireAthlete();
     const { singlePrompt } = await saveResult(prisma, athlete, parse(ResultInput, raw));
     revalidatePath("/", "layout");
@@ -21,7 +21,7 @@ export async function saveResultAction(raw: unknown): Promise<ActionResult<{ sin
 }
 
 export async function deleteResultAction(blockId: unknown): Promise<ActionResult> {
-  return runAction(async () => {
+  return runAction("deleteResultAction", async () => {
     const athlete = await requireAthlete();
     await deleteResult(prisma, athlete, parse(Id, blockId));
     revalidatePath("/", "layout");
@@ -29,7 +29,7 @@ export async function deleteResultAction(blockId: unknown): Promise<ActionResult
 }
 
 export async function toggleFistBumpAction(resultId: unknown): Promise<ActionResult<{ bumped: boolean; count: number }>> {
-  return runAction(async () => {
+  return runAction("toggleFistBumpAction", async () => {
     const athlete = await requireAthlete();
     return toggleFistBump(prisma, athlete, parse(Id, resultId));
   });

@@ -62,6 +62,9 @@ export default async function TodayPage({ searchParams }: Props) {
           </p>
           {date !== today && <Button href={`/?program=${programId}`} variant="ghost" size="sm">{t("today")}</Button>}
         </div>
+        {day.program.coachId === null && (
+          <p data-color="neutral" className="rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">{t("noNewSessions")}</p>
+        )}
         {day.status === "before_start" && <EmptyState>{t("startsOn", { date: formatDay(day.timeline.startDate, locale) })}</EmptyState>}
         {day.status === "finished" && <EmptyState>{t("finished")}</EmptyState>}
         {(day.status === "unpublished" || (day.status === "ok" && day.blocks.length === 0)) && <EmptyState>{t("nothing")}</EmptyState>}

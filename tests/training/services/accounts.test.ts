@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { makeUser } from "../../helpers/factories";
 import {
-  approveCoach, ensureAthleteAccount, ensureCoachAccount, getAthleteByUserId, getCoachByUserId, updateAthleteSettings,
+  ensureAthleteAccount, ensureCoachAccount, getAthleteByUserId, getCoachByUserId, updateAthleteSettings,
 } from "@/lib/training/services/accounts";
 
 let tdb: TestDb;
@@ -33,14 +33,6 @@ describe("accounts", () => {
     expect(coach.status).toBe("pending");
     expect(await getAthleteByUserId(tdb.prisma, user.id)).not.toBeNull();
     expect(await getCoachByUserId(tdb.prisma, user.id)).not.toBeNull();
-  });
-
-  it("approves a coach by email", async () => {
-    const user = await makeUser(tdb.prisma);
-    await ensureCoachAccount(tdb.prisma, { id: user.id, name: user.name }, { locale: "es" });
-    expect(await approveCoach(tdb.prisma, user.email)).toBe("approved");
-    expect((await getCoachByUserId(tdb.prisma, user.id))?.status).toBe("approved");
-    expect(await approveCoach(tdb.prisma, "nobody@test.local")).toBe("not_found");
   });
 
   it("updates the athlete's settings", async () => {

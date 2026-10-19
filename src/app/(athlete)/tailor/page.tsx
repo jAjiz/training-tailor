@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 import { getDomainData } from "@/lib/domain/repository";
 import { Equipment } from "@/lib/domain/types";
+import { isEngineDisabled } from "@/lib/engine-access";
 import { getUserId } from "@/lib/session";
 import { TailorClient } from "./TailorClient";
 
 export default async function TailorPage() {
-  if (!(await getUserId())) redirect("/signin");
+  const userId = await getUserId();
+  if (!userId) redirect("/signin");
+  if (await isEngineDisabled(userId)) redirect("/disabled");
   const domain = await getDomainData();
   return (
     <section className="flex flex-col gap-4">

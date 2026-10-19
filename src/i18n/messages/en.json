@@ -16,7 +16,9 @@
     "athleteTitle": "Sign in",
     "athleteIntro": "Follow your coach's programming, log your results and compare them.",
     "coachTitle": "Sign in as a coach",
-    "coachIntro": "Write and publish your programs. Coach accounts are approved manually."
+    "coachIntro": "Write and publish your programs. Coach accounts are approved manually.",
+    "adminTitle": "Sign in to the admin panel",
+    "adminIntro": "Only for the Training Tailor admin account."
   },
   "nav": {
     "today": "Today",
@@ -42,6 +44,10 @@
     "not_loggable": "You cannot log this block yet.",
     "invalid_score": "The result is not valid for this block.",
     "own_result": "You cannot fist bump your own result.",
+    "account_disabled": "Your account is disabled.",
+    "invite_required": "You need an invitation from your coach to sign in.",
+    "invalid_status_change": "That status change is not allowed.",
+    "invite_disabled": "The administrator has turned off the invitation link.",
     "internal": "Something went wrong. Try again."
   },
   "onboarding": {
@@ -60,9 +66,18 @@
     }
   },
   "coachPending": {
-    "title": "Account awaiting approval",
+    "titles": {
+      "pending": "Account awaiting approval",
+      "rejected": "Request not accepted",
+      "suspended": "Account disabled"
+    },
     "pending": "We received your request. You can create programs once your account is approved.",
-    "suspended": "Your coach account is suspended. Contact us if you think this is a mistake."
+    "suspended": "Your coach account is disabled.",
+    "rejected": "Your request was not accepted."
+  },
+  "accountDisabled": {
+    "title": "Account disabled",
+    "body": "Your account is disabled."
   },
   "programs": {
     "title": "My programs",
@@ -225,6 +240,7 @@
     "copied": "Copied",
     "regenerate": "Generate a new link",
     "regenerateConfirm": "The current link will stop working. Continue?",
+    "inviteDisabled": "Invitation disabled by the admin. Nobody can join with the link, and you can generate a new one once the admin enables it.",
     "empty": "No athletes yet. Share the invitation link.",
     "athlete": "Athlete",
     "since": "Since",
@@ -253,7 +269,8 @@
     "editResult": "Edit",
     "myResult": "Your result: {score}",
     "scores": "{count, plural, =0 {No scores} one {# score} other {# scores}}",
-    "addOneRm": "Add your {movement} 1RM to see the kg"
+    "addOneRm": "Add your {movement} 1RM to see the kg",
+    "noNewSessions": "This program no longer receives new sessions."
   },
   "leaderboard": {
     "title": "Leaderboard",
@@ -306,5 +323,194 @@
     "rank": "#",
     "bumps": "Fist bumps",
     "view": "View results"
+  },
+  "impersonation": {
+    "viewing": "You are viewing {name}'s account",
+    "exit": "Exit",
+    "exiting": "Exiting…"
+  },
+  "admin": {
+    "nav": {
+      "overview": "Overview",
+      "coaches": "Coaches",
+      "athletes": "Athletes",
+      "programs": "Programs",
+      "audit": "Audit log",
+      "label": "Admin panel"
+    },
+    "badge": "Admin",
+    "common": {
+      "search": "Search",
+      "searchPlaceholder": "Name or email",
+      "clear": "Clear filters",
+      "prev": "Previous",
+      "next": "Next",
+      "name": "Name",
+      "email": "Email",
+      "signedUp": "Signed up",
+      "status": "Status",
+      "viewAudit": "View audit log",
+      "language": "Language",
+      "timezone": "Time zone",
+      "languages": {
+        "es": "Español",
+        "en": "English"
+      },
+      "noLanguage": "Not chosen",
+      "typeEmail": "Type {email} to confirm",
+      "pagination": "Pagination"
+    },
+    "overview": {
+      "title": "Overview",
+      "pending": "{count, plural, one {coach awaiting approval} other {coaches awaiting approval}}",
+      "pendingNone": "There are no requests to review.",
+      "review": "Review requests",
+      "approvedCoaches": "Approved coaches",
+      "athletes": "Athletes",
+      "activePrograms": "Active programs",
+      "results7d": "Results in the last 7 days"
+    },
+    "coaches": {
+      "title": "Coaches",
+      "empty": "No coach matches.",
+      "programs": "Programs",
+      "all": "All",
+      "filter": "Filter by status",
+      "statuses": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "suspended": "Disabled"
+      },
+      "statusFilters": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "suspended": "Disabled"
+      }
+    },
+    "coach": {
+      "back": "Coaches",
+      "programsTitle": "Programs",
+      "noPrograms": "This coach has no programs.",
+      "athleteProfile": "View their athlete profile",
+      "program": "Program",
+      "kind": "Kind",
+      "athletes": "Athletes",
+      "lastWeek": "Last published week",
+      "week": "Week {week}",
+      "published": "Published",
+      "unpublished": "Not published",
+      "archived": "Archived",
+      "approve": "Approve",
+      "reject": "Reject",
+      "suspend": "Disable",
+      "enable": "Enable",
+      "delete": "Delete coach",
+      "enter": "Enter as this coach",
+      "rejectTitle": "Reject {name}",
+      "rejectConfirm": "They will not be able to create programs. You can approve them later.",
+      "suspendTitle": "Disable {name}",
+      "suspendConfirm": "They lose access to the coach zone and their invitation links stop working. Their athletes keep seeing what was published.",
+      "deleteTitle": "Delete coach {name}",
+      "deleteConfirm": "The coach profile is deleted and the email becomes free. Published content stays for their athletes; unpublished content is deleted with its results.",
+      "kept": "Programs kept",
+      "deleted": "Programs deleted",
+      "enrolled": "Athletes enrolled",
+      "resultsDeleted": "Results deleted"
+    },
+    "athletes": {
+      "title": "Athletes",
+      "empty": "No athlete matches.",
+      "enrollments": "Programs",
+      "active": "Active",
+      "disabled": "Disabled"
+    },
+    "athlete": {
+      "back": "Athletes",
+      "enrollmentsTitle": "Programs",
+      "noEnrollments": "Not following any program.",
+      "coachProfile": "View their coach profile",
+      "program": "Program",
+      "coach": "Coach",
+      "joined": "Joined",
+      "removed": "Removed",
+      "results": "Results logged",
+      "disable": "Disable",
+      "enable": "Enable",
+      "delete": "Delete athlete",
+      "enter": "Enter as this athlete",
+      "disableTitle": "Disable {name}",
+      "disableConfirm": "They cannot use the athlete zone, and their results are hidden from leaderboards while disabled.",
+      "deleteTitle": "Delete athlete {name}",
+      "deleteConfirm": "The athlete profile is deleted with its enrollments, results, fist bumps and 1RMs. The email becomes free.",
+      "enrollments": "Enrollments",
+      "resultsDeleted": "Results",
+      "prs": "1RMs"
+    },
+    "programs": {
+      "title": "Programs",
+      "empty": "No program matches.",
+      "searchPlaceholder": "Program or coach",
+      "coach": "Coach",
+      "deletedCoach": "Deleted coach",
+      "kind": "Kind",
+      "athletes": "Athletes",
+      "lastWeek": "Last week",
+      "archived": "Archived",
+      "invite": "Invitation",
+      "inviteOn": "Active",
+      "inviteOff": "Disabled",
+      "coachUnavailable": "Coach unavailable",
+      "disableInvite": "Disable link",
+      "enableInvite": "Enable link",
+      "regenerate": "New link",
+      "disableInviteTitle": "Disable the link of {name}",
+      "disableInviteConfirm": "Nobody can join with the link, and the coach cannot generate another until you enable it.",
+      "regenerateTitle": "Generate a new link for {name}",
+      "regenerateConfirm": "The current link will stop working.",
+      "actions": "Actions"
+    },
+    "audit": {
+      "title": "Audit log",
+      "empty": "No entries.",
+      "when": "Date (UTC)",
+      "actor": "Who",
+      "action": "Action",
+      "target": "About",
+      "details": "Details",
+      "script": "Script",
+      "impersonating": "Impersonating",
+      "filterAction": "Action",
+      "filterUser": "User (id)",
+      "filter": "Filter",
+      "actions": {
+        "coach": {
+          "approve": "Coach approved",
+          "reject": "Coach rejected",
+          "suspend": "Coach disabled",
+          "enable": "Coach enabled",
+          "delete": "Coach deleted"
+        },
+        "athlete": {
+          "disable": "Athlete disabled",
+          "enable": "Athlete enabled",
+          "delete": "Athlete deleted"
+        },
+        "program": {
+          "invite_disable": "Invitation disabled",
+          "invite_enable": "Invitation enabled",
+          "regenerate_invite": "Link regenerated"
+        },
+        "impersonation": {
+          "start": "Entered an account",
+          "stop": "Left an account",
+          "failed": "Could not enter an account"
+        },
+        "admin": {
+          "grant": "Admin granted"
+        }
+      }
+    }
   }
 }

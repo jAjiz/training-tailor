@@ -10,9 +10,11 @@ export function newInviteCode(): string {
 }
 
 export async function createProgram(db: Db, coachId: string, input: ProgramCreate) {
+  const coach = await db.coachAccount.findUniqueOrThrow({ where: { id: coachId } });
   return db.program.create({
     data: {
       coachId,
+      coachName: coach.displayName,
       name: input.name,
       description: input.description,
       kind: input.kind,
@@ -65,6 +67,7 @@ export async function archiveProgram(db: Db, coachId: string, programId: string)
 export async function regenerateInvite(db: Db, coachId: string, programId: string) {
   const program = await getOwnedProgram(db, coachId, programId);
   assertWritable(program);
+  if (program.inviteDisabledAt) throw new TrainingError("invite_disabled");
   const code = newInviteCode();
   await db.program.update({ where: { id: programId }, data: { inviteCode: code } });
   return code;

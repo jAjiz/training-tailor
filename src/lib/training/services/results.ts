@@ -78,7 +78,7 @@ export async function getDayResults(db: Db, athleteId: string, programId: string
     db.result.findMany({ where: { athleteId, blockId: { in: blockIds } } }),
     db.result.groupBy({
       by: ["blockId"],
-      where: { blockId: { in: blockIds }, athlete: { enrollments: { some: { programId, removedAt: null } } } },
+      where: { blockId: { in: blockIds }, athlete: { disabledAt: null, enrollments: { some: { programId, removedAt: null } } } },
       _count: { _all: true },
     }),
   ]);
@@ -111,7 +111,10 @@ export async function getLeaderboard(db: Db, viewer: Viewer, blockId: string) {
 async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null) {
   if (!hasLeaderboard(block, block.program) || !block.program.startDate) throw new TrainingError("not_found");
   const results = await db.result.findMany({
-    where: { blockId: block.id, athlete: { enrollments: { some: { programId: block.programId, removedAt: null } } } },
+    where: {
+      blockId: block.id,
+      athlete: { disabledAt: null, enrollments: { some: { programId: block.programId, removedAt: null } } },
+    },
     include: {
       athlete: true,
       _count: { select: { fistBumps: true } },
@@ -187,7 +190,8 @@ export async function listBlockResults(db: Db, coachId: string, blockId: string)
 
 async function blockResultRows(db: Db, blockId: string) {
   const results = await db.result.findMany({
-    where: { blockId }, include: { athlete: true, block: true }, orderBy: [{ performedOn: "desc" }, { createdAt: "asc" }],
+    where: { blockId, athlete: { disabledAt: null } }, include: { athlete: true, block: true },
+    orderBy: [{ performedOn: "desc" }, { createdAt: "asc" }],
   });
   return results.map(toRow);
 }
@@ -199,7 +203,8 @@ export async function listAthleteResults(db: Db, coachId: string, programId: str
   });
   if (!enrollment) throw new TrainingError("not_found");
   const results = await db.result.findMany({
-    where: { athleteId, block: { programId } }, include: { athlete: true, block: true }, orderBy: { performedOn: "desc" },
+    where: { athleteId, block: { programId }, athlete: { disabledAt: null } }, include: { athlete: true, block: true },
+    orderBy: { performedOn: "desc" },
   });
   return { athlete: enrollment.athlete, results: results.map(toRow) };
 }

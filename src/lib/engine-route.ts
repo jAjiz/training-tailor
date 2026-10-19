@@ -5,11 +5,11 @@ import type { LlmProvider } from "@/lib/ai/provider";
 import { getDomainData, type DomainData } from "@/lib/domain/repository";
 import type { ProgressStage } from "@/lib/engine/pipeline";
 import type { AthleteProfile, PipelineResult } from "@/lib/engine/types";
+import { engineUserId } from "@/lib/engine-access";
 import { engineStreamResponse } from "@/lib/engine-stream";
 import { jsonError, readJsonBody } from "@/lib/http";
 import { consumeQuota, dailyLimit, type UsageKind } from "@/lib/quota";
 import { prismaQuotaStore } from "@/lib/quota-store";
-import { getUserId } from "@/lib/session";
 import { loadProfile } from "@/lib/tailor-service";
 import { recordUnrecognized } from "@/lib/unrecognized";
 import { prismaUnrecognizedStore } from "@/lib/unrecognized-store";
@@ -31,8 +31,9 @@ type Prepared<T> = { ok: true; userId: string; body: T; provider: LlmProvider } 
 
 /** Session, bounded body, validation, provider and quota: shared by every engine endpoint. */
 async function prepare<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<T>> {
-  const userId = await getUserId();
-  if (!userId) return { ok: false, response: jsonError("unauthorized", 401) };
+  const user = await engineUserId();
+  if (!user.ok) return user;
+  const { userId } = user;
   const raw = await readJsonBody(req, check.maxBodyChars);
   if (!raw.ok) return { ok: false, response: jsonError(raw.code, raw.status) };
   const body = check.schema.safeParse(raw.value);
