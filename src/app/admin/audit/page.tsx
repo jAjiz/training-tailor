@@ -15,7 +15,7 @@ const KNOWN_ACTIONS = [
   "coach.approve", "coach.reject", "coach.suspend", "coach.enable", "coach.delete",
   "athlete.disable", "athlete.enable", "athlete.delete",
   "program.invite_disable", "program.invite_enable", "program.regenerate_invite",
-  "impersonation.start", "impersonation.stop",
+  "impersonation.start", "impersonation.stop", "impersonation.failed", "admin.grant",
 ] as const;
 
 function detailsText(details: unknown): string {

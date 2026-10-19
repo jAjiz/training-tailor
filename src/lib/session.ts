@@ -1,13 +1,13 @@
+import { cache } from "react";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 
 export type SessionUser = { id: string; name: string; email: string; image: string | null };
 
-export async function getSessionContext(): Promise<{
-  user: SessionUser;
-  role: string | null;
-  impersonatedBy: string | null;
-} | null> {
+export type SessionContext = { user: SessionUser; role: string | null; impersonatedBy: string | null };
+
+/** Memoized per request: layouts, pages, components and guards all read the same session. */
+export const getSessionContext = cache(async (): Promise<SessionContext | null> => {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
   return {
@@ -15,7 +15,7 @@ export async function getSessionContext(): Promise<{
     role: session.user.role ?? null,
     impersonatedBy: session.session.impersonatedBy ?? null,
   };
-}
+});
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   return (await getSessionContext())?.user ?? null;

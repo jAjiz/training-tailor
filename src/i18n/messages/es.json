@@ -504,7 +504,11 @@
         },
         "impersonation": {
           "start": "Entrada en una cuenta",
-          "stop": "Salida de una cuenta"
+          "stop": "Salida de una cuenta",
+          "failed": "Entrada fallida en una cuenta"
+        },
+        "admin": {
+          "grant": "Admin concedido"
         }
       }
     }

@@ -121,7 +121,7 @@ describe("details", () => {
 
     const a = await getAthleteDetail(db, athlete.id);
     expect(a.coachId).toBe(coach.id);
-    expect(a.enrollments[0]).toMatchObject({ programId: program.id, coachName: "Coach", removedAt: null });
+    expect(a.enrollments[0]).toMatchObject({ programId: program.id, coachName: coach.displayName, removedAt: null });
     expect(a.results).toBe(0);
 
     await expect(getCoachDetail(db, "nope")).rejects.toMatchObject({ code: "not_found" });

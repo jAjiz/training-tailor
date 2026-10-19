@@ -25,16 +25,23 @@ export async function makeAthlete(db: PrismaClient, timezone = "Europe/Madrid") 
   return db.athleteAccount.create({ data: { userId: user.id, displayName: user.name, timezone } });
 }
 
+/** Like `createProgram`: the program copies its coach's display name. */
+async function coachNameOf(db: PrismaClient, coachId: string) {
+  return (await db.coachAccount.findUniqueOrThrow({ where: { id: coachId } })).displayName;
+}
+
 export async function makeContinuous(db: PrismaClient, coachId: string, startDate = "2026-10-05") {
+  const coachName = await coachNameOf(db, coachId);
   return db.program.create({
-    data: { coachId, coachName: "Coach", name: "Daily", kind: "continuous", startDate: day(startDate), inviteCode: `inv-${next()}` },
+    data: { coachId, coachName, name: "Daily", kind: "continuous", startDate: day(startDate), inviteCode: `inv-${next()}` },
   });
 }
 
 export async function makeClosed(db: PrismaClient, coachId: string, weeks = 4, published = true) {
+  const coachName = await coachNameOf(db, coachId);
   return db.program.create({
     data: {
-      coachId, coachName: "Coach", name: "Cycle", kind: "closed", weeks, inviteCode: `inv-${next()}`,
+      coachId, coachName, name: "Cycle", kind: "closed", weeks, inviteCode: `inv-${next()}`,
       publishedAt: published ? new Date() : null,
     },
   });

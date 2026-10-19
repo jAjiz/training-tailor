@@ -47,18 +47,23 @@ export async function listCoaches(
   const skip = q.page * PAGE_SIZE;
   const take = PAGE_SIZE + 1;
 
-  // Two ordered buckets (pending, then others) read as one sequence, so paging stays exact.
+  // A status filter is one bucket. Otherwise two ordered buckets (pending, then others) read as one sequence, so paging stays exact.
   const pendingWhere = { AND: [base, { status: "pending" }] };
-  const pendingCount = await db.coachAccount.count({ where: pendingWhere });
+  const othersWhere = { AND: [base, { status: { not: "pending" } }] };
   const found = [];
-  if (skip < pendingCount) {
-    found.push(...(await db.coachAccount.findMany({ where: pendingWhere, include, orderBy, skip, take })));
-  }
-  if (found.length < take) {
-    found.push(...(await db.coachAccount.findMany({
-      where: { AND: [base, { status: { not: "pending" } }] }, include, orderBy,
-      skip: Math.max(0, skip - pendingCount), take: take - found.length,
-    })));
+  if (q.status) {
+    found.push(...(await db.coachAccount.findMany({ where: base, include, orderBy, skip, take })));
+  } else {
+    const [pendingCount, pending] = await Promise.all([
+      db.coachAccount.count({ where: pendingWhere }),
+      db.coachAccount.findMany({ where: pendingWhere, include, orderBy, skip, take }),
+    ]);
+    found.push(...pending);
+    if (found.length < take) {
+      found.push(...(await db.coachAccount.findMany({
+        where: othersWhere, include, orderBy, skip: Math.max(0, skip - pendingCount), take: take - found.length,
+      })));
+    }
   }
   return {
     rows: found.slice(0, PAGE_SIZE).map((c) => ({

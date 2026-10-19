@@ -3,11 +3,17 @@ import { writeAudit } from "./audit";
 import { newInviteCode } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
+/** For the admin:grant script, so the actor is `null`. */
 export async function grantAdmin(db: Db, email: string): Promise<"granted" | "not_found"> {
-  const user = await db.user.findUnique({ where: { email } });
-  if (!user) return "not_found";
-  await db.user.update({ where: { id: user.id }, data: { role: "admin" } });
-  return "granted";
+  return db.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { email } });
+    if (!user) return "not_found";
+    await tx.user.update({ where: { id: user.id }, data: { role: "admin" } });
+    await writeAudit(tx, {
+      actorUserId: null, action: "admin.grant", targetUserId: user.id, targetType: "user", targetId: user.id, targetLabel: user.email,
+    });
+    return "granted";
+  });
 }
 
 export type CoachTransition = "approve" | "reject" | "suspend" | "enable";
@@ -104,8 +110,8 @@ export async function deleteCoach(db: Db, actor: string, coachId: string, confir
     await tx.program.deleteMany({ where: { id: { in: deletedProgramIds } } });
     // 2. Draft-week blocks of continuous programs, with their results (cascade). 3. Published closed programs stay.
     await tx.block.deleteMany({ where: { id: { in: draftBlockIds } } });
-    // 4. The remaining programs lose their coach and keep the name as text.
-    await tx.program.updateMany({ where: { coachId }, data: { coachId: null, coachName: coach.displayName } });
+    // 4. The remaining programs lose their coach; `coachName` already holds the name.
+    await tx.program.updateMany({ where: { coachId }, data: { coachId: null } });
     // 5. The profile, and the User when it was the last one.
     await tx.coachAccount.delete({ where: { id: coachId } });
     await deleteUserIfNoProfiles(tx, coach.userId);

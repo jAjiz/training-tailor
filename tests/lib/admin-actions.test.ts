@@ -21,6 +21,7 @@ vi.mock("@/lib/training/services/admin", () => ({
   deleteCoach: (...a: unknown[]) => deleteCoach(...a),
 }));
 vi.mock("@/lib/auth", () => ({
+  IMPERSONATION_SECONDS: 3600,
   auth: { api: { impersonateUser: (a: unknown) => impersonateUser(a), stopImpersonating: (a: unknown) => stopImpersonating(a) } },
 }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
@@ -71,11 +72,30 @@ describe("admin actions", () => {
     expect(writeAudit).toHaveBeenCalledTimes(1);
     expect(writeAudit).toHaveBeenCalledWith(prisma, expect.objectContaining({
       actorUserId: "admin1", action: "impersonation.start", targetUserId: "u2", targetType: "user", targetId: "u2",
-      targetLabel: "coach@test.local", details: { zone: "coach" },
+      targetLabel: "coach@test.local", details: { zone: "coach", expiresAt: expect.any(String) },
     }));
     expect(writeAudit.mock.invocationCallOrder[0]).toBeLessThan(impersonateUser.mock.invocationCallOrder[0]);
-    // A session read after impersonateUser would let Better Auth overwrite the impersonation cookie.
-    expect(getSessionContext).not.toHaveBeenCalled();
+    // One read, before impersonateUser: a read afterwards would let Better Auth overwrite the impersonation cookie.
+    expect(getSessionContext).toHaveBeenCalledTimes(1);
+    expect(getSessionContext.mock.invocationCallOrder[0]).toBeLessThan(impersonateUser.mock.invocationCallOrder[0]);
+  });
+
+  it("records the session's end on the start row", async () => {
+    findUser.mockResolvedValue({ id: "u2", email: "coach@test.local", role: null });
+    impersonateUser.mockResolvedValue({});
+    const before = Date.now();
+    await expect(impersonateAction("u2", "coach")).rejects.toMatchObject({ to: "/coach" });
+    const { expiresAt } = writeAudit.mock.calls[0][1].details;
+    expect(new Date(expiresAt).getTime()).toBeGreaterThanOrEqual(before + 3600_000);
+  });
+
+  it("writes a failed row when the plugin refuses the start", async () => {
+    findUser.mockResolvedValue({ id: "u2", email: "coach@test.local", role: null });
+    impersonateUser.mockRejectedValue(new Error("plugin down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await impersonateAction("u2", "coach")).toEqual({ ok: false, code: "internal" });
+    expect(writeAudit.mock.calls.map((c) => c[1].action)).toEqual(["impersonation.start", "impersonation.failed"]);
+    spy.mockRestore();
   });
 
   it("does not impersonate when the start cannot be audited", async () => {

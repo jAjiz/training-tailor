@@ -29,6 +29,14 @@ describe("grantAdmin", () => {
     expect((await tdb.prisma.user.findUniqueOrThrow({ where: { id: user.id } })).role).toBe("admin");
     expect(await grantAdmin(tdb.prisma, "nobody@test.local")).toBe("not_found");
   });
+
+  it("audits the grant with no actor", async () => {
+    const user = await makeUser(tdb.prisma);
+    await grantAdmin(tdb.prisma, user.email);
+    expect(await tdb.prisma.adminAuditLog.findMany({ where: { targetUserId: user.id } })).toMatchObject([
+      { actorUserId: null, action: "admin.grant", targetType: "user", targetId: user.id, targetLabel: user.email },
+    ]);
+  });
 });
 
 describe("approveCoach", () => {

@@ -162,7 +162,7 @@ model Program {
   id               String        @id @default(cuid())
   coachId          String? // null once the coach is deleted
   coach            CoachAccount? @relation(fields: [coachId], references: [id], onDelete: SetNull)
-  coachName        String // the coach's display name, kept up to date while the coach exists
+  coachName        String // the coach's display name, copied at creation (it never changes) and kept after the coach is deleted
   name             String
   description      String?
   kind             String // "continuous" | "closed"

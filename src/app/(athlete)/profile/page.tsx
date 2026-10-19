@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getDomainData } from "@/lib/domain/repository";
 import { Equipment } from "@/lib/domain/types";
+import { isEngineDisabled } from "@/lib/engine-access";
 import { getUserId } from "@/lib/session";
 import { loadProfile } from "@/lib/tailor-service";
 import { ProfileForm } from "./ProfileForm";
@@ -8,6 +9,7 @@ import { ProfileForm } from "./ProfileForm";
 export default async function ProfilePage() {
   const userId = await getUserId();
   if (!userId) redirect("/signin");
+  if (await isEngineDisabled(userId)) redirect("/disabled");
   const [profile, domain] = await Promise.all([loadProfile(userId), getDomainData()]);
   return (
     <section className="flex flex-col gap-4">

@@ -4,6 +4,9 @@ import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins";
 import { prisma } from "@/lib/db";
 
+/** How long an impersonation session lasts; the start audit row records when it ends. */
+export const IMPERSONATION_SECONDS = 3600;
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   socialProviders: {
@@ -12,5 +15,5 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
     },
   },
-  plugins: [admin({ impersonationSessionDuration: 3600 }), nextCookies()], // keep last: sets cookies from server actions
+  plugins: [admin({ impersonationSessionDuration: IMPERSONATION_SECONDS }), nextCookies()], // keep last: sets cookies from server actions
 });
