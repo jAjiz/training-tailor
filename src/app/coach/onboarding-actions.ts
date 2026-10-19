@@ -10,7 +10,7 @@ import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { ensureCoachAccount } from "@/lib/training/services/accounts";
 
 export async function enterCoach(): Promise<ActionResult<{ status: string }>> {
-  return runAction(async () => {
+  return runAction("enterCoach", async () => {
     const user = await getSessionUser();
     if (!user) throw new TrainingError("unauthorized");
     const current = await getLocale();

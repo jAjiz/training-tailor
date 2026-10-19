@@ -41,3 +41,12 @@ describe("coaching schema", () => {
     expect(read.startDate?.toISOString().slice(0, 10)).toBe("2026-10-26");
   });
 });
+
+describe("admin schema", () => {
+  it("sets a program's coach to null when the coach is deleted", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    await tdb.prisma.coachAccount.delete({ where: { id: coach.id } });
+    expect((await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).coachId).toBeNull();
+  });
+});

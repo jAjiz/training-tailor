@@ -10,7 +10,12 @@ export async function makeUser(db: PrismaClient, name = "User") {
   return db.user.create({ data: { id: `user-${id}`, name: `${name} ${id}`, email: `${id}@test.local` } });
 }
 
-export async function makeCoach(db: PrismaClient, status: "pending" | "approved" | "suspended" = "approved") {
+export async function makeAdmin(db: PrismaClient) {
+  const user = await makeUser(db, "Admin");
+  return db.user.update({ where: { id: user.id }, data: { role: "admin" } });
+}
+
+export async function makeCoach(db: PrismaClient, status: "pending" | "approved" | "rejected" | "suspended" = "approved") {
   const user = await makeUser(db, "Coach");
   return db.coachAccount.create({ data: { userId: user.id, displayName: user.name, status } });
 }
@@ -20,16 +25,23 @@ export async function makeAthlete(db: PrismaClient, timezone = "Europe/Madrid") 
   return db.athleteAccount.create({ data: { userId: user.id, displayName: user.name, timezone } });
 }
 
+/** Like `createProgram`: the program copies its coach's display name. */
+async function coachNameOf(db: PrismaClient, coachId: string) {
+  return (await db.coachAccount.findUniqueOrThrow({ where: { id: coachId } })).displayName;
+}
+
 export async function makeContinuous(db: PrismaClient, coachId: string, startDate = "2026-10-05") {
+  const coachName = await coachNameOf(db, coachId);
   return db.program.create({
-    data: { coachId, name: "Daily", kind: "continuous", startDate: day(startDate), inviteCode: `inv-${next()}` },
+    data: { coachId, coachName, name: "Daily", kind: "continuous", startDate: day(startDate), inviteCode: `inv-${next()}` },
   });
 }
 
 export async function makeClosed(db: PrismaClient, coachId: string, weeks = 4, published = true) {
+  const coachName = await coachNameOf(db, coachId);
   return db.program.create({
     data: {
-      coachId, name: "Cycle", kind: "closed", weeks, inviteCode: `inv-${next()}`,
+      coachId, coachName, name: "Cycle", kind: "closed", weeks, inviteCode: `inv-${next()}`,
       publishedAt: published ? new Date() : null,
     },
   });
@@ -65,5 +77,11 @@ export async function makeBarbellBlock(
       programId, dayIndex, position: 0, kind: "barbell", color: "neutral", movement,
       sets: sets as Prisma.InputJsonValue,
     },
+  });
+}
+
+export async function makeResult(db: PrismaClient, blockId: string, athleteId: string, performedOn = "2026-10-05") {
+  return db.result.create({
+    data: { blockId, athleteId, division: "rx", score: { seconds: 300 }, sortKey: -300, performedOn: day(performedOn) },
   });
 }

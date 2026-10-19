@@ -13,6 +13,10 @@ export const ERROR_CODES = [
   "not_loggable",
   "invalid_score",
   "own_result",
+  "account_disabled",
+  "invite_required",
+  "invalid_status_change",
+  "invite_disabled",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
