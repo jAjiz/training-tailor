@@ -17,7 +17,10 @@ export type PlannerBlockData = {
   movement: string | null;
   sets: BarbellSet[] | null;
   instructions: string | null;
+  /** All results: drives the scoring lock and the delete warning. */
   resultCount: number;
+  /** Results of athletes who are not disabled: the badge. */
+  visibleResultCount: number;
 };
 
 export type PlannerContext = {

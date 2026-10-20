@@ -55,12 +55,20 @@ async function writableProgram(db: Db, coachId: string, programId: string) {
 
 const nextPosition = (db: Db, programId: string, dayIndex: number) => db.block.count({ where: { programId, dayIndex } });
 
-export function listWeekBlocks(db: Db, programId: string, weekIndex: number) {
-  return db.block.findMany({
+/** `_count.results` counts every result (scoring lock, delete warning); `visibleResultCount` skips disabled athletes (badge). */
+export async function listWeekBlocks(db: Db, programId: string, weekIndex: number) {
+  const blocks = await db.block.findMany({
     where: { programId, dayIndex: { gte: weekIndex * 7, lt: weekIndex * 7 + 7 } },
     orderBy: [{ dayIndex: "asc" }, { position: "asc" }],
     include: { _count: { select: { results: true } } },
   });
+  const visible = await db.result.groupBy({
+    by: ["blockId"],
+    where: { blockId: { in: blocks.map((b) => b.id) }, athlete: { disabledAt: null } },
+    _count: { _all: true },
+  });
+  const visibleByBlock = new Map(visible.map((v) => [v.blockId, v._count._all]));
+  return blocks.map((b) => ({ ...b, visibleResultCount: visibleByBlock.get(b.id) ?? 0 }));
 }
 
 export async function createBlock(db: Db, coachId: string, programId: string, dayIndex: number, input: BlockInputValue) {
