@@ -60,6 +60,18 @@ describe("notificationText (en)", () => {
   });
 });
 
+describe("notificationText with a broken locale setup", () => {
+  it("falls back to Spanish dates when the translator returns the key", () => {
+    const echo: T = (key) => key;
+    const text = notificationText("week_published", { ...box, monday: "2026-10-26" }, echo);
+    expect(text.body).toBe("notifications.kinds.week_published.body");
+    const date = new Intl.DateTimeFormat("es", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date("2026-10-26T00:00:00Z"));
+    const seen: Record<string, string | number>[] = [];
+    notificationText("week_reminder", { ...box, monday: "2026-10-26", weekIndex: 3 }, (k, v) => { if (v) seen.push(v); return k; });
+    expect(seen[0].date).toBe(date.replace(/\.$/, ""));
+  });
+});
+
 describe("notificationHref", () => {
   it("links every kind", () => {
     expect(notificationHref("announcement", { ...box, excerpt: "x" })).toBe("/programs/p1/board");

@@ -60,11 +60,17 @@ export function notificationHref<K extends NotificationKind>(kind: K, data: Noti
 
 /** `d MMM` in the translator's locale (message `notifications.locale`), without the trailing dot. */
 function shortDate(iso: IsoDate, t: Translate): string {
-  return new Intl.DateTimeFormat(t("notifications.locale"), { day: "numeric", month: "short", timeZone: "UTC" })
+  // A missing key or a namespaced translator yields the key path, which is not a valid locale: fall back to Spanish.
+  const requested = t("notifications.locale");
+  const locale = Intl.DateTimeFormat.supportedLocalesOf([requested].filter((l) => /^[a-z]{2,3}(-[A-Za-z0-9]+)*$/.test(l))).length
+    ? requested
+    : "es";
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" })
     .format(new Date(`${iso}T00:00:00Z`))
     .replace(/\.$/, "");
 }
 
+/** Needs a root (un-namespaced) translator: keys are absolute, e.g. `notifications.kinds.<kind>.body`. */
 export function notificationText<K extends NotificationKind>(kind: K, data: NotificationData[K], t: Translate): { title: string; body: string } {
   const key = (part: "title" | "body") => `notifications.kinds.${kind}.${part}`;
   const d = data as Record<string, unknown>;
