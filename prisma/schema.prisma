@@ -9,24 +9,27 @@ datasource db {
 
 // ---- Better Auth core. Field names are fixed by Better Auth, which also generates the ids. ----
 model User {
-  id             String            @id
-  name           String
-  email          String            @unique
-  emailVerified  Boolean           @default(false)
-  image          String?
-  role           String?
-  banned         Boolean?          @default(false)
-  banReason      String?
-  banExpires     DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  sessions       Session[]
-  accounts       Account[]
-  profile        AthleteProfile?
-  tailored       TailoredWorkout[]
-  usage          LlmUsage[]
-  coachAccount   CoachAccount?
-  athleteAccount AthleteAccount?
+  id                      String                   @id
+  name                    String
+  email                   String                   @unique
+  emailVerified           Boolean                  @default(false)
+  image                   String?
+  role                    String?
+  banned                  Boolean?                 @default(false)
+  banReason               String?
+  banExpires              DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  sessions                Session[]
+  accounts                Account[]
+  profile                 AthleteProfile?
+  tailored                TailoredWorkout[]
+  usage                   LlmUsage[]
+  coachAccount            CoachAccount?
+  athleteAccount          AthleteAccount?
+  notifications           Notification[]
+  pushSubscriptions       PushSubscription[]
+  notificationPreferences NotificationPreference[]
 
   @@map("user")
 }
@@ -159,23 +162,24 @@ model AthleteAccount {
 }
 
 model Program {
-  id               String        @id @default(cuid())
+  id               String         @id @default(cuid())
   coachId          String? // null once the coach is deleted
-  coach            CoachAccount? @relation(fields: [coachId], references: [id], onDelete: SetNull)
+  coach            CoachAccount?  @relation(fields: [coachId], references: [id], onDelete: SetNull)
   coachName        String // the coach's display name, copied at creation (it never changes) and kept after the coach is deleted
   name             String
   description      String?
   kind             String // "continuous" | "closed"
-  startDate        DateTime?     @db.Date // continuous: the Monday of day 0
+  startDate        DateTime?      @db.Date // continuous: the Monday of day 0
   weeks            Int? // closed: length in weeks
   publishedAt      DateTime? // closed: the whole program is published
-  inviteCode       String        @unique
+  inviteCode       String         @unique
   inviteDisabledAt DateTime?
   archivedAt       DateTime?
-  createdAt        DateTime      @default(now())
+  createdAt        DateTime       @default(now())
   weeksPublished   ProgramWeek[]
   blocks           Block[]
   enrollments      Enrollment[]
+  announcements    Announcement[]
 
   @@index([coachId])
 }
@@ -221,6 +225,7 @@ model Enrollment {
   startDate DateTime?      @db.Date // closed: the day the athlete joined, in their time zone
   joinedAt  DateTime       @default(now())
   removedAt DateTime?
+  leftAt    DateTime? // the athlete left; null when active or after rejoining
 
   @@unique([programId, athleteId])
   @@index([athleteId])
@@ -282,4 +287,65 @@ model AdminAuditLog {
 
   @@index([createdAt])
   @@index([targetUserId, createdAt])
+}
+
+model Announcement {
+  id        String    @id @default(cuid())
+  programId String
+  program   Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  body      String // plain text, up to 2000 chars
+  createdAt DateTime  @default(now())
+  editedAt  DateTime?
+
+  @@index([programId, createdAt])
+}
+
+// Continuous weeks whose publication was already notified. No relation: it outlives unpublishing.
+model WeekNotice {
+  programId String
+  weekIndex Int
+  createdAt DateTime @default(now())
+
+  @@id([programId, weekIndex])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String // Better Auth user (one inbox per identity and audience)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audience  String // "athlete" | "coach": which zone's bell shows it; push only for "athlete"
+  kind      String
+  programId String? // for links and cleanup
+  entityId  String? // announcement, result or week reference
+  groupKey  String? // fist bumps and reminders: one row per key
+  data      Json // what the text needs: names, week date, counts
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, groupKey])
+  @@index([userId, audience, updatedAt])
+}
+
+model PushSubscription {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String    @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime  @default(now())
+  lastOkAt  DateTime?
+
+  @@index([userId])
+}
+
+model NotificationPreference {
+  userId  String
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind    String
+  enabled Boolean
+
+  @@id([userId, kind])
 }

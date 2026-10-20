@@ -85,3 +85,16 @@ export async function makeResult(db: PrismaClient, blockId: string, athleteId: s
     data: { blockId, athleteId, division: "rx", score: { seconds: 300 }, sortKey: -300, performedOn: day(performedOn) },
   });
 }
+
+export async function makeAnnouncement(db: PrismaClient, programId: string, body = "Hola") {
+  return db.announcement.create({ data: { programId, body } });
+}
+
+export async function makeSubscription(db: PrismaClient, userId: string, endpoint = `https://push.test/${next()}`) {
+  return db.pushSubscription.create({ data: { userId, endpoint, p256dh: "p256dh", auth: "auth" } });
+}
+
+/** The athlete leaves the program (`leftAt = now`). */
+export async function leave(db: PrismaClient, enrollmentId: string) {
+  return db.enrollment.update({ where: { id: enrollmentId }, data: { leftAt: new Date() } });
+}
