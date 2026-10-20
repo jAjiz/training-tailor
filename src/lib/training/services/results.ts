@@ -16,7 +16,7 @@ type AthleteRef = { id: string; timezone: string };
 export async function getVisibleBlock(db: Db, athlete: AthleteRef, blockId: string, now: Date = new Date()) {
   const block = await db.block.findUnique({ where: { id: blockId }, include: { program: true } });
   if (!block || block.program.archivedAt) throw new TrainingError("not_found");
-  const enrollment = await db.enrollment.findFirst({ where: { programId: block.programId, athleteId: athlete.id, removedAt: null } });
+  const enrollment = await db.enrollment.findFirst({ where: { programId: block.programId, athleteId: athlete.id, removedAt: null, leftAt: null } });
   if (!enrollment) throw new TrainingError("not_found");
   const timeline = athleteTimeline(block.program, enrollment, await publishedWeeks(db, block.programId));
   if (!isDayVisible(timeline, block.dayIndex)) throw new TrainingError("not_found");
@@ -78,7 +78,7 @@ export async function getDayResults(db: Db, athleteId: string, programId: string
     db.result.findMany({ where: { athleteId, blockId: { in: blockIds } } }),
     db.result.groupBy({
       by: ["blockId"],
-      where: { blockId: { in: blockIds }, athlete: { disabledAt: null, enrollments: { some: { programId, removedAt: null } } } },
+      where: { blockId: { in: blockIds }, athlete: { disabledAt: null, enrollments: { some: { programId, removedAt: null, leftAt: null } } } },
       _count: { _all: true },
     }),
   ]);
@@ -113,7 +113,7 @@ async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null)
   const results = await db.result.findMany({
     where: {
       blockId: block.id,
-      athlete: { disabledAt: null, enrollments: { some: { programId: block.programId, removedAt: null } } },
+      athlete: { disabledAt: null, enrollments: { some: { programId: block.programId, removedAt: null, leftAt: null } } },
     },
     include: {
       athlete: true,

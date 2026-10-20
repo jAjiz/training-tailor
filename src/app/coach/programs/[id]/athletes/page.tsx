@@ -19,6 +19,10 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const program = await orNotFound(getOwnedProgram(prisma, coach.id, id));
   const roster = await listRoster(prisma, coach.id, program.id);
+  const active = roster.filter((e) => !e.removedAt && !e.leftAt);
+  const left = roster.filter((e) => !e.removedAt && e.leftAt);
+  const removedRows = roster.filter((e) => e.removedAt);
+  const dateFormat = { day: "numeric", month: "short", year: "numeric" } as const;
   const t = await getTranslations();
   const locale = await getLocale();
   const base = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -42,9 +46,10 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
               </tr>
             </thead>
             <tbody>
-              {roster.map((e) => (
+              {[...active, ...left, ...removedRows].map((e) => (
                 <RosterRow key={e.id} enrollmentId={e.id} name={e.athlete.displayName}
-                  joined={formatDay(fromDbDate(e.joinedAt), locale, { day: "numeric", month: "short", year: "numeric" })}
+                  joined={formatDay(fromDbDate(e.joinedAt), locale, dateFormat)}
+                  leftOn={e.leftAt && !e.removedAt ? formatDay(fromDbDate(e.leftAt), locale, dateFormat) : null}
                   removed={e.removedAt !== null} resultsHref={`/coach/programs/${program.id}/athletes/${e.athleteId}`} />
               ))}
             </tbody>

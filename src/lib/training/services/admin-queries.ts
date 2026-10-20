@@ -14,7 +14,7 @@ export async function getOverview(db: Db, now: Date = new Date()): Promise<Admin
     db.coachAccount.count({ where: { status: "approved" } }),
     db.athleteAccount.count(),
     db.program.count({
-      where: { archivedAt: null, OR: [{ coachId: { not: null } }, { enrollments: { some: { removedAt: null } } }] },
+      where: { archivedAt: null, OR: [{ coachId: { not: null } }, { enrollments: { some: { removedAt: null, leftAt: null } } }] },
     }),
     db.result.count({ where: { createdAt: { gte: new Date(now.getTime() - WEEK_MS), lte: now } } }),
   ]);
@@ -124,7 +124,7 @@ export async function getCoachDetail(db: Db, coachId: string): Promise<AdminCoac
         orderBy: { createdAt: "desc" },
         include: {
           weeksPublished: { select: { weekIndex: true } },
-          _count: { select: { enrollments: { where: { removedAt: null } } } },
+          _count: { select: { enrollments: { where: { removedAt: null, leftAt: null } } } },
         },
       },
     },
@@ -191,7 +191,7 @@ export async function listPrograms(
     include: {
       coach: { select: { status: true } },
       weeksPublished: { select: { weekIndex: true } },
-      _count: { select: { enrollments: { where: { removedAt: null } } } },
+      _count: { select: { enrollments: { where: { removedAt: null, leftAt: null } } } },
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: q.page * PAGE_SIZE,

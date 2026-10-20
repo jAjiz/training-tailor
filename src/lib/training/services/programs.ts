@@ -29,7 +29,7 @@ export function listCoachPrograms(db: Db, coachId: string) {
   return db.program.findMany({
     where: { coachId },
     orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }],
-    include: { _count: { select: { enrollments: { where: { removedAt: null } } } } },
+    include: { _count: { select: { enrollments: { where: { removedAt: null, leftAt: null } } } } },
   });
 }
 

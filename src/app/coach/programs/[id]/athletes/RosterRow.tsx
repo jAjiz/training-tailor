@@ -9,9 +9,9 @@ import { cx } from "@/components/ui/cx";
 import { Pill } from "@/components/ui/Pill";
 import { removeAthleteAction, restoreAthleteAction } from "../../../roster-actions";
 
-type Props = { enrollmentId: string; name: string; joined: string; removed: boolean; resultsHref: string };
+type Props = { enrollmentId: string; name: string; joined: string; removed: boolean; leftOn: string | null; resultsHref: string };
 
-export function RosterRow({ enrollmentId, name, joined, removed, resultsHref }: Props) {
+export function RosterRow({ enrollmentId, name, joined, removed, leftOn, resultsHref }: Props) {
   const t = useTranslations("roster");
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
@@ -23,12 +23,16 @@ export function RosterRow({ enrollmentId, name, joined, removed, resultsHref }: 
   }
 
   return (
-    <tr className={cx("border-t", removed && "opacity-60")}>
+    <tr className={cx("border-t", (removed || leftOn) && "opacity-60")}>
       <td className="px-4 py-3">
         <span className="flex items-center gap-3"><Avatar name={name} /><span className="font-semibold">{name}</span></span>
       </td>
       <td className="px-4 py-3 text-muted">{joined}</td>
-      <td className="px-4 py-3"><Pill tone={removed ? "neutral" : "success"}>{removed ? t("removedBadge") : t("activeBadge")}</Pill></td>
+      <td className="px-4 py-3">{leftOn ? (
+          <span className="flex flex-col items-start gap-1"><Pill tone="neutral">{t("leftBadge")}</Pill><span className="text-xs text-muted">{t("leftOn", { date: leftOn })}</span></span>
+        ) : (
+          <Pill tone={removed ? "neutral" : "success"}>{removed ? t("removedBadge") : t("activeBadge")}</Pill>
+        )}</td>
       <td className="px-4 py-3">
         <span className="flex justify-end gap-2">
           <Button href={resultsHref} variant="ghost" size="sm">{t("results")}</Button>

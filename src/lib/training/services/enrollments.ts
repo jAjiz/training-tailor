@@ -1,6 +1,8 @@
 import { inviteCodeFromNext, type SignupMode } from "@/lib/signup";
 import { toDbDate, todayIn } from "../dates";
 import { TrainingError } from "../errors";
+import { intent, type NotificationIntent } from "@/lib/notifications/notify";
+import { coachRecipient } from "./notifications";
 import { getOwnedProgram } from "./programs";
 import type { Db } from "./types";
 
@@ -21,15 +23,27 @@ export async function canCreateAthleteProfile(db: Db, userId: string, next: stri
   return code !== null && (await findProgramByCode(db, code)) !== null;
 }
 
-export async function joinByCode(db: Db, athlete: { id: string; timezone: string }, code: string, now: Date = new Date()) {
+type JoiningAthlete = { id: string; timezone: string; userId: string; displayName: string };
+
+/** `joined` and `rejoined` carry one `athlete_joined` intent for the coach (none for the coach's own account). */
+export async function joinByCode(db: Db, athlete: JoiningAthlete, code: string, now: Date = new Date()) {
   const program = await findProgramByCode(db, code);
   if (!program) throw new TrainingError("invite_invalid");
+  const joinedIntents = () => [
+    intent("athlete_joined", coachRecipient(program, athlete.userId), {
+      programId: program.id, programName: program.name, athleteName: athlete.displayName,
+    }),
+  ].filter((i) => i.recipients.length > 0);
   const existing = await db.enrollment.findUnique({
     where: { programId_athleteId: { programId: program.id, athleteId: athlete.id } },
   });
   if (existing) {
     if (existing.removedAt) throw new TrainingError("enrollment_removed");
-    return { programId: program.id, status: "already" as const };
+    if (existing.leftAt) {
+      const { count } = await db.enrollment.updateMany({ where: { id: existing.id, leftAt: { not: null } }, data: { leftAt: null } });
+      return { programId: program.id, status: (count > 0 ? "rejoined" : "already") as "rejoined" | "already", intents: count > 0 ? joinedIntents() : [] };
+    }
+    return { programId: program.id, status: "already" as const, intents: [] as NotificationIntent[] };
   }
   try {
     await db.enrollment.create({
@@ -40,16 +54,34 @@ export async function joinByCode(db: Db, athlete: { id: string; timezone: string
       },
     });
   } catch (e) {
-    if (isUniqueViolation(e)) return { programId: program.id, status: "already" as const }; // double click
+    if (isUniqueViolation(e)) return { programId: program.id, status: "already" as const, intents: [] as NotificationIntent[] }; // double click
     throw e;
   }
-  return { programId: program.id, status: "joined" as const };
+  return { programId: program.id, status: "joined" as const, intents: joinedIntents() };
+}
+
+/** The athlete steps out of a program; results and `joinedAt` stay, and the invitation link brings them back. */
+export async function leaveProgram(
+  db: Db, athlete: { id: string; userId: string; displayName: string }, programId: string,
+): Promise<NotificationIntent[]> {
+  const { count } = await db.enrollment.updateMany({
+    where: { programId, athleteId: athlete.id, removedAt: null, leftAt: null },
+    data: { leftAt: new Date() },
+  });
+  if (count === 0) throw new TrainingError("not_enrolled");
+  const program = await db.program.findUniqueOrThrow({ where: { id: programId }, include: { coach: true } });
+  return [
+    intent("athlete_left", coachRecipient(program, athlete.userId), {
+      programId, programName: program.name, athleteName: athlete.displayName,
+    }),
+  ].filter((i) => i.recipients.length > 0);
 }
 
 export async function getEnrollmentStatus(db: Db, athleteId: string, programId: string) {
   const e = await db.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId } } });
   if (!e) return null;
-  return e.removedAt ? ("removed" as const) : ("active" as const);
+  if (e.removedAt) return "removed" as const;
+  return e.leftAt ? ("left" as const) : ("active" as const);
 }
 
 export async function listRoster(db: Db, coachId: string, programId: string) {
@@ -65,7 +97,7 @@ export async function setEnrollmentRemoved(db: Db, coachId: string, enrollmentId
 
 export function listAthletePrograms(db: Db, athleteId: string) {
   return db.enrollment.findMany({
-    where: { athleteId, removedAt: null, program: { archivedAt: null } },
+    where: { athleteId, removedAt: null, leftAt: null, program: { archivedAt: null } },
     include: { program: { include: { coach: true } } },
     orderBy: { joinedAt: "desc" },
   });

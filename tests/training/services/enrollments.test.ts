@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { enroll, makeAthlete, makeClosed, makeCoach, makeContinuous, makeUser } from "../../helpers/factories";
+import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, makeResult, makeCustomBlock, makeUser, publishWeek } from "../../helpers/factories";
+import { listCoachPrograms } from "@/lib/training/services/programs";
+import { getDayResults, getLeaderboard, getVisibleBlock } from "@/lib/training/services/results";
 import {
-  canCreateAthleteProfile, findProgramByCode, getEnrollmentStatus, joinByCode, listAthletePrograms, listRoster, setEnrollmentRemoved,
+  canCreateAthleteProfile, findProgramByCode, getEnrollmentStatus, joinByCode, leaveProgram, listAthletePrograms, listRoster, setEnrollmentRemoved,
 } from "@/lib/training/services/enrollments";
 
 let tdb: TestDb;
@@ -15,8 +17,10 @@ describe("enrollments", () => {
     const coach = await makeCoach(tdb.prisma);
     const athlete = await makeAthlete(tdb.prisma);
     const p = await makeContinuous(tdb.prisma, coach.id);
-    expect(await joinByCode(tdb.prisma, athlete, p.inviteCode)).toEqual({ programId: p.id, status: "joined" });
-    expect(await joinByCode(tdb.prisma, athlete, p.inviteCode)).toEqual({ programId: p.id, status: "already" });
+    const first = await joinByCode(tdb.prisma, athlete, p.inviteCode);
+    expect(first).toMatchObject({ programId: p.id, status: "joined" });
+    expect(first.intents).toHaveLength(1);
+    expect(await joinByCode(tdb.prisma, athlete, p.inviteCode)).toEqual({ programId: p.id, status: "already", intents: [] });
     const e = await tdb.prisma.enrollment.findFirstOrThrow({ where: { athleteId: athlete.id } });
     expect(e.startDate).toBeNull();
   });
@@ -93,6 +97,95 @@ describe("enrollments", () => {
     expect((await listAthletePrograms(tdb.prisma, athlete.id)).map((e) => e.programId)).toEqual([b.id, a.id]);
     await tdb.prisma.program.update({ where: { id: b.id }, data: { archivedAt: new Date() } });
     expect((await listAthletePrograms(tdb.prisma, athlete.id)).map((e) => e.programId)).toEqual([a.id]);
+  });
+});
+
+describe("leaving and rejoining", () => {
+  it("rejoins with the same link, keeping joinedAt, startDate and results", async () => {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const athlete = await makeAthlete(db);
+    const p = await makeClosed(db, coach.id, 4, true);
+    const e = await enroll(db, p.id, athlete.id, "2026-10-05");
+    const block = await makeCustomBlock(db, p.id, 0);
+    await makeResult(db, block.id, athlete.id);
+    const left = await leaveProgram(db, athlete, p.id);
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ kind: "athlete_left", recipients: [{ userId: coach.userId }], data: { programId: p.id, programName: p.name, athleteName: athlete.displayName } });
+    expect(await getEnrollmentStatus(db, athlete.id, p.id)).toBe("left");
+    expect(await listAthletePrograms(db, athlete.id)).toHaveLength(0);
+    const r = await joinByCode(db, athlete, p.inviteCode, new Date("2026-11-20T10:00:00Z"));
+    expect(r).toMatchObject({ programId: p.id, status: "rejoined" });
+    expect(r.intents).toHaveLength(1);
+    expect(r.intents[0]).toMatchObject({ kind: "athlete_joined", recipients: [{ userId: coach.userId }] });
+    const after = await db.enrollment.findUniqueOrThrow({ where: { id: e.id } });
+    expect(after.leftAt).toBeNull();
+    expect(after.joinedAt).toEqual(e.joinedAt);
+    expect(after.startDate).toEqual(e.startDate);
+    expect(await db.result.count({ where: { athleteId: athlete.id } })).toBe(1);
+    expect(await getEnrollmentStatus(db, athlete.id, p.id)).toBe("active");
+  });
+
+  it("refuses to rejoin when the coach removed the athlete after they left", async () => {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const athlete = await makeAthlete(db);
+    const p = await makeContinuous(db, coach.id);
+    const e = await enroll(db, p.id, athlete.id);
+    await leave(db, e.id);
+    await setEnrollmentRemoved(db, coach.id, e.id, true);
+    expect(await getEnrollmentStatus(db, athlete.id, p.id)).toBe("removed");
+    await expect(joinByCode(db, athlete, p.inviteCode)).rejects.toMatchObject({ code: "enrollment_removed" });
+  });
+
+  it("throws not_enrolled when leaving a removed, left or unknown enrollment", async () => {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const athlete = await makeAthlete(db);
+    const p = await makeContinuous(db, coach.id);
+    await expect(leaveProgram(db, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
+    const e = await enroll(db, p.id, athlete.id);
+    await setEnrollmentRemoved(db, coach.id, e.id, true);
+    await expect(leaveProgram(db, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
+    await setEnrollmentRemoved(db, coach.id, e.id, false);
+    await leaveProgram(db, athlete, p.id);
+    await expect(leaveProgram(db, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
+  });
+
+  it("treats a left athlete as inactive in views, leaderboard and day results", async () => {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const ana = await makeAthlete(db);
+    const ben = await makeAthlete(db);
+    const p = await makeContinuous(db, coach.id, "2026-10-05");
+    await publishWeek(db, p.id, 0);
+    const ea = await enroll(db, p.id, ana.id);
+    await enroll(db, p.id, ben.id);
+    const wod = await makeCustomBlock(db, p.id, 0);
+    await makeResult(db, wod.id, ana.id);
+    await makeResult(db, wod.id, ben.id);
+    const now = new Date("2026-10-07T18:00:00Z");
+    expect((await getLeaderboard(db, { athlete: ben }, wod.id)).entries).toHaveLength(2);
+    await leave(db, ea.id);
+    expect((await getLeaderboard(db, { athlete: ben }, wod.id)).entries).toHaveLength(1);
+    expect((await getDayResults(db, ben.id, p.id, [wod.id])).counts.get(wod.id)).toBe(1);
+    await expect(getVisibleBlock(db, ana, wod.id, now)).rejects.toMatchObject({ code: "not_found" });
+    expect((await listCoachPrograms(db, coach.id))[0]._count.enrollments).toBe(1);
+  });
+
+  it("sends no intent when the coach joins their own program or is not approved", async () => {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const p = await makeContinuous(db, coach.id);
+    const self = await db.athleteAccount.create({ data: { userId: coach.userId, displayName: "Coach", timezone: "Europe/Madrid" } });
+    expect((await joinByCode(db, self, p.inviteCode)).intents).toEqual([]);
+    expect(await leaveProgram(db, self, p.id)).toEqual([]);
+
+    const suspended = await makeCoach(db, "suspended");
+    const q = await makeContinuous(db, suspended.id);
+    const ath = await makeAthlete(db);
+    await enroll(db, q.id, ath.id);
+    expect(await leaveProgram(db, ath, q.id)).toEqual([]);
   });
 });
 

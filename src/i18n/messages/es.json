@@ -48,6 +48,7 @@
     "invite_required": "Necesitas una invitación de tu coach para entrar.",
     "invalid_status_change": "Ese cambio de estado no está permitido.",
     "invite_disabled": "El administrador ha desactivado el enlace de invitación.",
+    "not_enrolled": "No sigues este programa.",
     "internal": "Algo ha fallado. Inténtalo de nuevo."
   },
   "onboarding": {
@@ -59,6 +60,11 @@
     "displayName": "Nombre visible",
     "timezone": "Zona horaria",
     "language": "Idioma",
+    "programsTitle": "Mis programas",
+    "noPrograms": "No sigues ningún programa.",
+    "leave": "Salir del programa",
+    "leaveTitle": "Salir de {name}",
+    "leaveConfirm": "Dejarás de ver este programa. Tus resultados se conservan y puedes volver con el enlace de invitación de tu coach.",
     "saved": "Guardado",
     "languages": {
       "es": "Español",
@@ -231,6 +237,7 @@
     "needsProfile": "Completa tu perfil de atleta para unirte.",
     "continue": "Continuar",
     "join": "Unirme al programa",
+    "left": "Saliste de este programa. Puedes volver a unirte.",
     "removed": "Tu coach te ha quitado de este programa."
   },
   "roster": {
@@ -247,6 +254,8 @@
     "status": "Estado",
     "actions": "Acciones",
     "activeBadge": "Activo",
+    "leftOn": "Se dio de baja el {date}",
+    "leftBadge": "De baja",
     "removedBadge": "Quitado",
     "remove": "Quitar",
     "removeTitle": "Quitar a {name}",
