@@ -61,10 +61,10 @@ export function PlannerBlock({ block, ctx }: { block: PlannerBlockData; ctx: Pla
         onMouseDown={ctx.readOnly ? undefined : onMouseDown} onTouchStart={ctx.readOnly ? undefined : onTouchStart}
         className={cx("group relative select-none [-webkit-touch-callout:none]", !ctx.readOnly && "cursor-grab", isDragging && "rounded-xl opacity-50 outline-2 outline-offset-2 outline-dashed outline-foreground/50")}>
         <BlockCard block={block} compact>
-          {block.resultCount > 0 && (
+          {block.visibleResultCount > 0 && (
             <Link href={`/coach/blocks/${block.id}/results`} data-no-drag
               className="relative z-10 w-fit text-xs text-muted underline focus-visible:outline-2 focus-visible:outline-foreground">
-              {t("planner.results", { count: block.resultCount })}
+              {t("planner.results", { count: block.visibleResultCount })}
             </Link>
           )}
           {error && <p role="alert" className="text-xs text-danger">{t(`errors.${error}`)}</p>}

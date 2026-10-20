@@ -119,17 +119,19 @@ describe("blocks", () => {
     expect((await listWeekBlocks(tdb.prisma, program.id, 2)).length).toBe(7);
   });
 
-  it("listWeekBlocks counts only results of athletes who are not disabled", async () => {
+  it("listWeekBlocks keeps the full count and reports visible results without disabled athletes", async () => {
     const { program } = await setup();
     const block = await makeCustomBlock(tdb.prisma, program.id, 0);
     const active = await makeAthlete(tdb.prisma);
     const disabled = await makeAthlete(tdb.prisma);
     await makeResult(tdb.prisma, block.id, active.id);
     await makeResult(tdb.prisma, block.id, disabled.id);
-    expect((await listWeekBlocks(tdb.prisma, program.id, 0))[0]._count.results).toBe(2);
+    const before = (await listWeekBlocks(tdb.prisma, program.id, 0))[0];
+    expect([before._count.results, before.visibleResultCount]).toEqual([2, 2]);
 
     await tdb.prisma.athleteAccount.update({ where: { id: disabled.id }, data: { disabledAt: new Date() } });
-    expect((await listWeekBlocks(tdb.prisma, program.id, 0))[0]._count.results).toBe(1);
+    const after = (await listWeekBlocks(tdb.prisma, program.id, 0))[0];
+    expect([after._count.results, after.visibleResultCount]).toEqual([2, 1]);
   });
 
   it("refuses to duplicate or move past the end of a closed program", async () => {
