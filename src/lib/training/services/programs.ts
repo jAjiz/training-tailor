@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
-import { fromDbDate, toDbDate } from "../dates";
+import { intent, type NotificationIntent } from "@/lib/notifications/notify";
+import { addDays, fromDbDate, toDbDate } from "../dates";
 import { TrainingError } from "../errors";
 import type { ProgramCreate, ProgramUpdate } from "../schemas";
+import { activeAthleteRecipients } from "./notifications";
 import type { Db } from "./types";
 
 export function newInviteCode(): string {
@@ -73,21 +75,39 @@ export async function regenerateInvite(db: Db, coachId: string, programId: strin
   return code;
 }
 
-export async function setWeekPublished(db: Db, coachId: string, programId: string, weekIndex: number, published: boolean) {
+const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
+
+/** Publishes or unpublishes a week. The first publication of a week with blocks returns a `week_published` intent (else `[]`). */
+export async function setWeekPublished(
+  db: Db, coachId: string, programId: string, weekIndex: number, published: boolean,
+): Promise<NotificationIntent[]> {
   const program = await getOwnedProgram(db, coachId, programId);
   assertWritable(program);
-  if (program.kind !== "continuous" || !Number.isInteger(weekIndex) || weekIndex < 0) {
+  if (program.kind !== "continuous" || !program.startDate || !Number.isInteger(weekIndex) || weekIndex < 0) {
     throw new TrainingError("invalid_request");
   }
-  if (published) {
-    await db.programWeek.upsert({
-      where: { programId_weekIndex: { programId, weekIndex } },
-      create: { programId, weekIndex },
-      update: {},
-    });
-  } else {
+  if (!published) {
     await db.programWeek.deleteMany({ where: { programId, weekIndex } });
+    return [];
   }
+  await db.programWeek.upsert({
+    where: { programId_weekIndex: { programId, weekIndex } },
+    create: { programId, weekIndex },
+    update: {},
+  });
+  // An empty week does not count as the first time.
+  if ((await db.block.count({ where: { programId, dayIndex: { gte: weekIndex * 7, lt: weekIndex * 7 + 7 } } })) === 0) return [];
+  try {
+    await db.weekNotice.create({ data: { programId, weekIndex } });
+  } catch (e) {
+    if (isUniqueViolation(e)) return []; // already notified
+    throw e;
+  }
+  const coach = await db.coachAccount.findUniqueOrThrow({ where: { id: coachId }, select: { userId: true } });
+  const recipients = await activeAthleteRecipients(db, programId, coach.userId);
+  if (recipients.length === 0) return [];
+  const monday = addDays(fromDbDate(program.startDate), weekIndex * 7);
+  return [intent("week_published", recipients, { programId, programName: program.name, monday }, { programId })];
 }
 
 export async function setProgramPublished(db: Db, coachId: string, programId: string, published: boolean) {

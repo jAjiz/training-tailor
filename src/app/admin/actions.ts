@@ -9,6 +9,7 @@ import { requireAdmin } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { auth, IMPERSONATION_SECONDS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { dispatch } from "@/lib/notifications/dispatch";
 import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { parse } from "@/lib/training/schemas";
 import {
@@ -27,7 +28,7 @@ const revalidateAdmin = () => revalidatePath("/admin", "layout");
 export async function changeCoachStatusAction(coachId: unknown, to: unknown): Promise<ActionResult> {
   return runAction("changeCoachStatusAction", async () => {
     const admin = await requireAdmin();
-    await changeCoachStatus(prisma, admin.id, parse(Id, coachId), parse(Transition, to));
+    dispatch(await changeCoachStatus(prisma, admin.id, parse(Id, coachId), parse(Transition, to)));
     revalidateAdmin();
   });
 }
@@ -42,7 +43,8 @@ export async function previewCoachDeletionAction(coachId: unknown): Promise<Acti
 export async function deleteCoachAction(coachId: unknown, confirmEmail: unknown): Promise<ActionResult<CoachDeletionPreview>> {
   return runAction("deleteCoachAction", async () => {
     const admin = await requireAdmin();
-    const preview = await deleteCoach(prisma, admin.id, parse(Id, coachId), parse(Email, confirmEmail));
+    const { preview, intents } = await deleteCoach(prisma, admin.id, parse(Id, coachId), parse(Email, confirmEmail));
+    dispatch(intents);
     revalidateAdmin();
     return preview;
   });

@@ -13,6 +13,8 @@ const redirect = vi.fn((to: string) => { throw Object.assign(new Error("NEXT_RED
 
 const prisma = vi.hoisted(() => ({ user: { findUnique: (...a: unknown[]) => findUser(...a) } }));
 vi.mock("@/lib/db", () => ({ prisma }));
+const dispatch = vi.fn();
+vi.mock("@/lib/notifications/dispatch", () => ({ dispatch: (...a: unknown[]) => dispatch(...a) }));
 vi.mock("@/lib/accounts", () => ({ requireAdmin: () => requireAdmin() }));
 vi.mock("@/lib/session", () => ({ getSessionContext: () => getSessionContext() }));
 vi.mock("@/lib/training/services/audit", () => ({ writeAudit: (...a: unknown[]) => writeAudit(...a) }));
@@ -48,6 +50,18 @@ describe("admin actions", () => {
   it("changes a coach's status with the admin as actor", async () => {
     expect(await changeCoachStatusAction("c1", "approve")).toEqual({ ok: true, value: undefined });
     expect(changeCoachStatus).toHaveBeenCalledWith(prisma, "admin1", "c1", "approve");
+  });
+
+  it("dispatches the intents of a status change and of a coach deletion, returning the preview", async () => {
+    const approved = [{ kind: "coach_approved" }];
+    changeCoachStatus.mockResolvedValue(approved);
+    await changeCoachStatusAction("c1", "approve");
+    expect(dispatch).toHaveBeenLastCalledWith(approved);
+    const preview = { programsKept: 1, programsDeleted: 0, athletesEnrolled: 2, resultsDeleted: 0 };
+    const deleted = [{ kind: "coach_deleted" }];
+    deleteCoach.mockResolvedValue({ preview, intents: deleted });
+    expect(await deleteCoachAction("c1", "a@b.c")).toEqual({ ok: true, value: preview });
+    expect(dispatch).toHaveBeenLastCalledWith(deleted);
   });
 
   it("refuses an unknown transition or a bad id without calling the service", async () => {

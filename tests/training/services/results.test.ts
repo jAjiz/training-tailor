@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
+import { fakePush } from "../../helpers/fake-push";
 import {
-  enroll, makeAthlete, makeBarbellBlock, makeClosed, makeCoach, makeContinuous, makeCustomBlock, publishWeek,
+  enroll, makeAthlete, makeBarbellBlock, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makeSubscription, publishWeek,
 } from "../../helpers/factories";
 import {
   deleteResult, getCoachBlockResults, getDayResults, getLeaderboard, getMyResult, listAthleteResults, listBlockResults, saveResult, toggleFistBump,
 } from "@/lib/training/services/results";
+import { deliver } from "@/lib/notifications/notify";
 
 let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
@@ -79,8 +81,8 @@ describe("results", () => {
   it("toggles fist bumps but never on your own result", async () => {
     const { ana, ben, wod } = await setup();
     const { resultId } = await log(ana, wod.id, { seconds: 640 });
-    expect(await toggleFistBump(tdb.prisma, ben, resultId)).toEqual({ bumped: true, count: 1 });
-    expect(await toggleFistBump(tdb.prisma, ben, resultId)).toEqual({ bumped: false, count: 0 });
+    expect(await toggleFistBump(tdb.prisma, ben, resultId)).toMatchObject({ bumped: true, count: 1 });
+    expect(await toggleFistBump(tdb.prisma, ben, resultId)).toMatchObject({ bumped: false, count: 0, intents: [] });
     await expect(toggleFistBump(tdb.prisma, ana, resultId)).rejects.toMatchObject({ code: "own_result" });
     await toggleFistBump(tdb.prisma, ben, resultId);
     const board = await getLeaderboard(tdb.prisma, { athlete: ben }, wod.id);
@@ -163,5 +165,63 @@ describe("results", () => {
     expect((await listBlockResults(tdb.prisma, coach.id, wod.id)).results).toHaveLength(1);
     expect((await getCoachBlockResults(tdb.prisma, coach.id, wod.id)).entries).toHaveLength(1);
     expect((await listAthleteResults(tdb.prisma, coach.id, program.id, ana.id)).results).toHaveLength(0);
+  });
+});
+
+describe("fist bump notifications", () => {
+  it("returns one intent to the result's athlete only when bumping", async () => {
+    const { ana, ben, wod } = await setup();
+    const { resultId } = await log(ana, wod.id, { seconds: 640 });
+    const on = await toggleFistBump(tdb.prisma, ben, resultId);
+    expect(on.intents).toHaveLength(1);
+    expect(on.intents[0]).toMatchObject({
+      kind: "fist_bump", entityId: resultId, programId: null, groupKey: `fist_bump:${resultId}`,
+      data: {
+        resultId, blockId: wod.id, latestName: ben.displayName, count: 1,
+        block: { title: "WOD", movement: null, kind: "custom", scoring: "for_time" },
+      },
+    });
+    expect(on.intents[0].recipients.map((r) => r.userId)).toEqual([ana.userId]);
+    expect((await toggleFistBump(tdb.prisma, ben, resultId)).intents).toEqual([]);
+  });
+
+  it("gives no intent when the result's athlete is disabled", async () => {
+    const { ana, ben, wod } = await setup();
+    const { resultId } = await log(ana, wod.id, { seconds: 640 });
+    await tdb.prisma.athleteAccount.update({ where: { id: ana.id }, data: { disabledAt: new Date() } });
+    const r = await toggleFistBump(tdb.prisma, ben, resultId);
+    expect(r).toMatchObject({ bumped: true, count: 1, intents: [] });
+  });
+
+  it("keeps one unread row per result through bump, bump, unbump, bump", async () => {
+    const { ana, ben, cai, wod } = await setup();
+    const { resultId } = await log(ana, wod.id, { seconds: 640 });
+    await makeSubscription(tdb.prisma, ana.userId, "https://push.test/ana");
+    const { sender, calls } = fakePush();
+    const send = async (who: typeof ben) => {
+      const r = await toggleFistBump(tdb.prisma, who, resultId);
+      await deliver(tdb.prisma, r.intents, sender);
+      return r;
+    };
+    await send(ben);
+    await send(cai);
+    await tdb.prisma.notification.updateMany({ data: { readAt: new Date() } });
+    expect((await send(ben)).intents).toEqual([]); // unbump
+    const again = await send(ben);
+    expect(again.count).toBe(2);
+    const rows = await tdb.prisma.notification.findMany({ where: { kind: "fist_bump" } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId: ana.userId, readAt: null, groupKey: `fist_bump:${resultId}` });
+    expect(rows[0].data).toMatchObject({ latestName: ben.displayName, count: 2 });
+    expect(calls.map((c) => c.payload.tag)).toEqual(Array(3).fill(`fist_bump:${resultId}`));
+  });
+
+  it("deleting the result removes the grouped inbox row", async () => {
+    const { ana, ben, wod } = await setup();
+    const { resultId } = await log(ana, wod.id, { seconds: 640 });
+    await deliver(tdb.prisma, (await toggleFistBump(tdb.prisma, ben, resultId)).intents, null);
+    expect(await tdb.prisma.notification.count()).toBe(1);
+    await deleteResult(tdb.prisma, ana, wod.id, NOW);
+    expect(await tdb.prisma.notification.count()).toBe(0);
   });
 });
