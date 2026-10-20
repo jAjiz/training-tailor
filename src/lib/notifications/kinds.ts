@@ -1,0 +1,104 @@
+import { blockLabel } from "@/lib/training/block-label";
+import type { IsoDate } from "@/lib/training/dates";
+
+export const NOTIFICATION_KINDS = ["announcement", "week_published", "fist_bump", "coach_deleted",
+  "athlete_joined", "athlete_left", "week_reminder", "coach_approved"] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+export type Audience = "athlete" | "coach";
+
+export const AUDIENCE: Record<NotificationKind, Audience> = {
+  announcement: "athlete",
+  week_published: "athlete",
+  fist_bump: "athlete",
+  coach_deleted: "athlete",
+  athlete_joined: "coach",
+  athlete_left: "coach",
+  week_reminder: "coach",
+  coach_approved: "coach",
+};
+
+type LabelBlock = Parameters<typeof blockLabel>[0];
+
+export type NotificationData = {
+  announcement: { programId: string; programName: string; excerpt: string };
+  week_published: { programId: string; programName: string; monday: IsoDate };
+  fist_bump: { resultId: string; blockId: string; block: LabelBlock; latestName: string; count: number };
+  coach_deleted: { programId: string; programName: string };
+  athlete_joined: { programId: string; programName: string; athleteName: string };
+  athlete_left: { programId: string; programName: string; athleteName: string };
+  week_reminder: { programId: string; programName: string; monday: IsoDate; weekIndex: number };
+  coach_approved: Record<string, never>;
+};
+
+/** On an existing (userId, groupKey) row: "refresh" updates data, marks it unread and pushes again; "skip" does nothing. */
+export const ON_EXISTING: Record<NotificationKind, "refresh" | "skip"> = {
+  announcement: "skip",
+  week_published: "skip",
+  fist_bump: "refresh",
+  coach_deleted: "skip",
+  athlete_joined: "skip",
+  athlete_left: "skip",
+  week_reminder: "skip",
+  coach_approved: "skip",
+};
+
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+export function notificationHref<K extends NotificationKind>(kind: K, data: NotificationData[K]): string {
+  const d = data as NotificationData[NotificationKind] & Record<string, string | number>;
+  switch (kind as NotificationKind) {
+    case "announcement": return `/programs/${d.programId}/board`;
+    case "week_published": return `/?program=${d.programId}&date=${d.monday}`;
+    case "fist_bump": return `/blocks/${d.blockId}/leaderboard`;
+    case "coach_deleted": return `/?program=${d.programId}`;
+    case "athlete_joined":
+    case "athlete_left": return `/coach/programs/${d.programId}/athletes`;
+    case "week_reminder": return `/coach/programs/${d.programId}?week=${d.weekIndex}`;
+    case "coach_approved": return "/coach";
+  }
+}
+
+/** `d MMM` in the translator's locale (message `notifications.locale`), without the trailing dot. */
+function shortDate(iso: IsoDate, t: Translate): string {
+  return new Intl.DateTimeFormat(t("notifications.locale"), { day: "numeric", month: "short", timeZone: "UTC" })
+    .format(new Date(`${iso}T00:00:00Z`))
+    .replace(/\.$/, "");
+}
+
+export function notificationText<K extends NotificationKind>(kind: K, data: NotificationData[K], t: Translate): { title: string; body: string } {
+  const key = (part: "title" | "body") => `notifications.kinds.${kind}.${part}`;
+  const d = data as Record<string, unknown>;
+  let values: Record<string, string | number> = {};
+  switch (kind as NotificationKind) {
+    case "announcement":
+      values = { program: d.programName as string, excerpt: d.excerpt as string };
+      break;
+    case "week_published":
+    case "week_reminder":
+      values = { program: d.programName as string, date: shortDate(d.monday as IsoDate, t) };
+      break;
+    case "fist_bump":
+      values = {
+        name: d.latestName as string,
+        others: (d.count as number) - 1,
+        block: blockLabel(d.block as LabelBlock, t),
+      };
+      break;
+    case "coach_deleted":
+      values = { program: d.programName as string };
+      break;
+    case "athlete_joined":
+    case "athlete_left":
+      values = { name: d.athleteName as string, program: d.programName as string };
+      break;
+    case "coach_approved":
+      break;
+  }
+  return { title: t(key("title"), values), body: t(key("body"), values) };
+}
+
+/** First `max` characters on a single line; ends with "…" when cut. */
+export function excerpt(body: string, max = 120): string {
+  const line = body.replace(/\s+/g, " ").trim();
+  return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
+}

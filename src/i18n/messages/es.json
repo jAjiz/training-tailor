@@ -512,5 +512,42 @@
         }
       }
     }
+  },
+  "notifications": {
+    "locale": "es",
+    "kinds": {
+      "announcement": {
+        "title": "Training Tailor",
+        "body": "📣 {program}: {excerpt}"
+      },
+      "week_published": {
+        "title": "Training Tailor",
+        "body": "📅 Semana del {date} publicada en {program}"
+      },
+      "fist_bump": {
+        "title": "Training Tailor",
+        "body": "{others, plural, =0 {👊 {name} ha dado fist bump a tu {block}} other {👊 {name} y # más han dado fist bump a tu {block}}}"
+      },
+      "coach_deleted": {
+        "title": "Training Tailor",
+        "body": "Tu coach ya no está en Training Tailor. {program} sigue disponible pero no recibirá sesiones nuevas."
+      },
+      "athlete_joined": {
+        "title": "Training Tailor",
+        "body": "{name} se ha unido a {program}"
+      },
+      "athlete_left": {
+        "title": "Training Tailor",
+        "body": "{name} se ha dado de baja de {program}"
+      },
+      "week_reminder": {
+        "title": "Training Tailor",
+        "body": "La semana del {date} de {program} no está publicada"
+      },
+      "coach_approved": {
+        "title": "Training Tailor",
+        "body": "Tu cuenta de coach ha sido aprobada"
+      }
+    }
   }
 }
