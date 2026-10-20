@@ -46,6 +46,12 @@ describe("InstallGate", () => {
     expect(screen.getByText(en.install.signInAgain)).toBeInTheDocument();
   });
 
+  it("does not suggest signing in again on Android", () => {
+    env({ ua: "Mozilla/5.0 (Linux; Android 14) Chrome/120 Mobile Safari/537.36", coarse: true });
+    show();
+    expect(screen.queryByText(en.install.signInAgain)).not.toBeInTheDocument();
+  });
+
   it("shows the children when standalone", () => {
     env({ ua: IPHONE, coarse: true, standalone: true });
     show();

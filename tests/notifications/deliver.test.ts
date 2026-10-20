@@ -36,6 +36,19 @@ describe("deliver", () => {
     expect(en.payload.body).toContain("Hola equipo");
   });
 
+  it("keeps delivering when one recipient's inbox write fails", async () => {
+    const good = await makeUser(tdb.prisma);
+    const sg = await makeSubscription(tdb.prisma, good.id);
+    const { sender, calls } = fakePush();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The first recipient has no User row: the insert violates the foreign key and throws.
+    const r = await deliver(tdb.prisma, [announce([{ userId: "ghost", locale: null }, { userId: good.id, locale: null }])], sender);
+    spy.mockRestore();
+    expect(r).toEqual({ created: 1, refreshed: 0, pushed: 1 });
+    expect((await tdb.prisma.notification.findMany()).map((n) => n.userId)).toEqual([good.id]);
+    expect(calls.map((c) => c.endpoint)).toEqual([sg.endpoint]);
+  });
+
   it("localizes the text per recipient", async () => {
     const a = await makeUser(tdb.prisma);
     const b = await makeUser(tdb.prisma);

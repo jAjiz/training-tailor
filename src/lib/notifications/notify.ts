@@ -86,7 +86,7 @@ async function pushTo(db: Db, sender: PushSender, it: NotificationIntent, recipi
   return pushed;
 }
 
-/** Writes inbox rows, then pushes (athlete audience only). Never throws for a push failure. */
+/** Writes inbox rows, then pushes (athlete audience only). Never throws for a push or a single recipient's write failure. */
 export async function deliver(db: Db, intents: NotificationIntent[], sender: PushSender | null) {
   const result = { created: 0, refreshed: 0, pushed: 0 };
   for (const it of intents) {
@@ -99,15 +99,20 @@ export async function deliver(db: Db, intents: NotificationIntent[], sender: Pus
     const muted = new Set(off.map((p) => p.userId));
     for (const recipient of unique) {
       if (muted.has(recipient.userId)) continue;
-      const written = await write(db, it, recipient.userId);
-      if (!written) continue;
-      result[written.how]++;
-      if (sender && AUDIENCE[it.kind] === "athlete") {
-        try {
-          result.pushed += await pushTo(db, sender, it, recipient, written.row);
-        } catch (e) {
-          console.error("push delivery failed", e);
+      try {
+        const written = await write(db, it, recipient.userId);
+        if (!written) continue;
+        result[written.how]++;
+        if (sender && AUDIENCE[it.kind] === "athlete") {
+          try {
+            result.pushed += await pushTo(db, sender, it, recipient, written.row);
+          } catch (e) {
+            console.error("push delivery failed", e);
+          }
         }
+      } catch (e) {
+        // One recipient's failed write must not cost the others their notification.
+        console.error("notification write failed", e);
       }
     }
   }

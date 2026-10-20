@@ -52,6 +52,12 @@ export async function updateProgram(db: Db, coachId: string, programId: string, 
   if (program.kind === "continuous" && input.startDate && input.startDate !== fromDbDate(program.startDate as Date)) {
     if ((await db.programWeek.count({ where: { programId } })) > 0) throw new TrainingError("start_date_locked");
     data.startDate = toDbDate(input.startDate);
+    // Week notices are keyed by weekIndex, which means something else under a new start date: same write.
+    const [updated] = await db.$transaction([
+      db.program.update({ where: { id: programId }, data }),
+      db.weekNotice.deleteMany({ where: { programId } }),
+    ]);
+    return updated;
   }
   if (program.kind === "closed" && input.weeks !== undefined && input.weeks !== program.weeks) {
     const outside = await db.block.count({ where: { programId, dayIndex: { gte: input.weeks * 7 } } });

@@ -7,7 +7,7 @@ export function installPlatform(userAgent: string): InstallPlatform {
   return "other";
 }
 
-const UNGATED = [/^\/signin(\/|$)/, /^\/onboarding(\/|$)/, /^\/join\//];
+const UNGATED = [/^\/signin(\/|$)/, /^\/onboarding(\/|$)/, /^\/join\//, /^\/disabled(\/|$)/];
 
 /** Whether the athlete zone shows the "Install the app" page instead of its content. */
 export function shouldGate(o: { enabled: boolean; phone: boolean; standalone: boolean; pathname: string }): boolean {

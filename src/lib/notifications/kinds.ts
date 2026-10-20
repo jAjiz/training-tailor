@@ -86,7 +86,7 @@ export function notificationText<K extends NotificationKind>(kind: K, data: Noti
     case "fist_bump":
       values = {
         name: d.latestName as string,
-        others: (d.count as number) - 1,
+        others: Math.max(0, (d.count as number) - 1),
         block: blockLabel(d.block as LabelBlock, t),
       };
       break;
@@ -103,8 +103,8 @@ export function notificationText<K extends NotificationKind>(kind: K, data: Noti
   return { title: t(key("title"), values), body: t(key("body"), values) };
 }
 
-/** First `max` characters on a single line; ends with "…" when cut. */
+/** First `max` code points on a single line; ends with "…" when cut. Cuts by code point so an emoji is never split (a lone surrogate is invalid JSON for Postgres). */
 export function excerpt(body: string, max = 120): string {
-  const line = body.replace(/\s+/g, " ").trim();
-  return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
+  const chars = Array.from(body.replace(/\s+/g, " ").trim());
+  return chars.length <= max ? chars.join("") : `${chars.slice(0, max - 1).join("").trimEnd()}…`;
 }

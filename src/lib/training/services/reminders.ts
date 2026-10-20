@@ -32,7 +32,13 @@ export async function weekReminderIntents(db: Db, now: Date): Promise<Notificati
 }
 
 export async function runWeeklyJob(db: Db, now: Date, sender: PushSender | null): Promise<{ reminders: number; deleted: number }> {
-  const { created } = await deliver(db, await weekReminderIntents(db, now), sender);
+  let reminders = 0;
+  try {
+    reminders = (await deliver(db, await weekReminderIntents(db, now), sender)).created;
+  } catch (e) {
+    // A failed delivery must not skip the retention cleanup.
+    console.error("weekly reminders failed", e);
+  }
   const deleted = await deleteOldNotifications(db, new Date(now.getTime() - RETENTION_DAYS * 86_400_000));
-  return { reminders: created, deleted };
+  return { reminders, deleted };
 }

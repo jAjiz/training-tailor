@@ -208,6 +208,14 @@ describe("deleteCoach", () => {
     expect(intents[0].recipients.map((r) => r.userId)).toEqual([keptAthlete.userId]);
   });
 
+  it("does not notify the deleted coach when they are also an athlete of a kept program", async () => {
+    const { db, admin, coach, user, kept, keptAthlete } = await notificationFixture();
+    const own = await db.athleteAccount.create({ data: { userId: coach.userId, displayName: "Coach Athlete", timezone: "Europe/Madrid" } });
+    await enroll(db, kept.id, own.id, "2026-10-05");
+    const { intents } = await deleteCoach(db, admin.id, coach.id, user.email);
+    expect(intents[0].recipients.map((r) => r.userId)).toEqual([keptAthlete.userId]);
+  });
+
   it("deletes the notifications of deleted programs only", async () => {
     const { db, admin, coach, user, kept, draft, keptAthlete, draftAthlete } = await notificationFixture();
     const row = (userId: string, programId: string | null) =>

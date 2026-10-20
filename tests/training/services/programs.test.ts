@@ -36,6 +36,18 @@ describe("programs", () => {
     expect(await listCoachPrograms(tdb.prisma, owner.id)).toHaveLength(1);
   });
 
+  it("drops the week notices when the start date changes", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await createProgram(tdb.prisma, coach.id, continuous);
+    const other = await createProgram(tdb.prisma, coach.id, continuous);
+    await tdb.prisma.weekNotice.createMany({ data: [{ programId: p.id, weekIndex: 0 }, { programId: other.id, weekIndex: 0 }] });
+    await updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily RX", description: null, startDate: "2026-10-05" });
+    expect(await tdb.prisma.weekNotice.count({ where: { programId: p.id } })).toBe(1);
+    await updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily", description: null, startDate: "2026-10-12" });
+    expect(await tdb.prisma.weekNotice.count({ where: { programId: p.id } })).toBe(0);
+    expect(await tdb.prisma.weekNotice.count({ where: { programId: other.id } })).toBe(1);
+  });
+
   it("locks the start date once a week is published", async () => {
     const coach = await makeCoach(tdb.prisma);
     const p = await createProgram(tdb.prisma, coach.id, continuous);

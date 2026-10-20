@@ -30,6 +30,6 @@ describe("shouldGate", () => {
     expect(shouldGate({ ...base, enabled: false })).toBe(false);
     expect(shouldGate({ ...base, phone: false })).toBe(false);
     expect(shouldGate({ ...base, standalone: true })).toBe(false);
-    for (const pathname of ["/signin", "/onboarding", "/join/abc"]) expect(shouldGate({ ...base, pathname })).toBe(false);
+    for (const pathname of ["/signin", "/onboarding", "/join/abc", "/disabled"]) expect(shouldGate({ ...base, pathname })).toBe(false);
   });
 });

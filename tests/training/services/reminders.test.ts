@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, publishWeek } from "../../helpers/factories";
 import { runWeeklyJob, weekReminderIntents } from "@/lib/training/services/reminders";
@@ -60,6 +60,25 @@ describe("runWeeklyJob", () => {
     expect(await runWeeklyJob(tdb.prisma, SUNDAY, null)).toMatchObject({ reminders: 1 });
     expect(await runWeeklyJob(tdb.prisma, SUNDAY, null)).toMatchObject({ reminders: 0 });
     expect(await tdb.prisma.notification.count({ where: { kind: "week_reminder", programId: program.id } })).toBe(1);
+  });
+
+  it("still deletes old rows when delivering the reminders throws", async () => {
+    await setup();
+    const coach = await makeCoach(tdb.prisma);
+    await tdb.prisma.notification.create({
+      data: { userId: coach.userId, kind: "athlete_joined", audience: "coach", data: {}, updatedAt: new Date(SUNDAY.getTime() - 91 * 86_400_000) },
+    });
+    const broken = new Proxy(tdb.prisma, {
+      get(target, prop, receiver) {
+        if (prop === "notificationPreference") throw new Error("db down");
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await runWeeklyJob(broken, SUNDAY, null);
+    spy.mockRestore();
+    expect(r).toEqual({ reminders: 0, deleted: 1 });
+    expect(await tdb.prisma.notification.count({ where: { kind: "athlete_joined" } })).toBe(0);
   });
 
   it("deletes rows older than 90 days and keeps newer ones", async () => {

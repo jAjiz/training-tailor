@@ -45,6 +45,9 @@ describe("notificationText (es)", () => {
     const base = { resultId: "r1", blockId: "b1", block: fran, latestName: "Ana" };
     expect(notificationText("fist_bump", { ...base, count: 3 }, tEs).body).toBe("👊 Ana y 2 más han dado fist bump a tu Fran");
     expect(notificationText("fist_bump", { ...base, count: 1 }, tEs).body).toBe("👊 Ana ha dado fist bump a tu Fran");
+    for (const count of [0, -1]) {
+      expect(notificationText("fist_bump", { ...base, count }, tEs).body).toBe("👊 Ana ha dado fist bump a tu Fran");
+    }
   });
 
   it("uses the same title for every kind", () => {
@@ -101,4 +104,13 @@ describe("excerpt", () => {
     expect(out.endsWith("…")).toBe(true);
   });
   it("keeps short text intact", () => expect(excerpt("hola")).toBe("hola"));
+  it("never cuts an emoji in half", () => {
+    for (const pad of [117, 118, 119]) {
+      const out = excerpt(`${"x".repeat(pad)}😀${"y".repeat(50)}`);
+      expect(out.isWellFormed()).toBe(true);
+      expect(Array.from(out).length).toBeLessThanOrEqual(120);
+      expect(out.endsWith("…")).toBe(true);
+    }
+    expect(Array.from(excerpt("😀".repeat(200)))).toHaveLength(120);
+  });
 });

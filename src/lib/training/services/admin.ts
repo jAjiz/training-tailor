@@ -131,7 +131,7 @@ export async function deleteCoach(
     const kept = await tx.program.findMany({ where: { coachId, archivedAt: null }, select: { id: true, name: true } });
     const intents: NotificationIntent[] = [];
     for (const program of kept) {
-      const recipients = await activeAthleteRecipients(tx, program.id);
+      const recipients = await activeAthleteRecipients(tx, program.id, coach.userId);
       if (recipients.length === 0) continue;
       intents.push(intent("coach_deleted", recipients, { programId: program.id, programName: program.name }, { programId: program.id }));
     }

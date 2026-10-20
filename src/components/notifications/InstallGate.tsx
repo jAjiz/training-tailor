@@ -91,7 +91,7 @@ export function InstallGate({ enabled, children }: { enabled: boolean; children:
         <h1 id="install-title" className="text-2xl font-bold">{t("title")}</h1>
         <p className="text-muted">{t("body")}</p>
         {content}
-        <p className="text-sm text-muted">{t("signInAgain")}</p>
+        {ios && <p className="text-sm text-muted">{t("signInAgain")}</p>}
       </div>
     </div>
   );
