@@ -56,7 +56,7 @@ export default async function PlannerPage({ params, searchParams }: Params) {
     id: b.id, dayIndex: b.dayIndex, position: b.position, kind: b.kind as PlannerBlockData["kind"], title: b.title,
     color: b.color, coachingTips: b.coachingTips, videoUrl: b.videoUrl, description: b.description, scoring: b.scoring,
     timeCapSeconds: b.timeCapSeconds, movement: b.movement, sets: b.sets as BarbellSet[] | null,
-    instructions: b.instructions, resultCount: b._count.results,
+    instructions: b.instructions, resultCount: b._count.results, visibleResultCount: b.visibleResultCount,
   });
   const dayLabel = (dayIndex: number) => startDate
     ? formatDay(addDays(startDate, dayIndex), locale)
