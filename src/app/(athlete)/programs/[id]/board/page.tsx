@@ -1,6 +1,7 @@
 import type { Viewport } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AnnouncementText } from "@/components/notifications/AnnouncementText";
+import { NotInProgram } from "@/components/training/NotInProgram";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { requireAthletePage } from "@/lib/accounts";
@@ -20,7 +21,7 @@ export default async function AthleteBoardPage({ params }: { params: Promise<{ i
   const status = await getEnrollmentStatus(prisma, athlete.id, id);
   // An inbox link to a program one left or was removed from explains itself instead of showing a 404.
   if (status === "left" || status === "removed") {
-    return <div className="pt-8"><EmptyState>{t("notInProgram")}</EmptyState></div>;
+    return <NotInProgram />;
   }
   const { program, announcements } = await orNotFound(listBoard(prisma, { athleteId: athlete.id }, id));
   const session = await getSessionContext();

@@ -544,6 +544,7 @@
     "readOnly": "This board is read-only.",
     "athleteEmpty": "Your coach has not posted any announcements yet.",
     "notInProgram": "You are no longer in this program",
+    "toToday": "Go to today",
     "open": "Announcement board"
   },
   "notifications": {

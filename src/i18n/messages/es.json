@@ -544,6 +544,7 @@
     "readOnly": "Este tablón es de solo lectura.",
     "athleteEmpty": "Tu coach todavía no ha publicado anuncios.",
     "notInProgram": "Ya no estás en este programa",
+    "toToday": "Ir a hoy",
     "open": "Tablón de anuncios"
   },
   "notifications": {

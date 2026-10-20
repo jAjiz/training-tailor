@@ -2,12 +2,14 @@ import type { Viewport } from "next";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { BlockCard } from "@/components/training/BlockCard";
+import { NotInProgram } from "@/components/training/NotInProgram";
 import { EnablePushCard } from "@/components/notifications/EnablePushCard";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
+import { getSessionContext } from "@/lib/session";
 import { formatDay } from "@/lib/format";
 import { hasLeaderboard } from "@/lib/training/access";
 import { addDays, isIsoDate, mondayOf, todayIn, weekIndexOf } from "@/lib/training/dates";
@@ -27,6 +29,7 @@ type Props = { searchParams: Promise<{ program?: string; date?: string }> };
 
 export default async function TodayPage({ searchParams }: Props) {
   const athlete = await requireAthletePage();
+  const impersonating = Boolean((await getSessionContext())?.impersonatedBy);
   const { program: programParam, date: dateParam } = await searchParams;
   const t = await getTranslations("today");
   const locale = await getLocale();
@@ -36,7 +39,7 @@ export default async function TodayPage({ searchParams }: Props) {
   if (programParam && !enrollments.some((e) => e.programId === programParam)) {
     const status = await getEnrollmentStatus(prisma, athlete.id, programParam);
     if (status === "left" || status === "removed") {
-      return <div className="pt-8"><EmptyState>{(await getTranslations("board"))("notInProgram")}</EmptyState></div>;
+      return <NotInProgram />;
     }
   }
 
@@ -63,7 +66,7 @@ export default async function TodayPage({ searchParams }: Props) {
           labels={{ prev: t("prevWeek"), next: t("nextWeek") }} />
       </AthleteHeader>
       <section className="flex flex-col gap-4">
-        <EnablePushCard />
+        {!impersonating && <EnablePushCard />}
         <div className="flex min-h-9 items-center justify-between gap-3">
           <p className="inline-block text-sm font-medium text-muted first-letter:uppercase">
             {formatDay(date, locale, { weekday: "long", day: "numeric", month: "long" })}
