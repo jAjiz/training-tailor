@@ -59,7 +59,8 @@ export function listWeekBlocks(db: Db, programId: string, weekIndex: number) {
   return db.block.findMany({
     where: { programId, dayIndex: { gte: weekIndex * 7, lt: weekIndex * 7 + 7 } },
     orderBy: [{ dayIndex: "asc" }, { position: "asc" }],
-    include: { _count: { select: { results: true } } },
+    // Result counts exclude disabled athletes (the planner badge); getOwnedBlock still counts every result.
+    include: { _count: { select: { results: { where: { athlete: { disabledAt: null } } } } } },
   });
 }
 

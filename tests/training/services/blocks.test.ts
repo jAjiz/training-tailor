@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock } from "../../helpers/factories";
+import { makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makeResult } from "../../helpers/factories";
 import {
   createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, listWeekBlocks, moveBlock, updateBlock,
 } from "@/lib/training/services/blocks";
@@ -117,6 +117,19 @@ describe("blocks", () => {
     expect(await titles(program.id, 17)).toEqual(["0:X"]);
     expect(await titles(program.id, 15)).toEqual(["0:Existing", "1:A", "2:A", "3:B"]);
     expect((await listWeekBlocks(tdb.prisma, program.id, 2)).length).toBe(7);
+  });
+
+  it("listWeekBlocks counts only results of athletes who are not disabled", async () => {
+    const { program } = await setup();
+    const block = await makeCustomBlock(tdb.prisma, program.id, 0);
+    const active = await makeAthlete(tdb.prisma);
+    const disabled = await makeAthlete(tdb.prisma);
+    await makeResult(tdb.prisma, block.id, active.id);
+    await makeResult(tdb.prisma, block.id, disabled.id);
+    expect((await listWeekBlocks(tdb.prisma, program.id, 0))[0]._count.results).toBe(2);
+
+    await tdb.prisma.athleteAccount.update({ where: { id: disabled.id }, data: { disabledAt: new Date() } });
+    expect((await listWeekBlocks(tdb.prisma, program.id, 0))[0]._count.results).toBe(1);
   });
 
   it("refuses to duplicate or move past the end of a closed program", async () => {
