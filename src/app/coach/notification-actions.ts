@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireCoach } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { markAllInZone, openInZone, setPreferenceInZone } from "@/lib/notification-zone";
@@ -10,7 +11,11 @@ import type { ActionResult } from "@/lib/training/errors";
 export async function openNotificationAction(id: unknown): Promise<ActionResult<{ href: string }>> {
   return runAction("openCoachNotificationAction", async (session) => {
     const coach = await requireCoach();
-    return openInZone("coach", coach.userId, Boolean(session?.impersonatedBy), id);
+    const impersonating = Boolean(session?.impersonatedBy);
+    const result = await openInZone("coach", coach.userId, impersonating, id);
+    // The bell lives in the zone layout: without this its dot stays stale after the row is marked read.
+    if (!impersonating) revalidatePath("/coach", "layout");
+    return result;
   });
 }
 
@@ -18,6 +23,7 @@ export async function markAllReadAction(): Promise<ActionResult> {
   return runAction("markAllCoachReadAction", async (session) => {
     const coach = await requireCoach();
     await markAllInZone("coach", coach.userId, Boolean(session?.impersonatedBy));
+    if (!session?.impersonatedBy) revalidatePath("/coach", "layout");
   });
 }
 

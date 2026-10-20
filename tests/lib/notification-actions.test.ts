@@ -14,6 +14,7 @@ vi.mock("@/lib/training/services/audit", () => ({ writeAudit: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ notFound: vi.fn(), unstable_rethrow: vi.fn() }));
 
+import { revalidatePath } from "next/cache";
 import * as athleteActions from "@/app/(athlete)/notification-actions";
 import * as coachActions from "@/app/coach/notification-actions";
 
@@ -79,6 +80,20 @@ describe("openNotificationAction", () => {
     const n = await row(a.userId);
     expect(await athleteActions.openNotificationAction(n.id)).toEqual({ ok: true, value: { href: "/?program=p1" } });
     expect((await tdb.prisma.notification.findUniqueOrThrow({ where: { id: n.id } })).readAt).not.toBeNull();
+  });
+
+  it("revalidates the zone layout so the bell clears, except while impersonating", async () => {
+    const a = await asAthlete();
+    await athleteActions.openNotificationAction((await row(a.userId)).id);
+    expect(revalidatePath).toHaveBeenCalledWith("/", "layout");
+    const c = await asCoach();
+    await coachActions.openNotificationAction((await row(c.userId, "coach", "coach_approved")).id);
+    expect(revalidatePath).toHaveBeenCalledWith("/coach", "layout");
+    vi.mocked(revalidatePath).mockClear();
+    const i = await asAthlete("admin1");
+    await athleteActions.openNotificationAction((await row(i.userId)).id);
+    await athleteActions.markAllReadAction();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("returns the href but leaves readAt null during an impersonation", async () => {

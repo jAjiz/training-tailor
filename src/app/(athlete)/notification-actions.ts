@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { requireAthlete } from "@/lib/accounts";
@@ -18,7 +19,11 @@ const Subscription = z.object({
 export async function openNotificationAction(id: unknown): Promise<ActionResult<{ href: string }>> {
   return runAction("openNotificationAction", async (session) => {
     const athlete = await requireAthlete();
-    return openInZone("athlete", athlete.userId, Boolean(session?.impersonatedBy), id);
+    const impersonating = Boolean(session?.impersonatedBy);
+    const result = await openInZone("athlete", athlete.userId, impersonating, id);
+    // The bell lives in the zone layout: without this its dot stays stale after the row is marked read.
+    if (!impersonating) revalidatePath("/", "layout");
+    return result;
   });
 }
 
@@ -26,6 +31,7 @@ export async function markAllReadAction(): Promise<ActionResult> {
   return runAction("markAllReadAction", async (session) => {
     const athlete = await requireAthlete();
     await markAllInZone("athlete", athlete.userId, Boolean(session?.impersonatedBy));
+    if (!session?.impersonatedBy) revalidatePath("/", "layout");
   });
 }
 
