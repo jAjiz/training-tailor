@@ -231,6 +231,26 @@ describe("deleteCoach", () => {
     expect((await db.notificationPreference.findMany({ where: { userId: user.id } })).map((p) => p.kind)).toEqual(["announcement"]);
   });
 
+  it("removes fist-bump entries of results deleted with draft blocks and programs", async () => {
+    const { db, admin, coach, user, draft, keptAthlete, draftAthlete } = await notificationFixture();
+    const daily = await makeContinuous(db, coach.id);
+    await publishWeek(db, daily.id, 0);
+    const draftWeekBlock = await makeCustomBlock(db, daily.id, 7);
+    const liveBlock = await makeCustomBlock(db, daily.id, 0);
+    const results = {
+      program: await makeResult(db, (await makeCustomBlock(db, draft.id, 0)).id, draftAthlete.id),
+      draftWeek: await makeResult(db, draftWeekBlock.id, keptAthlete.id),
+      live: await makeResult(db, liveBlock.id, keptAthlete.id),
+    };
+    for (const r of Object.values(results)) {
+      await db.notification.create({
+        data: { userId: keptAthlete.userId, audience: "athlete", kind: "fist_bump", entityId: r.id, groupKey: `fist_bump:${r.id}`, data: {} },
+      });
+    }
+    await deleteCoach(db, admin.id, coach.id, user.email);
+    expect((await db.notification.findMany()).map((n) => n.entityId)).toEqual([results.live.id]);
+  });
+
   it("requires the coach's email to confirm", async () => {
     const db = tdb.prisma;
     const admin = await makeAdmin(db);

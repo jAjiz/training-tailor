@@ -117,6 +117,12 @@ export async function deleteCoach(
     const { preview, deletedProgramIds, draftBlockIds } = await planCoachDeletion(tx, coachId);
     // Inbox entries pointing at programs about to disappear.
     await tx.notification.deleteMany({ where: { programId: { in: deletedProgramIds } } });
+    // Fist-bump entries have no programId: remove those of every result that cascades away (deleted programs and draft blocks).
+    const doomed = await tx.result.findMany({
+      where: { OR: [{ block: { programId: { in: deletedProgramIds } } }, { blockId: { in: draftBlockIds } }] },
+      select: { id: true },
+    });
+    await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: doomed.map((r) => r.id) } } });
     // 1. Unpublished closed programs, with their enrollments and results (cascade).
     await tx.program.deleteMany({ where: { id: { in: deletedProgramIds } } });
     // 2. Draft-week blocks of continuous programs, with their results (cascade). 3. Published closed programs stay.
