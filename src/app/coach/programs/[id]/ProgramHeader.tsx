@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { navPillClasses } from "@/components/ui/Pill";
 
-/** Program name and the Planner / Athletes / Settings pills shared by the three program pages. */
+/** Program name and the Planner / Athletes / Board / Settings pills shared by the program pages. */
 export function ProgramHeader({ programId, name }: { programId: string; name: string }) {
   const t = useTranslations("programs");
   const pathname = usePathname();
@@ -13,6 +13,7 @@ export function ProgramHeader({ programId, name }: { programId: string; name: st
   const tabs = [
     { href: base, label: t("planner") },
     { href: `${base}/athletes`, label: t("roster") },
+    { href: `${base}/board`, label: t("board") },
     { href: `${base}/settings`, label: t("settings") },
   ];
   return (

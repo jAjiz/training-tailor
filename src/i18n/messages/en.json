@@ -48,6 +48,8 @@
     "invite_required": "You need an invitation from your coach to sign in.",
     "invalid_status_change": "That status change is not allowed.",
     "invite_disabled": "The administrator has turned off the invitation link.",
+    "announcement_empty": "Write a message.",
+    "announcement_too_long": "The message is too long (2000 characters at most).",
     "not_enrolled": "You are not in this program.",
     "internal": "Something went wrong. Try again."
   },
@@ -108,6 +110,7 @@
     "settings": "Settings",
     "planner": "Planner",
     "roster": "Athletes",
+    "board": "Board",
     "archive": "Archive program",
     "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
     "startDateLockedHint": "The start date cannot change because some weeks are already published."
@@ -521,6 +524,25 @@
         }
       }
     }
+  },
+  "board": {
+    "title": "Board",
+    "placeholder": "Write an announcement for your athletes",
+    "label": "New announcement",
+    "counter": "{count}/2000",
+    "publish": "Publish",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleteTitle": "Delete announcement",
+    "deleteConfirm": "The announcement will disappear from the board and from your athletes' notifications.",
+    "edited": "edited",
+    "empty": "No announcements yet.",
+    "readOnly": "This board is read-only.",
+    "athleteEmpty": "Your coach has not posted any announcements yet.",
+    "notInProgram": "You are no longer in this program",
+    "open": "Announcement board"
   },
   "notifications": {
     "locale": "en",

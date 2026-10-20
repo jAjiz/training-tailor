@@ -48,6 +48,8 @@
     "invite_required": "Necesitas una invitación de tu coach para entrar.",
     "invalid_status_change": "Ese cambio de estado no está permitido.",
     "invite_disabled": "El administrador ha desactivado el enlace de invitación.",
+    "announcement_empty": "Escribe un mensaje.",
+    "announcement_too_long": "El mensaje es demasiado largo (máximo 2000 caracteres).",
     "not_enrolled": "No sigues este programa.",
     "internal": "Algo ha fallado. Inténtalo de nuevo."
   },
@@ -108,6 +110,7 @@
     "settings": "Ajustes",
     "planner": "Planificación",
     "roster": "Atletas",
+    "board": "Tablón",
     "archive": "Archivar programa",
     "archiveConfirm": "¿Archivar este programa? Desaparecerá para tus atletas y el enlace dejará de funcionar.",
     "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas."
@@ -521,6 +524,25 @@
         }
       }
     }
+  },
+  "board": {
+    "title": "Tablón",
+    "placeholder": "Escribe un anuncio para tus atletas",
+    "label": "Nuevo anuncio",
+    "counter": "{count}/2000",
+    "publish": "Publicar",
+    "edit": "Editar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "deleteTitle": "Eliminar anuncio",
+    "deleteConfirm": "El anuncio desaparecerá del tablón y de las notificaciones de tus atletas.",
+    "edited": "editado",
+    "empty": "Todavía no hay anuncios.",
+    "readOnly": "Este tablón es de solo lectura.",
+    "athleteEmpty": "Tu coach todavía no ha publicado anuncios.",
+    "notInProgram": "Ya no estás en este programa",
+    "open": "Tablón de anuncios"
   },
   "notifications": {
     "locale": "es",
