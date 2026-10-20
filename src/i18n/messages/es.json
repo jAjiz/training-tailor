@@ -614,5 +614,19 @@
         "body": "Tu cuenta de coach ha sido aprobada"
       }
     }
+  },
+  "install": {
+    "title": "Instala la app para continuar",
+    "body": "Training Tailor funciona como app en tu móvil. Instálala para ver tu entrenamiento y recibir avisos.",
+    "iosShare": "1. Toca Compartir en la barra de Safari",
+    "iosAdd": "2. Elige Añadir a pantalla de inicio",
+    "iosOpen": "3. Abre la app desde el icono nuevo",
+    "install": "Instalar",
+    "androidMenu": "Abre el menú del navegador (⋮) y elige Instalar app o Añadir a pantalla de inicio. Después ábrela desde el icono.",
+    "openInSafari": "Abre este enlace en Safari",
+    "openInChrome": "Abre este enlace en Chrome",
+    "copyLink": "Copiar enlace",
+    "copied": "Enlace copiado",
+    "signInAgain": "Después de instalarla, vuelve a iniciar sesión con Google."
   }
 }
