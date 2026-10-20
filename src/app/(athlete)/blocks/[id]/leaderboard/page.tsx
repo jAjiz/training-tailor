@@ -11,12 +11,18 @@ import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
 import { blockLabel } from "@/lib/training/block-label";
+import { getBlockEnrollmentStatus } from "@/lib/training/services/enrollments";
 import { getLeaderboard } from "@/lib/training/services/results";
 import { FistBumpButton } from "./FistBumpButton";
 
 export default async function LeaderboardPage({ params }: { params: Promise<{ id: string }> }) {
   const athlete = await requireAthletePage();
   const { id } = await params;
+  // An inbox link to a block of a program one left or was removed from explains itself instead of showing a 404.
+  const enrollment = await getBlockEnrollmentStatus(prisma, athlete.id, id);
+  if (enrollment?.status === "left" || enrollment?.status === "removed") {
+    return <div className="pt-8"><EmptyState>{(await getTranslations("board"))("notInProgram")}</EmptyState></div>;
+  }
   const { block, date, entries } = await orNotFound(getLeaderboard(prisma, { athlete }, id));
   const [t, tc, tl, tb] = await Promise.all([getTranslations("leaderboard"), getTranslations("common"), getTranslations("log"), getTranslations()]);
   const locale = await getLocale();

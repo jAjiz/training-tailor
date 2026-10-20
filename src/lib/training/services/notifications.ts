@@ -37,6 +37,13 @@ export function unreadCount(db: Db, userId: string, audience: Audience): Promise
   return db.notification.count({ where: { userId, audience, kind: { in: kindsOf(audience) }, readAt: null } });
 }
 
+/** One of the user's own rows in this audience; anything else is `not_found`. */
+export async function getOwnNotification(db: Db, userId: string, audience: Audience, id: string): Promise<Notification> {
+  const row = await db.notification.findFirst({ where: { id, userId, audience, kind: { in: kindsOf(audience) } } });
+  if (!row) throw new TrainingError("not_found");
+  return row;
+}
+
 export async function markRead(db: Db, userId: string, id: string): Promise<Notification> {
   const own = await db.notification.findFirst({ where: { id, userId } });
   if (!own) throw new TrainingError("not_found");

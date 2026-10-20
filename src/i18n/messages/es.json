@@ -27,7 +27,8 @@
     "me": "Perfil",
     "programs": "Mis programas",
     "main": "Navegación principal",
-    "account": "Cuenta"
+    "account": "Cuenta",
+    "notifications": "Notificaciones"
   },
   "errors": {
     "unauthorized": "Tu sesión ha caducado. Vuelve a entrar.",
@@ -51,7 +52,8 @@
     "announcement_empty": "Escribe un mensaje.",
     "announcement_too_long": "El mensaje es demasiado largo (máximo 2000 caracteres).",
     "not_enrolled": "No sigues este programa.",
-    "internal": "Algo ha fallado. Inténtalo de nuevo."
+    "internal": "Algo ha fallado. Inténtalo de nuevo.",
+    "push_unavailable": "Las notificaciones no están disponibles en este dispositivo."
   },
   "onboarding": {
     "preparing": "Preparando tu cuenta…",
@@ -546,6 +548,38 @@
   },
   "notifications": {
     "locale": "es",
+    "title": "Notificaciones",
+    "bell": "Notificaciones",
+    "unread": "{count, plural, one {# sin leer} other {# sin leer}}",
+    "markAll": "Marcar todo como leído",
+    "empty": "No tienes notificaciones.",
+    "enableTitle": "Activa las notificaciones",
+    "enableBody": "Recibe un aviso cuando tu coach publique semanas o anuncios.",
+    "enable": "Activar notificaciones",
+    "dismiss": "Ahora no",
+    "working": "Activando…",
+    "pushTitle": "Notificaciones en este dispositivo",
+    "pushOn": "Activadas en este dispositivo.",
+    "pushOff": "Desactivadas en este dispositivo.",
+    "turnOn": "Activar",
+    "turnOff": "Desactivar",
+    "denied": "Has bloqueado las notificaciones. Para volver a activarlas, permite las notificaciones de Training Tailor en los ajustes del navegador o del sistema.",
+    "unsupported": "Este dispositivo no admite notificaciones push. Las verás en la campana.",
+    "needsInstall": "En iPhone, añade la app a la pantalla de inicio para activar las notificaciones.",
+    "prefsTitle": "Qué avisos quieres recibir",
+    "prefsHint": "Si desactivas un aviso, no recibirás la notificación ni la verás en la campana.",
+    "settingsTitle": "Notificaciones",
+    "back": "Volver",
+    "prefs": {
+      "announcement": "Anuncios del tablón",
+      "week_published": "Semanas publicadas",
+      "fist_bump": "Fist bumps en tus resultados",
+      "coach_deleted": "Cuando tu coach deja la plataforma",
+      "athlete_joined": "Atletas que se unen",
+      "athlete_left": "Atletas que se dan de baja",
+      "week_reminder": "Semana siguiente sin publicar",
+      "coach_approved": "Cuenta de coach aprobada"
+    },
     "kinds": {
       "announcement": {
         "title": "Training Tailor",

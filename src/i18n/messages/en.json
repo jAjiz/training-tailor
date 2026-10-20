@@ -27,7 +27,8 @@
     "me": "Me",
     "programs": "My programs",
     "main": "Main navigation",
-    "account": "Account"
+    "account": "Account",
+    "notifications": "Notifications"
   },
   "errors": {
     "unauthorized": "Your session expired. Sign in again.",
@@ -51,7 +52,8 @@
     "announcement_empty": "Write a message.",
     "announcement_too_long": "The message is too long (2000 characters at most).",
     "not_enrolled": "You are not in this program.",
-    "internal": "Something went wrong. Try again."
+    "internal": "Something went wrong. Try again.",
+    "push_unavailable": "Notifications are not available on this device."
   },
   "onboarding": {
     "preparing": "Setting up your account…",
@@ -546,6 +548,38 @@
   },
   "notifications": {
     "locale": "en",
+    "title": "Notifications",
+    "bell": "Notifications",
+    "unread": "{count, plural, one {# unread} other {# unread}}",
+    "markAll": "Mark all as read",
+    "empty": "You have no notifications.",
+    "enableTitle": "Turn on notifications",
+    "enableBody": "Get an alert when your coach publishes weeks or announcements.",
+    "enable": "Turn on notifications",
+    "dismiss": "Not now",
+    "working": "Turning on…",
+    "pushTitle": "Notifications on this device",
+    "pushOn": "On for this device.",
+    "pushOff": "Off for this device.",
+    "turnOn": "Turn on",
+    "turnOff": "Turn off",
+    "denied": "You blocked notifications. To turn them back on, allow Training Tailor notifications in your browser or system settings.",
+    "unsupported": "This device does not support push notifications. You will see them in the bell.",
+    "needsInstall": "On iPhone, add the app to your home screen to turn on notifications.",
+    "prefsTitle": "Which alerts you want",
+    "prefsHint": "If you turn an alert off, you get no notification and no bell entry for it.",
+    "settingsTitle": "Notifications",
+    "back": "Back",
+    "prefs": {
+      "announcement": "Board announcements",
+      "week_published": "Published weeks",
+      "fist_bump": "Fist bumps on your results",
+      "coach_deleted": "When your coach leaves the platform",
+      "athlete_joined": "Athletes joining",
+      "athlete_left": "Athletes leaving",
+      "week_reminder": "Next week not published",
+      "coach_approved": "Coach account approved"
+    },
     "kinds": {
       "announcement": {
         "title": "Training Tailor",

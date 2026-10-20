@@ -84,6 +84,14 @@ export async function getEnrollmentStatus(db: Db, athleteId: string, programId: 
   return e.leftAt ? ("left" as const) : ("active" as const);
 }
 
+/** The athlete's enrollment status in the program a block belongs to (null: unknown block or never enrolled), for dead inbox links. */
+export async function getBlockEnrollmentStatus(db: Db, athleteId: string, blockId: string) {
+  const block = await db.block.findUnique({ where: { id: blockId }, select: { programId: true } });
+  if (!block) return null;
+  const status = await getEnrollmentStatus(db, athleteId, block.programId);
+  return status && { programId: block.programId, status };
+}
+
 export async function listRoster(db: Db, coachId: string, programId: string) {
   await getOwnedProgram(db, coachId, programId);
   return db.enrollment.findMany({ where: { programId }, include: { athlete: true }, orderBy: { joinedAt: "asc" } });

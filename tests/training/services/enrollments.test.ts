@@ -4,7 +4,7 @@ import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, make
 import { listCoachPrograms } from "@/lib/training/services/programs";
 import { getDayResults, getLeaderboard, getVisibleBlock } from "@/lib/training/services/results";
 import {
-  canCreateAthleteProfile, findProgramByCode, getEnrollmentStatus, joinByCode, leaveProgram, listAthletePrograms, listRoster, setEnrollmentRemoved,
+  canCreateAthleteProfile, findProgramByCode, getBlockEnrollmentStatus, getEnrollmentStatus, joinByCode, leaveProgram, listAthletePrograms, listRoster, setEnrollmentRemoved,
 } from "@/lib/training/services/enrollments";
 
 let tdb: TestDb;
@@ -236,5 +236,26 @@ describe("coachless programs", () => {
     const listed = await listAthletePrograms(db, athlete.id);
     expect(listed.map((e) => e.programId)).toEqual([p.id]);
     expect(listed[0].program).toMatchObject({ coach: null, coachName: coach.displayName });
+  });
+});
+
+describe("getBlockEnrollmentStatus", () => {
+  it("tells whether the athlete is active, left, removed or never in the block's program", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id);
+    const block = await makeCustomBlock(tdb.prisma, p.id, 0);
+    expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, block.id)).toBeNull();
+    const e = await enroll(tdb.prisma, p.id, athlete.id);
+    expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, block.id)).toEqual({ programId: p.id, status: "active" });
+    await leave(tdb.prisma, e.id);
+    expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, block.id)).toEqual({ programId: p.id, status: "left" });
+    await setEnrollmentRemoved(tdb.prisma, coach.id, e.id, true);
+    expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, block.id)).toEqual({ programId: p.id, status: "removed" });
+  });
+
+  it("is null for an unknown block", async () => {
+    const athlete = await makeAthlete(tdb.prisma);
+    expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, "nope")).toBeNull();
   });
 });
