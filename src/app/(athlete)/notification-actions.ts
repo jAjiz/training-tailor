@@ -7,6 +7,7 @@ import { requireAthlete } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { markAllInZone, openInZone, setPreferenceInZone } from "@/lib/notification-zone";
+import { isPushServiceEndpoint } from "@/lib/notifications/push-endpoints";
 import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { parse } from "@/lib/training/schemas";
 import { deleteSubscription, saveSubscription } from "@/lib/training/services/notifications";
@@ -48,6 +49,7 @@ export async function savePushSubscriptionAction(raw: unknown): Promise<ActionRe
     const athlete = await requireAthlete();
     if (session?.impersonatedBy) throw new TrainingError("push_unavailable");
     const sub = parse(Subscription, raw);
+    if (!isPushServiceEndpoint(sub.endpoint)) throw new TrainingError("push_unavailable");
     let userAgent: string | null = null;
     try {
       userAgent = (await headers()).get("user-agent")?.slice(0, 300) ?? null;

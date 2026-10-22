@@ -147,6 +147,11 @@ export async function toggleFistBump(
   const { block } = await getVisibleBlock(db, athlete, result.blockId);
   if (!hasLeaderboard(block, block.program)) throw new TrainingError("not_found");
   if (result.athleteId === athlete.id) throw new TrainingError("own_result");
+  // The leaderboard hides athletes who left or were removed: their results cannot be bumped (or notified) either.
+  const ownerActive = await db.enrollment.count({
+    where: { programId: block.programId, athleteId: result.athleteId, removedAt: null, leftAt: null },
+  });
+  if (ownerActive === 0) throw new TrainingError("not_found");
   const key = { resultId_athleteId: { resultId, athleteId: athlete.id } };
   const existing = await db.fistBump.findUnique({ where: key });
   if (existing) {

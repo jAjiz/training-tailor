@@ -5,6 +5,26 @@ import type { ErrorCode } from "@/lib/training/errors";
 
 // Browser-only helpers. Every access to a browser API is guarded: on the server or in an unsupported browser they report "no" instead of throwing.
 
+const PUSH_CARD_DISMISSED_KEY = "tt:push-card-dismissed";
+
+/** Whether the athlete said no to the "Turn on notifications" card on this device. */
+export function pushCardDismissed(): boolean {
+  try {
+    return localStorage.getItem(PUSH_CARD_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Keeps the card away (dismissed, or push turned off in /me). Storage blocked: the card simply comes back. */
+export function dismissPushCard(): void {
+  try {
+    localStorage.setItem(PUSH_CARD_DISMISSED_KEY, "1");
+  } catch {
+    // ignore
+  }
+}
+
 export const vapidPublicKey = (): string | null => process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null;
 
 export function pushSupported(): boolean {

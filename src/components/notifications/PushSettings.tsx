@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { deletePushSubscriptionAction } from "@/app/(athlete)/notification-actions";
 import type { ErrorCode } from "@/lib/training/errors";
-import { currentSubscription, permissionState, pushSupported, subscribeThisDevice, vapidPublicKey } from "./push-client";
+import { currentSubscription, dismissPushCard, permissionState, pushSupported, subscribeThisDevice, vapidPublicKey } from "./push-client";
 
 type State = "loading" | "unsupported" | "denied" | "on" | "off";
 
@@ -61,6 +61,8 @@ export function PushSettings() {
         if (!result.ok) setError(result.code);
         await subscription.unsubscribe();
       }
+      // Turned off on purpose: the "Turn on notifications" card on Today must not come back.
+      dismissPushCard();
     } catch {
       setError("push_unavailable");
     }

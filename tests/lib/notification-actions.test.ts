@@ -23,7 +23,7 @@ beforeAll(async () => { tdb = await createTestDb(); holder.db = tdb.prisma; }, 6
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); vi.clearAllMocks(); });
 
-const sub = { endpoint: "https://push.test/device-1", keys: { p256dh: "p", auth: "a" } };
+const sub = { endpoint: "https://fcm.googleapis.com/fcm/send/device-1", keys: { p256dh: "p", auth: "a" } };
 
 async function asAthlete(impersonatedBy: string | null = null) {
   const athlete = await makeAthlete(tdb.prisma);
@@ -53,6 +53,13 @@ describe("savePushSubscriptionAction", () => {
     const rows = await tdb.prisma.pushSubscription.findMany();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ userId: a.userId, endpoint: sub.endpoint, p256dh: "p", auth: "a" });
+  });
+
+  it("refuses an endpoint that is not a known push service, storing nothing", async () => {
+    await asAthlete();
+    const hostile = { ...sub, endpoint: "https://interno.ejemplo:9000/hook" };
+    expect(await athleteActions.savePushSubscriptionAction(hostile)).toEqual({ ok: false, code: "push_unavailable" });
+    expect(await tdb.prisma.pushSubscription.count()).toBe(0);
   });
 
   it("rejects a malformed subscription", async () => {

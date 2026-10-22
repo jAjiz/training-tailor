@@ -7,17 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { installPlatform } from "@/lib/notifications/install";
 import type { ErrorCode } from "@/lib/training/errors";
-import { currentSubscription, isStandalone, permissionState, pushSupported, subscribeThisDevice, vapidPublicKey } from "./push-client";
-
-const DISMISSED_KEY = "tt:push-card-dismissed";
-
-function wasDismissed(): boolean {
-  try {
-    return localStorage.getItem(DISMISSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+import { currentSubscription, dismissPushCard, isStandalone, permissionState, pushCardDismissed, pushSupported, subscribeThisDevice, vapidPublicKey } from "./push-client";
 
 const subscribeNever = () => () => {};
 
@@ -26,7 +16,7 @@ function canOffer(): boolean {
   const desktopOrInstalled = isStandalone() || installPlatform(navigator.userAgent) === "other";
   // "granted" too: after a sign-out the subscription is gone but the browser keeps the permission.
   const permission = permissionState();
-  return Boolean(vapidPublicKey()) && pushSupported() && (permission === "default" || permission === "granted") && desktopOrInstalled && !wasDismissed();
+  return Boolean(vapidPublicKey()) && pushSupported() && (permission === "default" || permission === "granted") && desktopOrInstalled && !pushCardDismissed();
 }
 
 /** First-open invitation to turn notifications on. The permission prompt only ever appears from the button's click handler (iOS needs the gesture). */
@@ -52,11 +42,7 @@ export function EnablePushCard() {
   if (!eligible || closed || subscribed !== false) return null;
 
   function dismiss() {
-    try {
-      localStorage.setItem(DISMISSED_KEY, "1");
-    } catch {
-      // Storage blocked: the card simply comes back next time.
-    }
+    dismissPushCard();
     setClosed(true);
   }
 

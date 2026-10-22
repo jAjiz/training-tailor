@@ -193,6 +193,17 @@ describe("fist bump notifications", () => {
     expect(r).toMatchObject({ bumped: true, count: 1, intents: [] });
   });
 
+  it("refuses to bump the result of an athlete who left or was removed", async () => {
+    const { program, ana, ben, cai, wod } = await setup();
+    const { resultId: anaResult } = await log(ana, wod.id, { seconds: 640 });
+    const { resultId: caiResult } = await log(cai, wod.id, { seconds: 700 });
+    await tdb.prisma.enrollment.updateMany({ where: { programId: program.id, athleteId: ana.id }, data: { leftAt: new Date() } });
+    await tdb.prisma.enrollment.updateMany({ where: { programId: program.id, athleteId: cai.id }, data: { removedAt: new Date() } });
+    await expect(toggleFistBump(tdb.prisma, ben, anaResult)).rejects.toMatchObject({ code: "not_found" });
+    await expect(toggleFistBump(tdb.prisma, ben, caiResult)).rejects.toMatchObject({ code: "not_found" });
+    expect(await tdb.prisma.fistBump.count()).toBe(0);
+  });
+
   it("keeps one unread row per result through bump, bump, unbump, bump", async () => {
     const { ana, ben, cai, wod } = await setup();
     const { resultId } = await log(ana, wod.id, { seconds: 640 });
