@@ -1,5 +1,7 @@
+import { intent, type NotificationIntent } from "@/lib/notifications/notify";
 import { TrainingError } from "../errors";
 import { writeAudit } from "./audit";
+import { activeAthleteRecipients, deleteAudienceData } from "./notifications";
 import { newInviteCode } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
@@ -26,9 +28,11 @@ const TRANSITIONS: Record<CoachTransition, { from: string[]; to: string }> = {
 };
 
 /** `actor` is the admin's user id, `null` for the coach:approve script. */
-export async function changeCoachStatus(db: Db, actor: string | null, coachId: string, to: CoachTransition): Promise<void> {
+export async function changeCoachStatus(
+  db: Db, actor: string | null, coachId: string, to: CoachTransition,
+): Promise<NotificationIntent[]> {
   const { from, to: status } = TRANSITIONS[to];
-  await db.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     const coach = await tx.coachAccount.findUnique({ where: { id: coachId }, include: { user: true } });
     if (!coach) throw new TrainingError("not_found");
     if (!from.includes(coach.status)) throw new TrainingError("invalid_status_change");
@@ -37,15 +41,18 @@ export async function changeCoachStatus(db: Db, actor: string | null, coachId: s
       actorUserId: actor, action: `coach.${to}`, targetUserId: coach.userId, targetType: "coach",
       targetId: coach.id, targetLabel: coach.user.email,
     });
+    // The coach is not approved yet when this goes out, so the recipient is built directly.
+    return to === "approve" ? [intent("coach_approved", [{ userId: coach.userId, locale: coach.locale }], {})] : [];
   });
 }
 
-export async function approveCoach(db: Db, email: string): Promise<"approved" | "not_found"> {
+export async function approveCoach(
+  db: Db, email: string,
+): Promise<{ outcome: "approved" | "not_found"; intents: NotificationIntent[] }> {
   const user = await db.user.findUnique({ where: { email }, include: { coachAccount: true } });
-  if (!user?.coachAccount) return "not_found";
-  if (user.coachAccount.status === "approved") return "approved";
-  await changeCoachStatus(db, null, user.coachAccount.id, "approve");
-  return "approved";
+  if (!user?.coachAccount) return { outcome: "not_found", intents: [] };
+  if (user.coachAccount.status === "approved") return { outcome: "approved", intents: [] };
+  return { outcome: "approved", intents: await changeCoachStatus(db, null, user.coachAccount.id, "approve") };
 }
 
 export type CoachDeletionPreview = {
@@ -99,28 +106,46 @@ export async function deleteUserIfNoProfiles(tx: DbOrTx, userId: string): Promis
 }
 
 /** The spec's "Deleting a coach", steps 1–6, in one transaction. */
-export async function deleteCoach(db: Db, actor: string, coachId: string, confirmEmail: string): Promise<CoachDeletionPreview> {
+export async function deleteCoach(
+  db: Db, actor: string, coachId: string, confirmEmail: string,
+): Promise<{ preview: CoachDeletionPreview; intents: NotificationIntent[] }> {
   return db.$transaction(async (tx) => {
     const coach = await tx.coachAccount.findUnique({ where: { id: coachId }, include: { user: true } });
     if (!coach) throw new TrainingError("not_found");
     if (confirmEmail.trim().toLowerCase() !== coach.user.email.toLowerCase()) throw new TrainingError("invalid_request");
 
     const { preview, deletedProgramIds, draftBlockIds } = await planCoachDeletion(tx, coachId);
+    // Inbox entries pointing at programs about to disappear.
+    await tx.notification.deleteMany({ where: { programId: { in: deletedProgramIds } } });
+    // Fist-bump entries have no programId: remove those of every result that cascades away (deleted programs and draft blocks).
+    const doomed = await tx.result.findMany({
+      where: { OR: [{ block: { programId: { in: deletedProgramIds } } }, { blockId: { in: draftBlockIds } }] },
+      select: { id: true },
+    });
+    await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: doomed.map((r) => r.id) } } });
     // 1. Unpublished closed programs, with their enrollments and results (cascade).
     await tx.program.deleteMany({ where: { id: { in: deletedProgramIds } } });
     // 2. Draft-week blocks of continuous programs, with their results (cascade). 3. Published closed programs stay.
     await tx.block.deleteMany({ where: { id: { in: draftBlockIds } } });
+    // The athletes of the programs that stay (archived ones are no longer visible to them) hear about it.
+    const kept = await tx.program.findMany({ where: { coachId, archivedAt: null }, select: { id: true, name: true } });
+    const intents: NotificationIntent[] = [];
+    for (const program of kept) {
+      const recipients = await activeAthleteRecipients(tx, program.id, coach.userId);
+      if (recipients.length === 0) continue;
+      intents.push(intent("coach_deleted", recipients, { programId: program.id, programName: program.name }, { programId: program.id }));
+    }
     // 4. The remaining programs lose their coach; `coachName` already holds the name.
     await tx.program.updateMany({ where: { coachId }, data: { coachId: null } });
     // 5. The profile, and the User when it was the last one.
     await tx.coachAccount.delete({ where: { id: coachId } });
-    await deleteUserIfNoProfiles(tx, coach.userId);
+    if (!(await deleteUserIfNoProfiles(tx, coach.userId))) await deleteAudienceData(tx, coach.userId, "coach");
     // 6. The audit row.
     await writeAudit(tx, {
       actorUserId: actor, action: "coach.delete", targetUserId: coach.userId, targetType: "coach",
       targetId: coach.id, targetLabel: coach.user.email, details: preview,
     });
-    return preview;
+    return { preview, intents };
   });
 }
 
@@ -190,7 +215,7 @@ export async function deleteAthlete(db: Db, actor: string, athleteId: string, co
 
     const preview = await countAthleteData(tx, athleteId);
     await tx.athleteAccount.delete({ where: { id: athleteId } });
-    await deleteUserIfNoProfiles(tx, athlete.userId);
+    if (!(await deleteUserIfNoProfiles(tx, athlete.userId))) await deleteAudienceData(tx, athlete.userId, "athlete");
     await writeAudit(tx, {
       actorUserId: actor, action: "athlete.delete", targetUserId: athlete.userId, targetType: "athlete",
       targetId: athlete.id, targetLabel: athlete.user.email, details: preview,

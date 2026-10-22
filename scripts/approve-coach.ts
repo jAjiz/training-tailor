@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/db";
+import { deliver } from "../src/lib/notifications/notify";
 import { TrainingError } from "../src/lib/training/errors";
 import { approveCoach } from "../src/lib/training/services/admin";
 
@@ -9,9 +10,12 @@ async function main() {
     console.error("Usage: pnpm coach:approve <email>");
     process.exit(1);
   }
-  let outcome: Awaited<ReturnType<typeof approveCoach>>;
+  let outcome: Awaited<ReturnType<typeof approveCoach>>["outcome"];
   try {
-    outcome = await approveCoach(prisma, email);
+    const approval = await approveCoach(prisma, email);
+    outcome = approval.outcome;
+    // Inbox only: no push sender from a script.
+    await deliver(prisma, approval.intents, null);
   } catch (e) {
     if (!(e instanceof TrainingError)) throw e;
     console.error(`Cannot approve coach ${email} from their current status (${e.code}); use the admin panel`);

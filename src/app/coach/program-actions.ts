@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireCoach } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
+import { dispatch } from "@/lib/notifications/dispatch";
 import type { ActionResult } from "@/lib/training/errors";
 import { ProgramCreateInput, ProgramUpdateInput, parse } from "@/lib/training/schemas";
 import {
@@ -54,7 +55,7 @@ export async function setWeekPublishedAction(raw: unknown): Promise<ActionResult
     const coach = await requireCoach();
     const { programId, weekIndex, published } = parse(
       z.object({ programId: Id, weekIndex: z.number().int().min(0), published: z.boolean() }), raw);
-    await setWeekPublished(prisma, coach.id, programId, weekIndex, published);
+    dispatch(await setWeekPublished(prisma, coach.id, programId, weekIndex, published));
     revalidatePath(`/coach/programs/${programId}`);
   });
 }

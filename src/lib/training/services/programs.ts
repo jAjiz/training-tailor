@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
-import { fromDbDate, toDbDate } from "../dates";
+import { intent, type NotificationIntent } from "@/lib/notifications/notify";
+import { addDays, fromDbDate, toDbDate } from "../dates";
 import { TrainingError } from "../errors";
 import type { ProgramCreate, ProgramUpdate } from "../schemas";
+import { activeAthleteRecipients } from "./notifications";
 import type { Db } from "./types";
 
 export function newInviteCode(): string {
@@ -29,7 +31,7 @@ export function listCoachPrograms(db: Db, coachId: string) {
   return db.program.findMany({
     where: { coachId },
     orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }],
-    include: { _count: { select: { enrollments: { where: { removedAt: null } } } } },
+    include: { _count: { select: { enrollments: { where: { removedAt: null, leftAt: null } } } } },
   });
 }
 
@@ -50,6 +52,12 @@ export async function updateProgram(db: Db, coachId: string, programId: string, 
   if (program.kind === "continuous" && input.startDate && input.startDate !== fromDbDate(program.startDate as Date)) {
     if ((await db.programWeek.count({ where: { programId } })) > 0) throw new TrainingError("start_date_locked");
     data.startDate = toDbDate(input.startDate);
+    // Week notices are keyed by weekIndex, which means something else under a new start date: same write.
+    const [updated] = await db.$transaction([
+      db.program.update({ where: { id: programId }, data }),
+      db.weekNotice.deleteMany({ where: { programId } }),
+    ]);
+    return updated;
   }
   if (program.kind === "closed" && input.weeks !== undefined && input.weeks !== program.weeks) {
     const outside = await db.block.count({ where: { programId, dayIndex: { gte: input.weeks * 7 } } });
@@ -73,21 +81,40 @@ export async function regenerateInvite(db: Db, coachId: string, programId: strin
   return code;
 }
 
-export async function setWeekPublished(db: Db, coachId: string, programId: string, weekIndex: number, published: boolean) {
+const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
+
+/** Publishes or unpublishes a week. An empty week cannot be published. The first publication returns a `week_published` intent (else `[]`). */
+export async function setWeekPublished(
+  db: Db, coachId: string, programId: string, weekIndex: number, published: boolean,
+): Promise<NotificationIntent[]> {
   const program = await getOwnedProgram(db, coachId, programId);
   assertWritable(program);
-  if (program.kind !== "continuous" || !Number.isInteger(weekIndex) || weekIndex < 0) {
+  if (program.kind !== "continuous" || !program.startDate || !Number.isInteger(weekIndex) || weekIndex < 0) {
     throw new TrainingError("invalid_request");
   }
-  if (published) {
-    await db.programWeek.upsert({
-      where: { programId_weekIndex: { programId, weekIndex } },
-      create: { programId, weekIndex },
-      update: {},
-    });
-  } else {
+  if (!published) {
     await db.programWeek.deleteMany({ where: { programId, weekIndex } });
+    return [];
   }
+  if ((await db.block.count({ where: { programId, dayIndex: { gte: weekIndex * 7, lt: weekIndex * 7 + 7 } } })) === 0) {
+    throw new TrainingError("week_empty");
+  }
+  await db.programWeek.upsert({
+    where: { programId_weekIndex: { programId, weekIndex } },
+    create: { programId, weekIndex },
+    update: {},
+  });
+  try {
+    await db.weekNotice.create({ data: { programId, weekIndex } });
+  } catch (e) {
+    if (isUniqueViolation(e)) return []; // already notified
+    throw e;
+  }
+  const coach = await db.coachAccount.findUniqueOrThrow({ where: { id: coachId }, select: { userId: true } });
+  const recipients = await activeAthleteRecipients(db, programId, coach.userId);
+  if (recipients.length === 0) return [];
+  const monday = addDays(fromDbDate(program.startDate), weekIndex * 7);
+  return [intent("week_published", recipients, { programId, programName: program.name, monday }, { programId })];
 }
 
 export async function setProgramPublished(db: Db, coachId: string, programId: string, published: boolean) {

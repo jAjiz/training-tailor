@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { enroll, makeAthlete, makeCoach, makeContinuous, makeCustomBlock } from "../../helpers/factories";
+import { enroll, makeAnnouncement, makeAthlete, makeCoach, makeContinuous, makeCustomBlock, makeSubscription, makeUser } from "../../helpers/factories";
 
 let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
@@ -48,5 +48,36 @@ describe("admin schema", () => {
     const program = await makeContinuous(tdb.prisma, coach.id);
     await tdb.prisma.coachAccount.delete({ where: { id: coach.id } });
     expect((await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).coachId).toBeNull();
+  });
+});
+
+describe("notifications schema", () => {
+  it("deleting a user cascades to notifications, subscriptions and preferences", async () => {
+    const user = await makeUser(tdb.prisma);
+    await tdb.prisma.notification.create({ data: { userId: user.id, audience: "athlete", kind: "announcement", data: {} } });
+    await makeSubscription(tdb.prisma, user.id);
+    await tdb.prisma.notificationPreference.create({ data: { userId: user.id, kind: "announcement", enabled: false } });
+    await tdb.prisma.user.delete({ where: { id: user.id } });
+    expect(await tdb.prisma.notification.count()).toBe(0);
+    expect(await tdb.prisma.pushSubscription.count()).toBe(0);
+    expect(await tdb.prisma.notificationPreference.count()).toBe(0);
+  });
+
+  it("deleting a program cascades to its announcements", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    await makeAnnouncement(tdb.prisma, program.id);
+    await tdb.prisma.program.delete({ where: { id: program.id } });
+    expect(await tdb.prisma.announcement.count()).toBe(0);
+  });
+
+  it("allows many notifications without a group key but one per user and key", async () => {
+    const user = await makeUser(tdb.prisma);
+    const row = (groupKey: string | null) =>
+      tdb.prisma.notification.create({ data: { userId: user.id, audience: "athlete", kind: "fist_bump", groupKey, data: {} } });
+    await row(null);
+    await row(null);
+    await row("k");
+    await expect(row("k")).rejects.toMatchObject({ code: "P2002" });
   });
 });

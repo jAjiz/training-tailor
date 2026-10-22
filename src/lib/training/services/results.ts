@@ -1,4 +1,5 @@
 import { toJson } from "@/lib/json";
+import { intent, type NotificationIntent } from "@/lib/notifications/notify";
 import { athleteTimeline, hasLeaderboard } from "../access";
 import { addDays, canLogDay, dateOfDay, fromDbDate, isDayVisible, toDbDate, todayIn, type IsoDate } from "../dates";
 import { TrainingError } from "../errors";
@@ -16,7 +17,7 @@ type AthleteRef = { id: string; timezone: string };
 export async function getVisibleBlock(db: Db, athlete: AthleteRef, blockId: string, now: Date = new Date()) {
   const block = await db.block.findUnique({ where: { id: blockId }, include: { program: true } });
   if (!block || block.program.archivedAt) throw new TrainingError("not_found");
-  const enrollment = await db.enrollment.findFirst({ where: { programId: block.programId, athleteId: athlete.id, removedAt: null } });
+  const enrollment = await db.enrollment.findFirst({ where: { programId: block.programId, athleteId: athlete.id, removedAt: null, leftAt: null } });
   if (!enrollment) throw new TrainingError("not_found");
   const timeline = athleteTimeline(block.program, enrollment, await publishedWeeks(db, block.programId));
   if (!isDayVisible(timeline, block.dayIndex)) throw new TrainingError("not_found");
@@ -63,8 +64,14 @@ export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInput
 export async function deleteResult(db: Db, athlete: AthleteRef, blockId: string, now: Date = new Date()) {
   const { loggable } = await getVisibleBlock(db, athlete, blockId, now);
   if (!loggable) throw new TrainingError("not_loggable");
-  const { count } = await db.result.deleteMany({ where: { blockId, athleteId: athlete.id } });
-  if (count === 0) throw new TrainingError("not_found");
+  const result = await db.result.findUnique({ where: { blockId_athleteId: { blockId, athleteId: athlete.id } } });
+  if (!result) throw new TrainingError("not_found");
+  const owner = await db.athleteAccount.findUniqueOrThrow({ where: { id: athlete.id }, select: { userId: true } });
+  // The grouped fist-bump entry points at a result that no longer exists.
+  await db.$transaction([
+    db.result.deleteMany({ where: { id: result.id } }),
+    db.notification.deleteMany({ where: { userId: owner.userId, groupKey: `fist_bump:${result.id}` } }),
+  ]);
 }
 
 export function getMyResult(db: Db, athleteId: string, blockId: string) {
@@ -78,7 +85,7 @@ export async function getDayResults(db: Db, athleteId: string, programId: string
     db.result.findMany({ where: { athleteId, blockId: { in: blockIds } } }),
     db.result.groupBy({
       by: ["blockId"],
-      where: { blockId: { in: blockIds }, athlete: { disabledAt: null, enrollments: { some: { programId, removedAt: null } } } },
+      where: { blockId: { in: blockIds }, athlete: { disabledAt: null, enrollments: { some: { programId, removedAt: null, leftAt: null } } } },
       _count: { _all: true },
     }),
   ]);
@@ -113,7 +120,7 @@ async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null)
   const results = await db.result.findMany({
     where: {
       blockId: block.id,
-      athlete: { disabledAt: null, enrollments: { some: { programId: block.programId, removedAt: null } } },
+      athlete: { disabledAt: null, enrollments: { some: { programId: block.programId, removedAt: null, leftAt: null } } },
     },
     include: {
       athlete: true,
@@ -132,12 +139,19 @@ async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null)
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
 
-export async function toggleFistBump(db: Db, athlete: AthleteRef, resultId: string) {
+export async function toggleFistBump(
+  db: Db, athlete: AthleteRef, resultId: string,
+): Promise<{ bumped: boolean; count: number; intents: NotificationIntent[] }> {
   const result = await db.result.findUnique({ where: { id: resultId } });
   if (!result) throw new TrainingError("not_found");
   const { block } = await getVisibleBlock(db, athlete, result.blockId);
   if (!hasLeaderboard(block, block.program)) throw new TrainingError("not_found");
   if (result.athleteId === athlete.id) throw new TrainingError("own_result");
+  // The leaderboard hides athletes who left or were removed: their results cannot be bumped (or notified) either.
+  const ownerActive = await db.enrollment.count({
+    where: { programId: block.programId, athleteId: result.athleteId, removedAt: null, leftAt: null },
+  });
+  if (ownerActive === 0) throw new TrainingError("not_found");
   const key = { resultId_athleteId: { resultId, athleteId: athlete.id } };
   const existing = await db.fistBump.findUnique({ where: key });
   if (existing) {
@@ -149,7 +163,21 @@ export async function toggleFistBump(db: Db, athlete: AthleteRef, resultId: stri
       if (!isUniqueViolation(e)) throw e; // double tap
     }
   }
-  return { bumped: !existing, count: await db.fistBump.count({ where: { resultId } }) };
+  const count = await db.fistBump.count({ where: { resultId } });
+  if (existing) return { bumped: false, count, intents: [] };
+
+  const [owner, bumper] = await Promise.all([
+    db.athleteAccount.findUniqueOrThrow({ where: { id: result.athleteId }, select: { userId: true, locale: true, disabledAt: true } }),
+    db.athleteAccount.findUniqueOrThrow({ where: { id: athlete.id }, select: { displayName: true } }),
+  ]);
+  if (owner.disabledAt) return { bumped: true, count, intents: [] };
+  const { title, movement, kind, scoring } = block;
+  const intents = [intent(
+    "fist_bump", [{ userId: owner.userId, locale: owner.locale }],
+    { resultId, blockId: block.id, block: { title, movement, kind, scoring }, latestName: bumper.displayName, count },
+    { entityId: resultId, groupKey: `fist_bump:${resultId}` },
+  )];
+  return { bumped: true, count, intents };
 }
 
 export type CoachResultRow = {

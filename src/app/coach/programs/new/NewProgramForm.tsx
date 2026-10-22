@@ -49,7 +49,7 @@ export function NewProgramForm({ nextMonday }: { nextMonday: string }) {
       </Field>
       {kind === "continuous" ? (
         <Field label={t("programs.startDate")}>
-          <DatePicker min={nextMonday} allow={isMonday} value={startDate} onChange={setStartDate} />
+          <DatePicker allow={isMonday} value={startDate} onChange={setStartDate} />
         </Field>
       ) : (
         <Field label={t("programs.weeks")}>

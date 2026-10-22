@@ -17,6 +17,11 @@ export const ERROR_CODES = [
   "invite_required",
   "invalid_status_change",
   "invite_disabled",
+  "not_enrolled",
+  "announcement_empty",
+  "announcement_too_long",
+  "push_unavailable",
+  "week_empty",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

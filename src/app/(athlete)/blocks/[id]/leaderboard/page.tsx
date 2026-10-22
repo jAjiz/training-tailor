@@ -3,6 +3,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
+import { NotInProgram } from "@/components/training/NotInProgram";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconButton } from "@/components/ui/IconButton";
 import { Pill } from "@/components/ui/Pill";
@@ -11,12 +12,18 @@ import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
 import { blockLabel } from "@/lib/training/block-label";
+import { getBlockEnrollmentStatus } from "@/lib/training/services/enrollments";
 import { getLeaderboard } from "@/lib/training/services/results";
 import { FistBumpButton } from "./FistBumpButton";
 
 export default async function LeaderboardPage({ params }: { params: Promise<{ id: string }> }) {
   const athlete = await requireAthletePage();
   const { id } = await params;
+  // An inbox link to a block of a program one left or was removed from explains itself instead of showing a 404.
+  const enrollment = await getBlockEnrollmentStatus(prisma, athlete.id, id);
+  if (enrollment?.status === "left" || enrollment?.status === "removed") {
+    return <NotInProgram />;
+  }
   const { block, date, entries } = await orNotFound(getLeaderboard(prisma, { athlete }, id));
   const [t, tc, tl, tb] = await Promise.all([getTranslations("leaderboard"), getTranslations("common"), getTranslations("log"), getTranslations()]);
   const locale = await getLocale();

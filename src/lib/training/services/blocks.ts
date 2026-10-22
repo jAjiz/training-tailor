@@ -92,13 +92,16 @@ export async function updateBlock(db: Db, coachId: string, blockId: string, inpu
 
 export async function deleteBlock(db: Db, coachId: string, blockId: string) {
   const block = await getOwnedBlock(db, coachId, blockId);
-  await db.$transaction([
-    db.block.delete({ where: { id: blockId } }),
-    db.block.updateMany({
+  await db.$transaction(async (tx) => {
+    // Results cascade away with the block; so must their grouped fist-bump entries (entityId is the resultId).
+    const results = await tx.result.findMany({ where: { blockId }, select: { id: true } });
+    await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: results.map((r) => r.id) } } });
+    await tx.block.delete({ where: { id: blockId } });
+    await tx.block.updateMany({
       where: { programId: block.programId, dayIndex: block.dayIndex, position: { gt: block.position } },
       data: { position: { decrement: 1 } },
-    }),
-  ]);
+    });
+  });
 }
 
 /** Drag and drop: `toPosition` is the block's final index in the target day (clamped). */

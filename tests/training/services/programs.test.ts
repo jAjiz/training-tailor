@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { makeBarbellBlock, makeCoach, makeCustomBlock } from "../../helpers/factories";
+import { enroll, makeAthlete, makeBarbellBlock, makeClosed, makeCoach, makeContinuous, makeCustomBlock, publishWeek } from "../../helpers/factories";
 import {
   archiveProgram, createProgram, getOwnedProgram, listCoachPrograms, publishedWeeks, regenerateInvite,
   setProgramPublished, setWeekPublished, updateProgram,
@@ -36,10 +36,23 @@ describe("programs", () => {
     expect(await listCoachPrograms(tdb.prisma, owner.id)).toHaveLength(1);
   });
 
+  it("drops the week notices when the start date changes", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await createProgram(tdb.prisma, coach.id, continuous);
+    const other = await createProgram(tdb.prisma, coach.id, continuous);
+    await tdb.prisma.weekNotice.createMany({ data: [{ programId: p.id, weekIndex: 0 }, { programId: other.id, weekIndex: 0 }] });
+    await updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily RX", description: null, startDate: "2026-10-05" });
+    expect(await tdb.prisma.weekNotice.count({ where: { programId: p.id } })).toBe(1);
+    await updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily", description: null, startDate: "2026-10-12" });
+    expect(await tdb.prisma.weekNotice.count({ where: { programId: p.id } })).toBe(0);
+    expect(await tdb.prisma.weekNotice.count({ where: { programId: other.id } })).toBe(1);
+  });
+
   it("locks the start date once a week is published", async () => {
     const coach = await makeCoach(tdb.prisma);
     const p = await createProgram(tdb.prisma, coach.id, continuous);
     await updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily", description: null, startDate: "2026-10-12" });
+    await makeCustomBlock(tdb.prisma, p.id, 0);
     await setWeekPublished(tdb.prisma, coach.id, p.id, 0, true);
     await expect(updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily", description: null, startDate: "2026-10-19" }))
       .rejects.toMatchObject({ code: "start_date_locked" });
@@ -61,6 +74,8 @@ describe("programs", () => {
     const coach = await makeCoach(tdb.prisma);
     const c = await createProgram(tdb.prisma, coach.id, continuous);
     const k = await createProgram(tdb.prisma, coach.id, closed);
+    await makeCustomBlock(tdb.prisma, c.id, 0);
+    await makeCustomBlock(tdb.prisma, c.id, 14);
     await setWeekPublished(tdb.prisma, coach.id, c.id, 0, true);
     await setWeekPublished(tdb.prisma, coach.id, c.id, 2, true);
     await setWeekPublished(tdb.prisma, coach.id, c.id, 2, true); // idempotent
@@ -97,5 +112,73 @@ describe("programs", () => {
       .rejects.toMatchObject({ code: "program_archived" });
     await expect(regenerateInvite(tdb.prisma, coach.id, p.id)).rejects.toMatchObject({ code: "program_archived" });
     await expect(setWeekPublished(tdb.prisma, coach.id, p.id, 0, true)).rejects.toMatchObject({ code: "program_archived" });
+  });
+});
+
+describe("setWeekPublished notifications", () => {
+  async function setup() {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id, "2026-10-05");
+    const athlete = await makeAthlete(tdb.prisma);
+    await enroll(tdb.prisma, p.id, athlete.id);
+    return { coach, p, athlete };
+  }
+  const publish = (coachId: string, programId: string, week: number, on = true) =>
+    setWeekPublished(tdb.prisma, coachId, programId, week, on);
+
+  it("returns one week_published intent the first time a week with blocks is published", async () => {
+    const { coach, p, athlete } = await setup();
+    const me = await tdb.prisma.athleteAccount.create({ data: { userId: coach.userId, displayName: "Me", timezone: "UTC" } });
+    await enroll(tdb.prisma, p.id, me.id);
+    await makeCustomBlock(tdb.prisma, p.id, 21);
+    const intents = await publish(coach.id, p.id, 3);
+    expect(intents).toHaveLength(1);
+    expect(intents[0]).toMatchObject({
+      kind: "week_published", programId: p.id, entityId: null, groupKey: null,
+      data: { programId: p.id, programName: p.name, monday: "2026-10-26" },
+    });
+    expect(intents[0].recipients.map((r) => r.userId)).toEqual([athlete.userId]);
+  });
+
+  it("does not notify again after unpublishing and publishing", async () => {
+    const { coach, p } = await setup();
+    await makeCustomBlock(tdb.prisma, p.id, 21);
+    expect(await publish(coach.id, p.id, 3)).toHaveLength(1);
+    expect(await publish(coach.id, p.id, 3, false)).toEqual([]);
+    expect(await publish(coach.id, p.id, 3)).toEqual([]);
+  });
+
+  it("refuses to publish a week without blocks, which then still notifies the first time", async () => {
+    const { coach, p } = await setup();
+    await makeCustomBlock(tdb.prisma, p.id, 28); // week 4: not week 3
+    await expect(publish(coach.id, p.id, 3)).rejects.toMatchObject({ code: "week_empty" });
+    expect([...await publishedWeeks(tdb.prisma, p.id)]).toEqual([]);
+    expect(await tdb.prisma.weekNotice.count()).toBe(0);
+    expect(await publish(coach.id, p.id, 3, false)).toEqual([]); // unpublishing an empty week is fine
+    await makeCustomBlock(tdb.prisma, p.id, 22);
+    expect(await publish(coach.id, p.id, 3)).toHaveLength(1);
+  });
+
+  it("does not notify for a week already notified before (backfilled notice)", async () => {
+    const { coach, p } = await setup();
+    await makeCustomBlock(tdb.prisma, p.id, 0);
+    await publishWeek(tdb.prisma, p.id, 0);
+    await tdb.prisma.weekNotice.create({ data: { programId: p.id, weekIndex: 0 } });
+    expect(await publish(coach.id, p.id, 0)).toEqual([]);
+  });
+
+  it("returns no intent when nobody is enrolled", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id);
+    await makeCustomBlock(tdb.prisma, p.id, 0);
+    expect(await publish(coach.id, p.id, 0)).toEqual([]);
+  });
+
+  it("never produces a notice or an intent for a closed program", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const k = await makeClosed(tdb.prisma, coach.id, 4, false);
+    await makeCustomBlock(tdb.prisma, k.id, 0);
+    await expect(publish(coach.id, k.id, 0)).rejects.toMatchObject({ code: "invalid_request" });
+    expect(await tdb.prisma.weekNotice.count()).toBe(0);
   });
 });
