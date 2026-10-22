@@ -14,4 +14,4 @@ export async function proxy(request: NextRequest) {
 }
 
 // API routes check the session themselves and answer 401.
-export const config = { matcher: ["/((?!api/|_next/|favicon.ico).*)"] };
+export const config = { matcher: ["/((?!api/|_next/|favicon.ico|sw.js|manifest.webmanifest|icons/|apple-icon).*)"] };

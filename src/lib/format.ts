@@ -21,3 +21,14 @@ export function formatDayRange(from: IsoDate, to: IsoDate, locale: string): stri
   return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
     .formatRange(toDbDate(from), toDbDate(to));
 }
+
+/** "5 minutes ago" in the viewer's language; older than 30 days it is a short date. Computed on the server so it cannot differ from the client's first render. */
+export function relativeTime(date: Date, now: Date, locale: string): string {
+  const seconds = Math.max(0, Math.round((now.getTime() - date.getTime()) / 1000));
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  if (seconds < 60) return rtf.format(0, "second");
+  if (seconds < 3600) return rtf.format(-Math.floor(seconds / 60), "minute");
+  if (seconds < 86_400) return rtf.format(-Math.floor(seconds / 3600), "hour");
+  if (seconds < 30 * 86_400) return rtf.format(-Math.floor(seconds / 86_400), "day");
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(date).replace(/\.$/, "");
+}

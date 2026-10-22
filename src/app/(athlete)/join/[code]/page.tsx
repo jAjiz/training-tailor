@@ -43,7 +43,8 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
           </>
         )}
         {athlete && status === "removed" && <p role="alert" className="text-sm text-danger">{t("removed")}</p>}
-        {athlete && status === null && <JoinButton code={code} />}
+        {athlete && status === "left" && <p className="text-sm text-muted">{t("left")}</p>}
+        {athlete && (status === null || status === "left") && <JoinButton code={code} />}
       </Card>
     </section>
   );

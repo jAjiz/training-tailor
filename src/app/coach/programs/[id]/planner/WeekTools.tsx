@@ -12,9 +12,9 @@ import { setProgramPublishedAction, setWeekPublishedAction } from "../../../prog
 import { CopyDialog } from "./CopyDialog";
 import type { PlannerContext } from "./types";
 
-type Props = { ctx: PlannerContext; kind: "continuous" | "closed"; published: boolean };
+type Props = { ctx: PlannerContext; kind: "continuous" | "closed"; published: boolean; empty: boolean };
 
-export function WeekTools({ ctx, kind, published }: Props) {
+export function WeekTools({ ctx, kind, published, empty }: Props) {
   const t = useTranslations("planner");
   const te = useTranslations("errors");
   const router = useRouter();
@@ -31,6 +31,9 @@ export function WeekTools({ ctx, kind, published }: Props) {
     ? setWeekPublishedAction({ programId: ctx.programId, weekIndex: ctx.weekIndex, published: !published })
     : setProgramPublishedAction({ programId: ctx.programId, published: !published }));
 
+  // An empty week cannot be published (unpublishing one left over from before stays possible).
+  const blockedEmpty = kind === "continuous" && !published && empty;
+
   const status = kind === "continuous"
     ? (published ? t("weekPublished") : t("weekDraft"))
     : (published ? t("programPublished") : t("programDraft"));
@@ -43,7 +46,7 @@ export function WeekTools({ ctx, kind, published }: Props) {
       <Pill tone={published ? "success" : "neutral"}>{status}</Pill>
       {!ctx.readOnly && (
         <>
-          <Button type="button" size="sm" variant={published ? "secondary" : "primary"} onClick={toggle}>{action}</Button>
+          <Button type="button" size="sm" variant={published ? "secondary" : "primary"} onClick={toggle} disabled={blockedEmpty}>{action}</Button>
           <Menu label={t("weekActions")} items={[{ label: t("duplicateWeek"), onSelect: () => setCopying(true) }]} />
         </>
       )}

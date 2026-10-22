@@ -27,7 +27,8 @@
     "me": "Perfil",
     "programs": "Mis programas",
     "main": "Navegación principal",
-    "account": "Cuenta"
+    "account": "Cuenta",
+    "notifications": "Notificaciones"
   },
   "errors": {
     "unauthorized": "Tu sesión ha caducado. Vuelve a entrar.",
@@ -48,7 +49,12 @@
     "invite_required": "Necesitas una invitación de tu coach para entrar.",
     "invalid_status_change": "Ese cambio de estado no está permitido.",
     "invite_disabled": "El administrador ha desactivado el enlace de invitación.",
-    "internal": "Algo ha fallado. Inténtalo de nuevo."
+    "announcement_empty": "Escribe un mensaje.",
+    "announcement_too_long": "El mensaje es demasiado largo (máximo 2000 caracteres).",
+    "not_enrolled": "No sigues este programa.",
+    "internal": "Algo ha fallado. Inténtalo de nuevo.",
+    "push_unavailable": "Las notificaciones no están disponibles en este dispositivo.",
+    "week_empty": "Añade al menos un bloque antes de publicar la semana."
   },
   "onboarding": {
     "preparing": "Preparando tu cuenta…",
@@ -59,6 +65,11 @@
     "displayName": "Nombre visible",
     "timezone": "Zona horaria",
     "language": "Idioma",
+    "programsTitle": "Mis programas",
+    "noPrograms": "No sigues ningún programa.",
+    "leave": "Salir del programa",
+    "leaveTitle": "Salir de {name}",
+    "leaveConfirm": "Dejarás de ver este programa. Tus resultados se conservan y puedes volver con el enlace de invitación de tu coach.",
     "saved": "Guardado",
     "languages": {
       "es": "Español",
@@ -102,6 +113,7 @@
     "settings": "Ajustes",
     "planner": "Planificación",
     "roster": "Atletas",
+    "board": "Tablón",
     "archive": "Archivar programa",
     "archiveConfirm": "¿Archivar este programa? Desaparecerá para tus atletas y el enlace dejará de funcionar.",
     "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas."
@@ -231,6 +243,7 @@
     "needsProfile": "Completa tu perfil de atleta para unirte.",
     "continue": "Continuar",
     "join": "Unirme al programa",
+    "left": "Saliste de este programa. Puedes volver a unirte.",
     "removed": "Tu coach te ha quitado de este programa."
   },
   "roster": {
@@ -247,6 +260,8 @@
     "status": "Estado",
     "actions": "Acciones",
     "activeBadge": "Activo",
+    "leftOn": "Se dio de baja el {date}",
+    "leftBadge": "De baja",
     "removedBadge": "Quitado",
     "remove": "Quitar",
     "removeTitle": "Quitar a {name}",
@@ -512,5 +527,109 @@
         }
       }
     }
+  },
+  "board": {
+    "title": "Tablón",
+    "placeholder": "Escribe un anuncio para tus atletas",
+    "label": "Nuevo anuncio",
+    "counter": "{count}/2000",
+    "publish": "Publicar",
+    "edit": "Editar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "deleteTitle": "Eliminar anuncio",
+    "deleteConfirm": "El anuncio desaparecerá del tablón y de las notificaciones de tus atletas.",
+    "edited": "editado",
+    "empty": "Todavía no hay anuncios.",
+    "readOnly": "Este tablón es de solo lectura.",
+    "athleteEmpty": "Tu coach todavía no ha publicado anuncios.",
+    "notInProgram": "Ya no estás en este programa",
+    "toToday": "Ir a hoy",
+    "open": "Tablón de anuncios"
+  },
+  "notifications": {
+    "locale": "es",
+    "title": "Notificaciones",
+    "bell": "Notificaciones",
+    "unread": "{count, plural, one {# sin leer} other {# sin leer}}",
+    "markAll": "Marcar todo como leído",
+    "empty": "No tienes notificaciones.",
+    "enableTitle": "Activa las notificaciones",
+    "enableBody": "Recibe un aviso cuando tu coach publique semanas o anuncios.",
+    "enable": "Activar notificaciones",
+    "dismiss": "Ahora no",
+    "working": "Activando…",
+    "pushTitle": "Notificaciones en este dispositivo",
+    "pushOn": "Activadas en este dispositivo.",
+    "pushOff": "Desactivadas en este dispositivo.",
+    "turnOn": "Activar",
+    "turnOff": "Desactivar",
+    "denied": "Has bloqueado las notificaciones. Para volver a activarlas, permite las notificaciones de Training Tailor en los ajustes del navegador o del sistema.",
+    "unsupported": "Este dispositivo no admite notificaciones push. Las verás en la campana.",
+    "needsInstall": "En iPhone, añade la app a la pantalla de inicio para activar las notificaciones.",
+    "prefsTitle": "Qué avisos quieres recibir",
+    "prefsHint": "Si desactivas un aviso, no recibirás la notificación ni la verás en la campana.",
+    "settingsTitle": "Notificaciones",
+    "preferencesImpersonating": "Las alertas no se pueden cambiar mientras ves la cuenta de otra persona.",
+    "back": "Volver",
+    "prefs": {
+      "announcement": "Anuncios del tablón",
+      "week_published": "Semanas publicadas",
+      "fist_bump": "Fist bumps en tus resultados",
+      "coach_deleted": "Cuando tu coach deja la plataforma",
+      "athlete_joined": "Atletas que se unen",
+      "athlete_left": "Atletas que se dan de baja",
+      "week_reminder": "Semana siguiente sin publicar",
+      "coach_approved": "Cuenta de coach aprobada"
+    },
+    "kinds": {
+      "announcement": {
+        "title": "Training Tailor",
+        "body": "📣 {program}: {excerpt}"
+      },
+      "week_published": {
+        "title": "Training Tailor",
+        "body": "📅 Semana del {date} publicada en {program}"
+      },
+      "fist_bump": {
+        "title": "Training Tailor",
+        "body": "{others, plural, =0 {👊 {name} ha dado fist bump a tu {block}} other {👊 {name} y # más han dado fist bump a tu {block}}}"
+      },
+      "coach_deleted": {
+        "title": "Training Tailor",
+        "body": "Tu coach ya no está en Training Tailor. {program} sigue disponible pero no recibirá sesiones nuevas."
+      },
+      "athlete_joined": {
+        "title": "Training Tailor",
+        "body": "{name} se ha unido a {program}"
+      },
+      "athlete_left": {
+        "title": "Training Tailor",
+        "body": "{name} se ha dado de baja de {program}"
+      },
+      "week_reminder": {
+        "title": "Training Tailor",
+        "body": "La semana del {date} de {program} no está publicada"
+      },
+      "coach_approved": {
+        "title": "Training Tailor",
+        "body": "Tu cuenta de coach ha sido aprobada"
+      }
+    }
+  },
+  "install": {
+    "title": "Instala la app para continuar",
+    "body": "Training Tailor funciona como app en tu móvil. Instálala para ver tu entrenamiento y recibir avisos.",
+    "iosShare": "1. Toca Compartir en la barra de Safari",
+    "iosAdd": "2. Elige Añadir a pantalla de inicio",
+    "iosOpen": "3. Abre la app desde el icono nuevo",
+    "install": "Instalar",
+    "androidMenu": "Abre el menú del navegador (⋮) y elige Instalar app o Añadir a pantalla de inicio. Después ábrela desde el icono.",
+    "openInSafari": "Abre este enlace en Safari",
+    "openInChrome": "Abre este enlace en Chrome",
+    "copyLink": "Copiar enlace",
+    "copied": "Enlace copiado",
+    "signInAgain": "Después de instalarla, vuelve a iniciar sesión con Google."
   }
 }

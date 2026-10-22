@@ -6,7 +6,7 @@ import type { Db } from "./types";
 
 export async function loadAthleteTimeline(db: Db, athleteId: string, programId: string) {
   const enrollment = await db.enrollment.findFirst({
-    where: { athleteId, programId, removedAt: null, program: { archivedAt: null } },
+    where: { athleteId, programId, removedAt: null, leftAt: null, program: { archivedAt: null } },
     include: { program: { include: { coach: true } } },
   });
   if (!enrollment) throw new TrainingError("not_found");

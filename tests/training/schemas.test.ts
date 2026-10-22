@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ERROR_CODES, TrainingError } from "@/lib/training/errors";
 import {
-  AthleteSettingsInput, BlockInput, ProgramCreateInput, ProgramUpdateInput, parse,
+  AthleteSettingsInput, BlockInput, ProgramCreateInput, ProgramUpdateInput, parse, parseAnnouncementBody,
 } from "@/lib/training/schemas";
 
 describe("ProgramCreateInput", () => {
@@ -79,5 +79,17 @@ describe("parse", () => {
 
   it("knows every error code once", () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
+  });
+});
+
+describe("parseAnnouncementBody", () => {
+  const err = (raw: unknown) => { try { parseAnnouncementBody(raw); } catch (e) { return (e as TrainingError).code; } return null; };
+  it("rejects whitespace, too long and non-strings", () => {
+    expect(err("   ")).toBe("announcement_empty");
+    expect(err("a".repeat(2001))).toBe("announcement_too_long");
+    expect(err(42)).toBe("invalid_request");
+  });
+  it("accepts 2000 characters, trimmed", () => {
+    expect(parseAnnouncementBody(`  ${"a".repeat(2000)}  `)).toBe("a".repeat(2000));
   });
 });

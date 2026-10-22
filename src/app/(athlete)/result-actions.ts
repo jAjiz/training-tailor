@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAthlete } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
+import { dispatch } from "@/lib/notifications/dispatch";
 import type { ActionResult } from "@/lib/training/errors";
 import { ResultInput, parse } from "@/lib/training/schemas";
 import { deleteResult, saveResult, toggleFistBump, type SinglePrompt } from "@/lib/training/services/results";
@@ -31,6 +32,8 @@ export async function deleteResultAction(blockId: unknown): Promise<ActionResult
 export async function toggleFistBumpAction(resultId: unknown): Promise<ActionResult<{ bumped: boolean; count: number }>> {
   return runAction("toggleFistBumpAction", async () => {
     const athlete = await requireAthlete();
-    return toggleFistBump(prisma, athlete, parse(Id, resultId));
+    const { bumped, count, intents } = await toggleFistBump(prisma, athlete, parse(Id, resultId));
+    dispatch(intents);
+    return { bumped, count };
   });
 }

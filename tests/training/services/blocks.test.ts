@@ -4,6 +4,7 @@ import { makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, ma
 import {
   createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, listWeekBlocks, moveBlock, updateBlock,
 } from "@/lib/training/services/blocks";
+import { enroll } from "../../helpers/factories";
 import { archiveProgram } from "@/lib/training/services/programs";
 import type { BlockInputValue } from "@/lib/training/schemas";
 
@@ -141,5 +142,25 @@ describe("blocks", () => {
     await expect(duplicateWeek(tdb.prisma, coach.id, closed.id, 0, 2)).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(duplicateBlock(tdb.prisma, coach.id, b.id, 14)).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(moveBlock(tdb.prisma, coach.id, b.id, 14, 0)).rejects.toMatchObject({ code: "day_out_of_range" });
+  });
+});
+
+describe("deleteBlock fist-bump cleanup", () => {
+  it("removes the fist-bump entries of the block's results and keeps others", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id);
+    const ana = await makeAthlete(tdb.prisma);
+    await enroll(tdb.prisma, p.id, ana.id);
+    const a = await makeCustomBlock(tdb.prisma, p.id, 0);
+    const b = await makeCustomBlock(tdb.prisma, p.id, 1);
+    const ra = await makeResult(tdb.prisma, a.id, ana.id);
+    const rb = await makeResult(tdb.prisma, b.id, ana.id);
+    for (const r of [ra, rb]) {
+      await tdb.prisma.notification.create({
+        data: { userId: ana.userId, audience: "athlete", kind: "fist_bump", entityId: r.id, groupKey: `fist_bump:${r.id}`, data: {} },
+      });
+    }
+    await deleteBlock(tdb.prisma, coach.id, a.id);
+    expect((await tdb.prisma.notification.findMany()).map((n) => n.entityId)).toEqual([rb.id]);
   });
 });

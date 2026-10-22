@@ -27,7 +27,8 @@
     "me": "Me",
     "programs": "My programs",
     "main": "Main navigation",
-    "account": "Account"
+    "account": "Account",
+    "notifications": "Notifications"
   },
   "errors": {
     "unauthorized": "Your session expired. Sign in again.",
@@ -48,7 +49,12 @@
     "invite_required": "You need an invitation from your coach to sign in.",
     "invalid_status_change": "That status change is not allowed.",
     "invite_disabled": "The administrator has turned off the invitation link.",
-    "internal": "Something went wrong. Try again."
+    "announcement_empty": "Write a message.",
+    "announcement_too_long": "The message is too long (2000 characters at most).",
+    "not_enrolled": "You are not in this program.",
+    "internal": "Something went wrong. Try again.",
+    "push_unavailable": "Notifications are not available on this device.",
+    "week_empty": "Add at least one block before publishing the week."
   },
   "onboarding": {
     "preparing": "Setting up your account…",
@@ -59,6 +65,11 @@
     "displayName": "Display name",
     "timezone": "Time zone",
     "language": "Language",
+    "programsTitle": "My programs",
+    "noPrograms": "You are not in any program.",
+    "leave": "Leave program",
+    "leaveTitle": "Leave {name}",
+    "leaveConfirm": "You will stop seeing this program. Your results are kept and you can come back with your coach's invitation link.",
     "saved": "Saved",
     "languages": {
       "es": "Español",
@@ -102,6 +113,7 @@
     "settings": "Settings",
     "planner": "Planner",
     "roster": "Athletes",
+    "board": "Board",
     "archive": "Archive program",
     "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
     "startDateLockedHint": "The start date cannot change because some weeks are already published."
@@ -231,6 +243,7 @@
     "needsProfile": "Complete your athlete profile to join.",
     "continue": "Continue",
     "join": "Join the program",
+    "left": "You left this program. You can join again.",
     "removed": "Your coach removed you from this program."
   },
   "roster": {
@@ -247,6 +260,8 @@
     "status": "Status",
     "actions": "Actions",
     "activeBadge": "Active",
+    "leftOn": "Left on {date}",
+    "leftBadge": "Left",
     "removedBadge": "Removed",
     "remove": "Remove",
     "removeTitle": "Remove {name}",
@@ -512,5 +527,109 @@
         }
       }
     }
+  },
+  "board": {
+    "title": "Board",
+    "placeholder": "Write an announcement for your athletes",
+    "label": "New announcement",
+    "counter": "{count}/2000",
+    "publish": "Publish",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleteTitle": "Delete announcement",
+    "deleteConfirm": "The announcement will disappear from the board and from your athletes' notifications.",
+    "edited": "edited",
+    "empty": "No announcements yet.",
+    "readOnly": "This board is read-only.",
+    "athleteEmpty": "Your coach has not posted any announcements yet.",
+    "notInProgram": "You are no longer in this program",
+    "toToday": "Go to today",
+    "open": "Announcement board"
+  },
+  "notifications": {
+    "locale": "en",
+    "title": "Notifications",
+    "bell": "Notifications",
+    "unread": "{count, plural, one {# unread} other {# unread}}",
+    "markAll": "Mark all as read",
+    "empty": "You have no notifications.",
+    "enableTitle": "Turn on notifications",
+    "enableBody": "Get an alert when your coach publishes weeks or announcements.",
+    "enable": "Turn on notifications",
+    "dismiss": "Not now",
+    "working": "Turning on…",
+    "pushTitle": "Notifications on this device",
+    "pushOn": "On for this device.",
+    "pushOff": "Off for this device.",
+    "turnOn": "Turn on",
+    "turnOff": "Turn off",
+    "denied": "You blocked notifications. To turn them back on, allow Training Tailor notifications in your browser or system settings.",
+    "unsupported": "This device does not support push notifications. You will see them in the bell.",
+    "needsInstall": "On iPhone, add the app to your home screen to turn on notifications.",
+    "prefsTitle": "Which alerts you want",
+    "prefsHint": "If you turn an alert off, you get no notification and no bell entry for it.",
+    "settingsTitle": "Notifications",
+    "preferencesImpersonating": "Alerts cannot be changed while you are viewing someone else's account.",
+    "back": "Back",
+    "prefs": {
+      "announcement": "Board announcements",
+      "week_published": "Published weeks",
+      "fist_bump": "Fist bumps on your results",
+      "coach_deleted": "When your coach leaves the platform",
+      "athlete_joined": "Athletes joining",
+      "athlete_left": "Athletes leaving",
+      "week_reminder": "Next week not published",
+      "coach_approved": "Coach account approved"
+    },
+    "kinds": {
+      "announcement": {
+        "title": "Training Tailor",
+        "body": "📣 {program}: {excerpt}"
+      },
+      "week_published": {
+        "title": "Training Tailor",
+        "body": "📅 Week of {date} published in {program}"
+      },
+      "fist_bump": {
+        "title": "Training Tailor",
+        "body": "{others, plural, =0 {👊 {name} gave a fist bump to your {block}} one {👊 {name} and # other gave a fist bump to your {block}} other {👊 {name} and # others gave a fist bump to your {block}}}"
+      },
+      "coach_deleted": {
+        "title": "Training Tailor",
+        "body": "Your coach is no longer on Training Tailor. {program} is still available but will not get new sessions."
+      },
+      "athlete_joined": {
+        "title": "Training Tailor",
+        "body": "{name} joined {program}"
+      },
+      "athlete_left": {
+        "title": "Training Tailor",
+        "body": "{name} left {program}"
+      },
+      "week_reminder": {
+        "title": "Training Tailor",
+        "body": "The week of {date} in {program} is not published"
+      },
+      "coach_approved": {
+        "title": "Training Tailor",
+        "body": "Your coach account has been approved"
+      }
+    }
+  },
+  "install": {
+    "title": "Install the app to continue",
+    "body": "Training Tailor works as an app on your phone. Install it to see your training and get alerts.",
+    "iosShare": "1. Tap Share in Safari's toolbar",
+    "iosAdd": "2. Choose Add to Home Screen",
+    "iosOpen": "3. Open the app from the new icon",
+    "install": "Install",
+    "androidMenu": "Open the browser menu (⋮) and choose Install app or Add to Home screen. Then open it from the icon.",
+    "openInSafari": "Open this link in Safari",
+    "openInChrome": "Open this link in Chrome",
+    "copyLink": "Copy link",
+    "copied": "Link copied",
+    "signInAgain": "After installing, sign in with Google again."
   }
 }

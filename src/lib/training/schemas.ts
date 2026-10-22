@@ -96,6 +96,17 @@ export function parse<S extends z.ZodType>(schema: S, raw: unknown): z.output<S>
   return result.data;
 }
 
+export const ANNOUNCEMENT_MAX = 2000;
+
+/** `parse()` only knows `invalid_request`, so the announcement body has its own parser and codes. */
+export function parseAnnouncementBody(raw: unknown): string {
+  if (typeof raw !== "string") throw new TrainingError("invalid_request");
+  const body = raw.trim();
+  if (body.length === 0) throw new TrainingError("announcement_empty");
+  if (body.length > ANNOUNCEMENT_MAX) throw new TrainingError("announcement_too_long");
+  return body;
+}
+
 export const ResultInput = z.object({
   blockId: z.string().min(1).max(64),
   division: Division,
