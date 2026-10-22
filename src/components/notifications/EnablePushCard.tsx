@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { installPlatform } from "@/lib/notifications/install";
 import type { ErrorCode } from "@/lib/training/errors";
-import { isStandalone, permissionState, pushSupported, subscribeThisDevice, vapidPublicKey } from "./push-client";
+import { currentSubscription, isStandalone, permissionState, pushSupported, subscribeThisDevice, vapidPublicKey } from "./push-client";
 
 const DISMISSED_KEY = "tt:push-card-dismissed";
 
@@ -24,7 +24,9 @@ const subscribeNever = () => () => {};
 function canOffer(): boolean {
   // Phones outside the installed app are the install gate's business; desktop and the installed app get the card.
   const desktopOrInstalled = isStandalone() || installPlatform(navigator.userAgent) === "other";
-  return Boolean(vapidPublicKey()) && pushSupported() && permissionState() === "default" && desktopOrInstalled && !wasDismissed();
+  // "granted" too: after a sign-out the subscription is gone but the browser keeps the permission.
+  const permission = permissionState();
+  return Boolean(vapidPublicKey()) && pushSupported() && (permission === "default" || permission === "granted") && desktopOrInstalled && !wasDismissed();
 }
 
 /** First-open invitation to turn notifications on. The permission prompt only ever appears from the button's click handler (iOS needs the gesture). */
@@ -36,7 +38,18 @@ export function EnablePushCard() {
 
   // False on the server and during hydration, then the browser's answer.
   const eligible = useSyncExternalStore(subscribeNever, canOffer, () => false);
-  if (!eligible || closed) return null;
+  // null until known: the card only shows once we know this device has no subscription.
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void currentSubscription().then((s) => {
+      if (live) setSubscribed(s !== null);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!eligible || closed || subscribed !== false) return null;
 
   function dismiss() {
     try {
