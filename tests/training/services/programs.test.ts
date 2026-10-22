@@ -52,6 +52,7 @@ describe("programs", () => {
     const coach = await makeCoach(tdb.prisma);
     const p = await createProgram(tdb.prisma, coach.id, continuous);
     await updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily", description: null, startDate: "2026-10-12" });
+    await makeCustomBlock(tdb.prisma, p.id, 0);
     await setWeekPublished(tdb.prisma, coach.id, p.id, 0, true);
     await expect(updateProgram(tdb.prisma, coach.id, p.id, { name: "Daily", description: null, startDate: "2026-10-19" }))
       .rejects.toMatchObject({ code: "start_date_locked" });
@@ -73,6 +74,8 @@ describe("programs", () => {
     const coach = await makeCoach(tdb.prisma);
     const c = await createProgram(tdb.prisma, coach.id, continuous);
     const k = await createProgram(tdb.prisma, coach.id, closed);
+    await makeCustomBlock(tdb.prisma, c.id, 0);
+    await makeCustomBlock(tdb.prisma, c.id, 14);
     await setWeekPublished(tdb.prisma, coach.id, c.id, 0, true);
     await setWeekPublished(tdb.prisma, coach.id, c.id, 2, true);
     await setWeekPublished(tdb.prisma, coach.id, c.id, 2, true); // idempotent
@@ -145,11 +148,13 @@ describe("setWeekPublished notifications", () => {
     expect(await publish(coach.id, p.id, 3)).toEqual([]);
   });
 
-  it("a week without blocks notifies nobody and does not count as the first time", async () => {
+  it("refuses to publish a week without blocks, which then still notifies the first time", async () => {
     const { coach, p } = await setup();
-    expect(await publish(coach.id, p.id, 3)).toEqual([]);
+    await makeCustomBlock(tdb.prisma, p.id, 28); // week 4: not week 3
+    await expect(publish(coach.id, p.id, 3)).rejects.toMatchObject({ code: "week_empty" });
+    expect([...await publishedWeeks(tdb.prisma, p.id)]).toEqual([]);
     expect(await tdb.prisma.weekNotice.count()).toBe(0);
-    await publish(coach.id, p.id, 3, false);
+    expect(await publish(coach.id, p.id, 3, false)).toEqual([]); // unpublishing an empty week is fine
     await makeCustomBlock(tdb.prisma, p.id, 22);
     expect(await publish(coach.id, p.id, 3)).toHaveLength(1);
   });

@@ -81,7 +81,7 @@ export default async function PlannerPage({ params, searchParams }: Params) {
           </h2>
           <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
         </div>
-        <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} />
+        <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} empty={blocks.length === 0} />
       </div>
       <WeekBoard
         days={Array.from({ length: 7 }, (_, d) => weekIndex * 7 + d).map((dayIndex) => ({ dayIndex, label: dayLabel(dayIndex) }))}

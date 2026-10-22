@@ -21,6 +21,7 @@ export const ERROR_CODES = [
   "announcement_empty",
   "announcement_too_long",
   "push_unavailable",
+  "week_empty",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

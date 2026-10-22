@@ -53,7 +53,8 @@
     "announcement_too_long": "The message is too long (2000 characters at most).",
     "not_enrolled": "You are not in this program.",
     "internal": "Something went wrong. Try again.",
-    "push_unavailable": "Notifications are not available on this device."
+    "push_unavailable": "Notifications are not available on this device.",
+    "week_empty": "Add at least one block before publishing the week."
   },
   "onboarding": {
     "preparing": "Setting up your account…",

@@ -53,7 +53,8 @@
     "announcement_too_long": "El mensaje es demasiado largo (máximo 2000 caracteres).",
     "not_enrolled": "No sigues este programa.",
     "internal": "Algo ha fallado. Inténtalo de nuevo.",
-    "push_unavailable": "Las notificaciones no están disponibles en este dispositivo."
+    "push_unavailable": "Las notificaciones no están disponibles en este dispositivo.",
+    "week_empty": "Añade al menos un bloque antes de publicar la semana."
   },
   "onboarding": {
     "preparing": "Preparando tu cuenta…",
