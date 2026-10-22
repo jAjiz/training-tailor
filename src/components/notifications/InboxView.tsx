@@ -2,7 +2,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/db";
 import { relativeTime } from "@/lib/format";
 import { notificationText, type Audience, type NotificationData, type NotificationKind } from "@/lib/notifications/kinds";
-import { getSessionUser } from "@/lib/session";
+import { getSessionContext } from "@/lib/session";
 import type { ActionResult } from "@/lib/training/errors";
 import { listInbox } from "@/lib/training/services/notifications";
 import { InboxList } from "./InboxList";
@@ -15,8 +15,9 @@ type Props = {
 
 /** The signed-in user's inbox for one zone, with texts built in the viewer's language. */
 export async function InboxView({ audience, open, markAll }: Props) {
-  const user = await getSessionUser();
-  if (!user) return null;
+  const ctx = await getSessionContext();
+  if (!ctx) return null;
+  const user = ctx.user;
   const [rows, t, locale] = await Promise.all([listInbox(prisma, user.id, audience), getTranslations(), getLocale()]);
   const now = new Date();
   // notificationText needs the root translator (absolute keys).
@@ -30,5 +31,6 @@ export async function InboxView({ audience, open, markAll }: Props) {
       unread: r.readAt === null,
     };
   });
-  return <InboxList items={items} open={open} markAll={markAll} />;
+  // While impersonating nothing is marked read, so "Mark all as read" is hidden.
+  return <InboxList items={items} open={open} markAll={ctx.impersonatedBy ? null : markAll} />;
 }

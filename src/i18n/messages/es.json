@@ -571,6 +571,7 @@
     "prefsTitle": "Qué avisos quieres recibir",
     "prefsHint": "Si desactivas un aviso, no recibirás la notificación ni la verás en la campana.",
     "settingsTitle": "Notificaciones",
+    "preferencesImpersonating": "Las alertas no se pueden cambiar mientras ves la cuenta de otra persona.",
     "back": "Volver",
     "prefs": {
       "announcement": "Anuncios del tablón",

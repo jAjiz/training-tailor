@@ -571,6 +571,7 @@
     "prefsTitle": "Which alerts you want",
     "prefsHint": "If you turn an alert off, you get no notification and no bell entry for it.",
     "settingsTitle": "Notifications",
+    "preferencesImpersonating": "Alerts cannot be changed while you are viewing someone else's account.",
     "back": "Back",
     "prefs": {
       "announcement": "Board announcements",

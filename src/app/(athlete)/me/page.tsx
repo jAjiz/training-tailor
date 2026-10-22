@@ -30,7 +30,7 @@ export default async function MePage() {
         />
       </Card>
       {!impersonating && <PushSettings />}
-      <PreferenceSwitches initial={preferences} save={setPreferenceAction} />
+      {!impersonating && <PreferenceSwitches initial={preferences} save={setPreferenceAction} />}
       <MyPrograms programs={programs.map((e) => ({ id: e.programId, name: e.program.name }))} />
       <AccountSignOut />
     </section>
