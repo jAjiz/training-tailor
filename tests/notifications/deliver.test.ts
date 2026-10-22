@@ -158,3 +158,50 @@ describe("deliver", () => {
     expect(second.updatedAt.getTime()).toBeGreaterThan(first.updatedAt.getTime());
   });
 });
+
+describe("deliver: parallel pushes", () => {
+  it("does not hold the other devices back while one device is slow", async () => {
+    const [slow, fast1, fast2] = [await makeUser(tdb.prisma), await makeUser(tdb.prisma), await makeUser(tdb.prisma)];
+    await makeSubscription(tdb.prisma, slow.id, "https://push.test/slow");
+    await makeSubscription(tdb.prisma, fast1.id, "https://push.test/fast1");
+    await makeSubscription(tdb.prisma, fast2.id, "https://push.test/fast2");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const sent: string[] = [];
+    const sender = {
+      async send(target: { endpoint: string }) {
+        if (target.endpoint.endsWith("/slow")) await gate;
+        sent.push(target.endpoint);
+        return "ok" as const;
+      },
+    };
+    const running = deliver(tdb.prisma, [announce([slow, fast1, fast2].map((u) => ({ userId: u.id, locale: null })))], sender);
+    await vi.waitFor(() => expect(sent.sort()).toEqual(["https://push.test/fast1", "https://push.test/fast2"]));
+    release();
+    expect(await running).toMatchObject({ created: 3, pushed: 3 });
+  });
+
+  it("never has more than 8 pushes in flight", async () => {
+    const users = [];
+    for (let i = 0; i < 20; i++) {
+      const u = await makeUser(tdb.prisma);
+      await makeSubscription(tdb.prisma, u.id, `https://push.test/d${i}`);
+      users.push(u);
+    }
+    let inFlight = 0;
+    let peak = 0;
+    const sender = {
+      async send() {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return "ok" as const;
+      },
+    };
+    const r = await deliver(tdb.prisma, [announce(users.map((u) => ({ userId: u.id, locale: null })))], sender);
+    expect(r.pushed).toBe(20);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(8);
+  });
+});

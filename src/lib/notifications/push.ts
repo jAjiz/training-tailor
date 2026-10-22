@@ -7,8 +7,8 @@ export type PushOutcome = "ok" | "gone" | "failed";
 export interface PushSender { send(target: PushTarget, payload: PushPayload): Promise<PushOutcome> }
 
 const TTL_SECONDS = 24 * 60 * 60;
-/** A hung endpoint must not stall the sequential sends inside `after()`. */
-const SEND_TIMEOUT_MS = 10_000;
+/** Push services answer in well under a second; a hung endpoint gives up after this and frees its slot. */
+const SEND_TIMEOUT_MS = 5_000;
 
 /** A web-push sender, or null when the three VAPID settings are not all present (inbox only). */
 export function webPushSender(env: NodeJS.ProcessEnv = process.env): PushSender | null {

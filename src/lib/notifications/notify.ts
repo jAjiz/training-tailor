@@ -62,33 +62,63 @@ async function write(db: Db, it: NotificationIntent, userId: string): Promise<Wr
   }
 }
 
-async function pushTo(db: Db, sender: PushSender, it: NotificationIntent, recipient: Recipient, row: Row): Promise<number> {
-  const subs = await db.pushSubscription.findMany({ where: { userId: recipient.userId } });
-  if (subs.length === 0) return 0;
-  const { title, body } = notificationText(it.kind, it.data, translatorFor(recipient.locale));
-  const payload = { title, body, url: notificationHref(it.kind, it.data), tag: it.groupKey ?? row.id };
+/** Pushes in flight at once: a slow or hung device only holds its own slot, and push services are not flooded. */
+const PUSH_CONCURRENCY = 8;
+
+/** Runs `task` over `items` with at most `limit` running at once. `task` must not throw. */
+async function runLimited<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await task(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+type PushJob = { it: NotificationIntent; recipient: Recipient; row: Row };
+type Sub = { id: string; userId: string; endpoint: string; p256dh: string; auth: string };
+
+/** Sends every job to each of its user's devices, PUSH_CONCURRENCY at a time. Returns the number of "ok" sends. */
+async function pushAll(db: Db, sender: PushSender, jobs: PushJob[]): Promise<number> {
+  if (jobs.length === 0) return 0;
+  const subs = await db.pushSubscription.findMany({ where: { userId: { in: [...new Set(jobs.map((j) => j.recipient.userId))] } } });
+  const byUser = new Map<string, Sub[]>();
+  for (const sub of subs) byUser.set(sub.userId, [...(byUser.get(sub.userId) ?? []), sub]);
+
+  const sends = jobs.flatMap((job) => {
+    const devices = byUser.get(job.recipient.userId) ?? [];
+    if (devices.length === 0) return [];
+    const { title, body } = notificationText(job.it.kind, job.it.data, translatorFor(job.recipient.locale));
+    const payload = { title, body, url: notificationHref(job.it.kind, job.it.data), tag: job.it.groupKey ?? job.row.id };
+    return devices.map((sub) => ({ sub, payload }));
+  });
+
   let pushed = 0;
-  for (const sub of subs) {
-    let outcome: PushOutcome;
+  await runLimited(sends, PUSH_CONCURRENCY, async ({ sub, payload }) => {
     try {
-      outcome = await sender.send({ endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth }, payload);
+      let outcome: PushOutcome;
+      try {
+        outcome = await sender.send({ endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth }, payload);
+      } catch (e) {
+        console.error("push send threw", e);
+        outcome = "failed";
+      }
+      if (outcome === "ok") {
+        pushed++;
+        await db.pushSubscription.updateMany({ where: { id: sub.id }, data: { lastOkAt: new Date() } });
+      } else if (outcome === "gone") {
+        await db.pushSubscription.deleteMany({ where: { id: sub.id } });
+      }
     } catch (e) {
-      console.error("push send threw", e);
-      outcome = "failed";
+      console.error("push delivery failed", e);
     }
-    if (outcome === "ok") {
-      pushed++;
-      await db.pushSubscription.updateMany({ where: { id: sub.id }, data: { lastOkAt: new Date() } });
-    } else if (outcome === "gone") {
-      await db.pushSubscription.deleteMany({ where: { id: sub.id } });
-    }
-  }
+  });
   return pushed;
 }
 
-/** Writes inbox rows, then pushes (athlete audience only). Never throws for a push or a single recipient's write failure. */
+/** Writes all inbox rows first, then pushes them in parallel (athlete audience only). Never throws for a push or a single recipient's write failure. */
 export async function deliver(db: Db, intents: NotificationIntent[], sender: PushSender | null) {
   const result = { created: 0, refreshed: 0, pushed: 0 };
+  const jobs: PushJob[] = [];
   for (const it of intents) {
     const unique = [...new Map(it.recipients.map((r) => [r.userId, r])).values()];
     if (unique.length === 0) continue;
@@ -103,17 +133,18 @@ export async function deliver(db: Db, intents: NotificationIntent[], sender: Pus
         const written = await write(db, it, recipient.userId);
         if (!written) continue;
         result[written.how]++;
-        if (sender && AUDIENCE[it.kind] === "athlete") {
-          try {
-            result.pushed += await pushTo(db, sender, it, recipient, written.row);
-          } catch (e) {
-            console.error("push delivery failed", e);
-          }
-        }
+        if (sender && AUDIENCE[it.kind] === "athlete") jobs.push({ it, recipient, row: written.row });
       } catch (e) {
         // One recipient's failed write must not cost the others their notification.
         console.error("notification write failed", e);
       }
+    }
+  }
+  if (sender) {
+    try {
+      result.pushed = await pushAll(db, sender, jobs);
+    } catch (e) {
+      console.error("push delivery failed", e);
     }
   }
   return result;
