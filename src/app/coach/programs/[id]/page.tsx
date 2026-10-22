@@ -88,6 +88,9 @@ export default async function PlannerPage({ params, searchParams }: Params) {
         blocks={blocks.map(toData)}
         ctx={ctx}
       />
+      {continuous && !published && !ctx.readOnly && blocks.length === 0 && (
+        <p className="text-center text-sm text-muted">{t("errors.week_empty")}</p>
+      )}
     </section>
   );
 }

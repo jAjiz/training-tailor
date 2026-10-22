@@ -50,7 +50,6 @@ export function WeekTools({ ctx, kind, published, empty }: Props) {
           <Menu label={t("weekActions")} items={[{ label: t("duplicateWeek"), onSelect: () => setCopying(true) }]} />
         </>
       )}
-      {blockedEmpty && !error && <span className="text-sm text-muted">{te("week_empty")}</span>}
       {error && <span role="alert" className="text-sm text-danger">{te(error)}</span>}
       {copying && (
         <CopyDialog title={t("duplicateWeek")} target="week" startDate={ctx.startDate} defaultIndex={ctx.weekIndex + 1} maxWeek={ctx.maxWeek}
