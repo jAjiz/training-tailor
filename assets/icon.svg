@@ -1,11 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- A "T" whose crossbar is a loaded barbell. Glyph only; the generator adds the background. -->
+  <!-- A "T" whose crossbar is a barbell with one plate per side. Glyph only; the generator adds the background. -->
   <g fill="#ffffff">
-    <rect x="96" y="150" width="320" height="40" rx="8"/>
-    <rect x="64" y="100" width="40" height="140" rx="10"/>
-    <rect x="110" y="122" width="26" height="96" rx="8"/>
-    <rect x="408" y="100" width="40" height="140" rx="10"/>
-    <rect x="376" y="122" width="26" height="96" rx="8"/>
-    <rect x="228" y="150" width="56" height="262" rx="14"/>
+    <rect x="56" y="154" width="400" height="36" rx="10"/>
+    <rect x="72" y="100" width="52" height="140" rx="12"/>
+    <rect x="388" y="100" width="52" height="140" rx="12"/>
+    <rect x="228" y="170" width="56" height="242" rx="14"/>
   </g>
 </svg>
