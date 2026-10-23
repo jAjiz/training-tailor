@@ -25,6 +25,8 @@ export function EnablePushCard() {
   const [closed, setClosed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorCode | null>(null);
+  // The browser refused (blocked site, quiet prompt dismissed, incognito): say so instead of vanishing.
+  const [blocked, setBlocked] = useState(false);
 
   // False on the server and during hydration, then the browser's answer.
   const eligible = useSyncExternalStore(subscribeNever, canOffer, () => false);
@@ -53,7 +55,7 @@ export function EnablePushCard() {
       // Must be the first await of the click: the browser only allows the prompt inside the gesture.
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        setClosed(true); // Denied or dismissed: the card moves to /me.
+        setBlocked(true);
         return;
       }
       const result = await subscribeThisDevice();
@@ -75,11 +77,14 @@ export function EnablePushCard() {
           <p className="text-sm text-muted">{t("notifications.enableBody")}</p>
         </div>
       </div>
+      {blocked && <p role="alert" className="text-sm text-danger">{t("notifications.blocked")}</p>}
       {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       <div className="flex gap-2">
-        <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void enable()}>
-          {busy ? t("notifications.working") : t("notifications.enable")}
-        </Button>
+        {!blocked && (
+          <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void enable()}>
+            {busy ? t("notifications.working") : t("notifications.enable")}
+          </Button>
+        )}
         <Button type="button" size="sm" variant="ghost" onClick={dismiss}>{t("notifications.dismiss")}</Button>
       </div>
     </Card>

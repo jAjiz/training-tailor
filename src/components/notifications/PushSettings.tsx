@@ -22,6 +22,7 @@ export function PushSettings() {
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorCode | null>(null);
+  const [blocked, setBlocked] = useState(false);
 
   async function refresh() {
     setState(await detect());
@@ -38,11 +39,14 @@ export function PushSettings() {
   async function turnOn() {
     setBusy(true);
     setError(null);
+    setBlocked(false);
     try {
       const permission = await Notification.requestPermission(); // First await: still inside the click gesture.
       if (permission === "granted") {
         const result = await subscribeThisDevice();
         if (!result.ok) setError(result.code);
+      } else {
+        setBlocked(true); // Blocked site, dismissed or quiet prompt, incognito: explain instead of doing nothing.
       }
     } catch {
       setError("push_unavailable");
@@ -86,6 +90,7 @@ export function PushSettings() {
             </Button>
           </div>
         )}
+        {blocked && state !== "denied" && <p role="alert" className="text-sm text-danger">{t("notifications.blocked")}</p>}
         {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       </Card>
     </section>
