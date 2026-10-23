@@ -566,6 +566,7 @@
     "turnOn": "Activar",
     "turnOff": "Desactivar",
     "denied": "Has bloqueado las notificaciones. Para volver a activarlas, permite las notificaciones de Training Tailor en los ajustes del navegador o del sistema.",
+    "blocked": "Tu navegador no ha dado permiso para las notificaciones. Actívalas en los ajustes del sitio (el icono a la izquierda de la dirección). En una ventana de incógnito o privada no están disponibles.",
     "unsupported": "Este dispositivo no admite notificaciones push. Las verás en la campana.",
     "needsInstall": "En iPhone, añade la app a la pantalla de inicio para activar las notificaciones.",
     "prefsTitle": "Qué avisos quieres recibir",
