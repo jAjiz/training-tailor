@@ -31,6 +31,12 @@ The app runs at http://localhost:3000.
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm eval` | Evaluation harness for the tailoring engine |
 
+## Deploy
+
+Vercel deploys every push to `main` to production. The build command in
+[`vercel.json`](vercel.json) applies pending Prisma migrations to the production database
+(`pnpm db:deploy`, using `DIRECT_URL`) before `pnpm build`; preview builds skip migrations.
+
 ## Documentation
 
 Design specs and implementation plans live in [`docs/`](docs/).
