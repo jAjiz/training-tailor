@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 
 // Renders assets/icon.svg onto the app background at every size the app ships.
 // Run with: pnpm exec tsx scripts/icons.ts
-const BACKGROUND = "#e5383b";
+const BACKGROUND = "#0f172a";
 const glyph = `data:image/svg+xml;base64,${readFileSync("assets/icon.svg").toString("base64")}`;
 
 // glyphScale < 1 shrinks the glyph so maskable icons keep it inside the 80% safe zone.
