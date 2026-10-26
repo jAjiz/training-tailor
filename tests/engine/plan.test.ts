@@ -1,21 +1,32 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { describe, it, expect } from "vitest";
 import { createMovementResolver } from "@/lib/domain/resolve";
 import type { ActiveCondition } from "@/lib/domain/assess";
-import type { Equipment } from "@/lib/domain/types";
+import type { Equipment, Movement, SiteStress } from "@/lib/domain/types";
+import type { StructuredWorkout } from "@/lib/engine/types";
 import { availableEquipment, goalFamily, planComponents, rankCandidates, type PlanContext } from "@/lib/engine/plan";
-import { component, fran } from "../fixtures/workouts";
+import { component, couplet } from "../fixtures/workouts";
+import { active, testContraindication, testMovement } from "../helpers/library-builders";
 
-let domain: DomainData;
-beforeAll(async () => { domain = await getDomainData(); });
-
-function ctx(conditions: [string, "mild" | "moderate" | "acute"][] = [], equipment: Equipment[] | null = null): PlanContext {
-  const active: ActiveCondition[] = conditions.map(([key, severity]) => ({
-    contraindication: domain.contraindications.find((c) => c.key === key)!, side: null, severity,
-  }));
-  return { movements: domain.movements, resolve: createMovementResolver(domain.movements), active, equipment };
+function ctxOf(movements: Movement[], conditions: ActiveCondition[] = [], equipment: Equipment[] | null = null): PlanContext {
+  return { movements, resolve: createMovementResolver(movements), active: conditions, equipment };
 }
-const movement = (name: string) => domain.movements.find((m) => m.name === name)!;
+
+function workoutOf(...canonicals: (string | null)[]): StructuredWorkout {
+  const base = couplet();
+  return {
+    ...base,
+    blocks: [{ ...base.blocks[0], components: canonicals.map((c) => ({ ...component(c ?? "Test Unlisted"), canonical: c })) }],
+  };
+}
+
+const overheadHigh: SiteStress = { site: "shoulder", mechanisms: ["overhead"], load: "high" };
+const kneeHigh: SiteStress = { site: "knee", mechanisms: ["deep_flexion"], load: "high" };
+
+const shoulder = testContraindication("test_shoulder", { rules: [{ site: "shoulder", mechanisms: ["overhead"], tier: "avoid" }] });
+const knee = testContraindication("test_knee", { rules: [{ site: "knee", mechanisms: ["deep_flexion"], tier: "avoid" }] });
+const wrist = testContraindication("test_wrist", { rules: [{ site: "wrist", mechanisms: ["extension"], tier: "avoid" }] });
+const noHanging = testContraindication("test_no_hanging", { positionRules: [{ position: "hanging", tier: "avoid" }] });
+const noInversion = testContraindication("test_no_inversion", { positionRules: [{ position: "inverted", tier: "avoid" }] });
 
 describe("availableEquipment", () => {
   it("is null (a full box) when nothing is specified or missing", () => {
@@ -33,133 +44,216 @@ describe("availableEquipment", () => {
 
 describe("rankCandidates", () => {
   it("keeps listed substitutes that survive, in order", () => {
-    const c = rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"]]));
-    expect(c).toEqual([{ name: "Kettlebell Goblet Squat", verdict: "ok", source: "substitute", score: 999 }]);
+    const combo = testMovement("Test Combo", {
+      patterns: ["squat", "vertical_push"], stresses: [overheadHigh],
+      substitutes: ["Test Press", "Test Squat", "Test Squat Two"],
+    });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"], stresses: [overheadHigh] });
+    const squat = testMovement("Test Squat", { patterns: ["squat"] });
+    const squatTwo = testMovement("Test Squat Two", { patterns: ["squat"] });
+    const c = rankCandidates(combo, ctxOf([combo, press, squat, squatTwo], [active(shoulder)]));
+    expect(c).toEqual([
+      { name: "Test Squat", verdict: "ok", source: "substitute", score: 999 },
+      { name: "Test Squat Two", verdict: "ok", source: "substitute", score: 998 },
+    ]);
   });
 
   it("filters substitutes by equipment", () => {
-    const c = rankCandidates(movement("Row (Erg)"), ctx([], ["barbell", "pullup_bar"]));
-    expect(c.map((x) => x.name)).toEqual(["Run"]);
+    const erg = testMovement("Test Erg", { patterns: ["monostructural"], equipment: ["rower"], substitutes: ["Test Ski", "Test Run"] });
+    const ski = testMovement("Test Ski", { patterns: ["monostructural"], equipment: ["ski_erg"] });
+    const run = testMovement("Test Run", { patterns: ["monostructural"] });
+    const c = rankCandidates(erg, ctxOf([erg, ski, run], [], ["barbell", "pullup_bar"]));
+    expect(c.map((x) => x.name)).toEqual(["Test Run"]);
   });
 
   it("adds pattern candidates for each pattern no surviving substitute covers", () => {
-    // Shoulder blocks the press half of a Thruster and there is no kettlebell: the squat half must still be offered.
-    const c = rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"], ["knee_pain", "mild"]], ["dumbbell", "jump_rope"]));
-    expect(c.map((x) => x.name)).toContain("Air Squat");
-    for (const x of c.filter((y) => y.source === "pattern")) {
-      expect(movement(x.name).patterns).toContain("squat");
-      expect(movement(x.name).equipment.every((e) => ["dumbbell", "jump_rope"].includes(e)), x.name).toBe(true);
-    }
+    // The shoulder blocks the press half of the combo and the barbell is missing: the squat half is still offered.
+    const combo = testMovement("Test Combo", {
+      patterns: ["squat", "vertical_push"], stresses: [overheadHigh], substitutes: ["Test Press"],
+    });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"], stresses: [overheadHigh] });
+    const squat = testMovement("Test Squat", { patterns: ["squat"] });
+    const barbellSquat = testMovement("Test Barbell Squat", { patterns: ["squat"], equipment: ["barbell"] });
+    const row = testMovement("Test Row", { patterns: ["horizontal_pull"] });
+    const c = rankCandidates(combo, ctxOf([combo, press, squat, barbellSquat, row], [active(shoulder)], ["dumbbell", "jump_rope"]));
+    // 10 for the shared squat pattern + 1 for the same skill level.
+    expect(c).toEqual([{ name: "Test Squat", verdict: "ok", source: "pattern", score: 11 }]);
   });
 
   it("keeps a surviving substitute and still covers the pattern it misses", () => {
-    const active: ActiveCondition[] = [
-      { contraindication: domain.contraindications.find((c) => c.key === "shoulder_impingement")!, side: "right", severity: "moderate" },
-    ];
-    const c = rankCandidates(movement("Thruster"), { ...ctx([], ["dumbbell"]), active });
-    expect(c.find((x) => x.name === "Dumbbell Shoulder Press")).toMatchObject({ source: "substitute", verdict: "caution" });
+    const combo = testMovement("Test Combo", {
+      patterns: ["squat", "vertical_push"], stresses: [overheadHigh], unilateral: "upper", substitutes: ["Test Press"],
+    });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"], stresses: [overheadHigh], unilateral: "upper" });
+    const squat = testMovement("Test Squat", { patterns: ["squat"] });
+    const c = rankCandidates(combo, ctxOf([combo, press, squat], [active(shoulder, "moderate", "right")]));
+    // The right shoulder makes the upper-body press a caution (healthy side only), not an avoid.
+    expect(c.find((x) => x.name === "Test Press")).toMatchObject({ source: "substitute", verdict: "caution" });
+    expect(c.find((x) => x.name === "Test Squat")).toMatchObject({ source: "pattern", verdict: "ok" });
     // ok before caution across sources: the model is told to prefer candidates in order.
     expect(c[0]).toMatchObject({ verdict: "ok" });
     expect(c.findIndex((x) => x.verdict === "caution")).toBeGreaterThan(c.findLastIndex((x) => x.verdict === "ok"));
-    expect(c.some((x) => x.source === "pattern" && movement(x.name).patterns.includes("squat"))).toBe(true);
   });
 
   it("moves to a related pattern only when nothing of the movement survives", () => {
     // No bar, no rings: no vertical pull is possible, so the pull becomes a row instead of disappearing.
-    const c = rankCandidates(movement("Pull-up"), ctx([["no_hanging", "moderate"]], ["dumbbell", "jump_rope"]));
-    expect(c.map((x) => x.name)).toEqual(["Dumbbell Row"]);
+    const pull = testMovement("Test Pull", { patterns: ["vertical_pull"], positions: ["hanging"], equipment: ["pullup_bar"] });
+    const ringPull = testMovement("Test Ring Pull", { patterns: ["vertical_pull"], equipment: ["rings"] });
+    const row = testMovement("Test Row", { patterns: ["horizontal_pull"], equipment: ["dumbbell"] });
+    const barbellRow = testMovement("Test Barbell Row", { patterns: ["horizontal_pull"], equipment: ["barbell"] });
+    const c = rankCandidates(pull, ctxOf([pull, ringPull, row, barbellRow], [active(noHanging)], ["dumbbell"]));
+    expect(c.map((x) => x.name)).toEqual(["Test Row"]);
     expect(c[0].source).toBe("related");
   });
 
   it("does not use a related pattern while any candidate survives", () => {
-    expect(rankCandidates(movement("Pull-up"), ctx([], ["pullup_bar"])).some((x) => x.source === "related")).toBe(false);
-    expect(rankCandidates(movement("Pull-up"), ctx([["no_hanging", "moderate"]])).some((x) => x.source === "related")).toBe(false);
-    // The Thruster keeps its squat; its blocked press is not swapped for a horizontal push.
-    expect(rankCandidates(movement("Thruster"), ctx([["shoulder_impingement", "moderate"]])).some((x) => x.source === "related")).toBe(false);
+    const pull = testMovement("Test Pull", {
+      patterns: ["vertical_pull"], positions: ["hanging"], equipment: ["pullup_bar"], substitutes: ["Test Alt Pull"],
+    });
+    const altPull = testMovement("Test Alt Pull", { patterns: ["vertical_pull"] });
+    const row = testMovement("Test Row", { patterns: ["horizontal_pull"] });
+    const combo = testMovement("Test Combo", { patterns: ["squat", "vertical_push"], stresses: [overheadHigh] });
+    const squat = testMovement("Test Squat", { patterns: ["squat"] });
+    const pushUp = testMovement("Test Push-up", { patterns: ["horizontal_push"] });
+    const movements = [pull, altPull, row, combo, squat, pushUp];
+    expect(rankCandidates(pull, ctxOf(movements, [], ["pullup_bar"])).some((x) => x.source === "related")).toBe(false);
+    expect(rankCandidates(pull, ctxOf(movements, [active(noHanging)])).some((x) => x.source === "related")).toBe(false);
+    // The combo keeps its squat; its blocked press is not swapped for a horizontal push.
+    expect(rankCandidates(combo, ctxOf(movements, [active(shoulder)])).some((x) => x.source === "related")).toBe(false);
   });
 
   it("puts the variant that keeps the whole movement first when it is no riskier than the original", () => {
-    // Mild knee: the Thruster is already "caution", so a Dumbbell Thruster (also caution) adds no risk and keeps squat + press.
-    const c = rankCandidates(movement("Thruster"), ctx([["knee_pain", "mild"]], ["dumbbell", "jump_rope"]));
-    expect(c.map((x) => [x.name, x.verdict])).toEqual([["Dumbbell Thruster", "caution"], ["Dumbbell Shoulder Press", "ok"]]);
+    // Mild knee: the combo is already a caution, so a dumbbell combo (also a caution) adds no risk and keeps squat + press.
+    const combo = testMovement("Test Combo", {
+      patterns: ["squat", "vertical_push"], stresses: [kneeHigh], equipment: ["barbell"], substitutes: ["Test Press"],
+    });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"] });
+    const dumbbellCombo = testMovement("Test Dumbbell Combo", {
+      patterns: ["squat", "vertical_push"], stresses: [kneeHigh], equipment: ["dumbbell"],
+    });
+    const c = rankCandidates(combo, ctxOf([combo, press, dumbbellCombo], [active(knee, "mild")], ["dumbbell"]));
+    expect(c.map((x) => [x.name, x.verdict])).toEqual([["Test Dumbbell Combo", "caution"], ["Test Press", "ok"]]);
   });
 
   it("keeps ok candidates first when the original had to change for safety", () => {
-    const c = rankCandidates(movement("Thruster"), ctx([["knee_pain", "moderate"]], ["dumbbell", "jump_rope"]));
-    expect(c.map((x) => x.name)).not.toContain("Dumbbell Thruster");
-    expect(c[0].verdict).toBe("ok");
+    const combo = testMovement("Test Combo", { patterns: ["squat", "vertical_push"], stresses: [kneeHigh], substitutes: ["Test Press"] });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"] });
+    const heavyCombo = testMovement("Test Heavy Combo", { patterns: ["squat", "vertical_push"], stresses: [kneeHigh] });
+    const lightCombo = testMovement("Test Light Combo", {
+      patterns: ["squat", "vertical_push"], stresses: [{ site: "knee", mechanisms: ["deep_flexion"], load: "low" }],
+    });
+    const c = rankCandidates(combo, ctxOf([combo, press, heavyCombo, lightCombo], [active(knee, "moderate")]));
+    // The heavy variant is as contraindicated as the original; the light one is a caution the original did not carry,
+    // so it follows the ok press even though it covers more of the movement.
+    expect(c.map((x) => [x.name, x.verdict])).toEqual([["Test Press", "ok"], ["Test Light Combo", "caution"]]);
   });
 
   it("compares risk condition by condition: a caution the original already had does not demote a full variant", () => {
-    // The wrist rules out the barbell Thruster; the Dumbbell Thruster spares the wrist and is "caution" only for
-    // the mild knee, exactly like the original, so it still leads over a half-movement press.
-    const c = rankCandidates(movement("Thruster"), ctx([["wrist_pain", "moderate"], ["knee_pain", "mild"]], ["dumbbell", "jump_rope"]));
-    expect(c[0]).toMatchObject({ name: "Dumbbell Thruster", verdict: "caution" });
+    // The wrist rules out the combo; the dumbbell combo spares the wrist and is a caution only for the mild knee,
+    // exactly like the original, so it still leads over a half-movement press.
+    const combo = testMovement("Test Combo", {
+      patterns: ["squat", "vertical_push"], equipment: ["barbell"], substitutes: ["Test Press"],
+      stresses: [{ site: "wrist", mechanisms: ["extension"], load: "high" }, kneeHigh],
+    });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"] });
+    const dumbbellCombo = testMovement("Test Dumbbell Combo", {
+      patterns: ["squat", "vertical_push"], stresses: [kneeHigh], equipment: ["dumbbell"],
+    });
+    const c = rankCandidates(combo, ctxOf([combo, press, dumbbellCombo], [active(wrist), active(knee, "mild")], ["dumbbell"]));
+    expect(c[0]).toMatchObject({ name: "Test Dumbbell Combo", verdict: "caution" });
   });
 
   it("prefers a full-coverage variant when the original changes only for equipment", () => {
-    const c = rankCandidates(movement("Thruster"), ctx([], ["dumbbell"]));
-    expect(c[0]).toMatchObject({ name: "Dumbbell Thruster", verdict: "ok" });
+    const combo = testMovement("Test Combo", { patterns: ["squat", "vertical_push"], equipment: ["barbell"], substitutes: ["Test Press"] });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"] });
+    const dumbbellCombo = testMovement("Test Dumbbell Combo", { patterns: ["squat", "vertical_push"], equipment: ["dumbbell"] });
+    const c = rankCandidates(combo, ctxOf([combo, press, dumbbellCombo], [], ["dumbbell"]));
+    expect(c[0]).toMatchObject({ name: "Test Dumbbell Combo", verdict: "ok" });
   });
 
   it("adds no pattern candidates when the substitutes cover every pattern", () => {
-    const c = rankCandidates(movement("Pull-up"), ctx([], null));
+    const pull = testMovement("Test Pull", { patterns: ["vertical_pull"], substitutes: ["Test Ring Pull"] });
+    const ringPull = testMovement("Test Ring Pull", { patterns: ["vertical_pull"] });
+    const otherPull = testMovement("Test Other Pull", { patterns: ["vertical_pull"] });
+    const c = rankCandidates(pull, ctxOf([pull, ringPull, otherPull]));
+    expect(c.map((x) => x.name)).toEqual(["Test Ring Pull"]);
     expect(c.every((x) => x.source === "substitute")).toBe(true);
   });
 
   it("falls back to the primary pattern only when every substitute is blocked", () => {
-    const c = rankCandidates(movement("Handstand Walk"), ctx([["no_inversion", "moderate"]]));
-    expect(c.length).toBeGreaterThan(0);
-    for (const x of c) {
-      expect(x.source).toBe("pattern");
-      expect(movement(x.name).patterns).toContain("carry");
-      expect(movement(x.name).positions).not.toContain("inverted");
-    }
+    const walk = testMovement("Test Hand Walk", { patterns: ["carry"], positions: ["inverted"], substitutes: ["Test Wall Walk"] });
+    const wallWalk = testMovement("Test Wall Walk", { patterns: ["carry"], positions: ["inverted"] });
+    const invertedCarry = testMovement("Test Inverted Carry", { patterns: ["carry"], positions: ["inverted"] });
+    const farmer = testMovement("Test Farmer Carry", { patterns: ["carry"] });
+    const squat = testMovement("Test Squat", { patterns: ["squat"] });
+    const c = rankCandidates(walk, ctxOf([walk, wallWalk, invertedCarry, farmer, squat], [active(noInversion)]));
+    expect(c.map((x) => [x.name, x.source])).toEqual([["Test Farmer Carry", "pattern"]]);
   });
 });
 
 describe("planComponents", () => {
   it("marks contraindicated components for change and lists candidates", () => {
-    const plan = planComponents(fran(), ctx([["shoulder_impingement", "moderate"]]));
+    const both = testContraindication("test_both", {
+      rules: [{ site: "shoulder", mechanisms: ["overhead"], tier: "avoid" }],
+      positionRules: [{ position: "hanging", tier: "avoid" }],
+    });
+    const press = testMovement("Test Press", { patterns: ["vertical_push"], stresses: [overheadHigh], substitutes: ["Test Push-up"] });
+    const pull = testMovement("Test Pull", { patterns: ["vertical_pull"], positions: ["hanging"], substitutes: ["Test Row"] });
+    const pushUp = testMovement("Test Push-up", { patterns: ["horizontal_push"] });
+    const row = testMovement("Test Row", { patterns: ["horizontal_pull"] });
+    const plan = planComponents(workoutOf("Test Press", "Test Pull"), ctxOf([press, pull, pushUp, row], [active(both)]));
     expect(plan.map((p) => [p.canonical, p.verdict, p.needsChange])).toEqual([
-      ["Thruster", "avoid", true],
-      ["Pull-up", "avoid", true],
+      ["Test Press", "avoid", true],
+      ["Test Pull", "avoid", true],
     ]);
-    expect(plan[1].candidates[0]).toMatchObject({ name: "Ring Row", verdict: "ok" });
+    expect(plan[0].candidates.map((x) => x.name)).toEqual(["Test Push-up"]);
+    expect(plan[1].candidates[0]).toMatchObject({ name: "Test Row", verdict: "ok" });
   });
 
   it("flags missing equipment as a required change", () => {
-    const plan = planComponents(fran(), ctx([], ["dumbbell"]));
+    const lift = testMovement("Test Lift", { equipment: ["barbell"] });
+    const plan = planComponents(workoutOf("Test Lift"), ctxOf([lift], [], ["dumbbell"]));
     expect(plan[0].missingEquipment).toEqual(["barbell"]);
     expect(plan[0].needsChange).toBe(true);
   });
 
   it("offers alternatives for a caution without forcing a change", () => {
-    const w = fran();
-    w.blocks[0].components = [{ ...component("Dead Hang"), canonical: "Dead Hang" }];
-    const [p] = planComponents(w, ctx([["hand_tear", "moderate"]]));
+    const cautionHang = testContraindication("test_caution_hang", { positionRules: [{ position: "hanging", tier: "caution" }] });
+    const hang = testMovement("Test Hang", { patterns: ["hold"], positions: ["hanging"], substitutes: ["Test Plank"] });
+    const plank = testMovement("Test Plank", { patterns: ["hold"] });
+    const [p] = planComponents(workoutOf("Test Hang"), ctxOf([hang, plank], [active(cautionHang)]));
     expect(p.verdict).toBe("caution");
     expect(p.needsChange).toBe(false);
-    expect(p.candidates.length).toBeGreaterThan(0);
+    expect(p.candidates.map((x) => x.name)).toEqual(["Test Plank"]);
   });
 
   it("reports an unrecognized movement as unknown", () => {
-    const w = fran();
-    w.blocks[0].components = [{ ...component("Zercher Carry"), canonical: null }];
-    expect(planComponents(w, ctx())[0]).toMatchObject({ verdict: "unknown", needsChange: false, candidates: [] });
+    const [p] = planComponents(workoutOf(null), ctxOf([]));
+    expect(p).toMatchObject({ verdict: "unknown", canonical: null, needsChange: false, candidates: [], missingEquipment: [] });
   });
 });
 
 describe("goalFamily", () => {
   it("returns the target and its usable substitutes", () => {
-    expect(goalFamily("T2B", ctx()).map((c) => c.name)).toEqual([
-      "Toes-to-Bar", "Knees-to-Elbows", "Hanging Knee Raise", "Sit-up", "Strict Toes-to-Bar",
+    const target = testMovement("Test Target", { aliases: ["TT"], substitutes: ["Test Alt A", "Test Missing", "Test Alt B"] });
+    const altA = testMovement("Test Alt A");
+    const altB = testMovement("Test Alt B");
+    const c = goalFamily("TT", ctxOf([target, altA, altB]));
+    expect(c).toEqual([
+      { name: "Test Target", verdict: "ok", source: "goal", score: 0 },
+      { name: "Test Alt A", verdict: "ok", source: "goal", score: 0 },
+      { name: "Test Alt B", verdict: "ok", source: "goal", score: 0 },
     ]);
   });
   it("drops family members the athlete cannot do", () => {
-    expect(goalFamily("Toes-to-Bar", ctx([["no_hanging", "moderate"]])).map((c) => c.name)).toEqual(["Sit-up"]);
+    const target = testMovement("Test Target", { positions: ["hanging"], substitutes: ["Test Alt A", "Test Alt B", "Test Alt C"] });
+    const altA = testMovement("Test Alt A", { positions: ["hanging"] });
+    const altB = testMovement("Test Alt B");
+    const altC = testMovement("Test Alt C", { equipment: ["barbell"] });
+    const c = goalFamily("Test Target", ctxOf([target, altA, altB, altC], [active(noHanging)], ["dumbbell"]));
+    expect(c.map((x) => x.name)).toEqual(["Test Alt B"]);
   });
   it("is empty without a target", () => {
-    expect(goalFamily(null, ctx())).toEqual([]);
+    expect(goalFamily(null, ctxOf([testMovement("Test Target")]))).toEqual([]);
   });
 });

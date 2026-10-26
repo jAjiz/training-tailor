@@ -1,26 +1,25 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { describe, it, expect } from "vitest";
 import { assessMovement } from "@/lib/domain/assess";
 import { activateConditions, hasScope, profileConditionRefs, restrictionConditions } from "@/lib/engine/conditions";
 import type { Restriction } from "@/lib/engine/types";
+import { fixtureDomain } from "../fixtures/workouts";
 
-let domain: DomainData;
-beforeAll(async () => { domain = await getDomainData(); });
+const domain = fixtureDomain();
 
 describe("activateConditions", () => {
   it("keeps profile injuries and lets today's detection override the same key", () => {
     const base = profileConditionRefs([
-      { key: "knee_pain", side: "left", severity: "mild", notes: "old", since: null },
-      { key: "hand_tear", side: null, severity: "moderate", notes: null, since: null },
+      { key: "test_knee", side: "left", severity: "mild", notes: "old", since: null },
+      { key: "test_hand", side: null, severity: "moderate", notes: null, since: null },
     ]);
     const { active, refs } = activateConditions(base, [
-      { key: "knee_pain", side: "left", severity: "acute", evidence: "me la torcí ayer" },
+      { key: "test_knee", side: "left", severity: "acute", evidence: "me la torcí ayer" },
     ], domain.contraindications);
     expect(refs.map((r) => [r.key, r.severity, r.source])).toEqual([
-      ["knee_pain", "acute", "today"],
-      ["hand_tear", "moderate", "profile"],
+      ["test_knee", "acute", "today"],
+      ["test_hand", "moderate", "profile"],
     ]);
-    expect(active.map((a) => a.contraindication.key)).toEqual(["knee_pain", "hand_tear"]);
+    expect(active.map((a) => a.contraindication.key)).toEqual(["test_knee", "test_hand"]);
     expect(active[0].side).toBe("left");
   });
 
@@ -41,31 +40,31 @@ describe("restrictionConditions", () => {
     assessMovement(byName(name), restrictionConditions(restrictions)).verdict;
 
   it("bans only the movements the athlete named", () => {
-    const named = [r({ site: "shoulder", movements: ["Power Snatch"] })];
-    expect(verdict(named, "Power Snatch")).toBe("avoid");
-    expect(verdict(named, "Toes-to-Bar")).toBe("ok");
-    expect(verdict(named, "Push Press")).toBe("ok");
+    const named = [r({ site: "shoulder", movements: ["Test Hoist"] })];
+    expect(verdict(named, "Test Hoist")).toBe("avoid");
+    expect(verdict(named, "Test Hang Raise")).toBe("ok");
+    expect(verdict(named, "Test Press")).toBe("ok");
   });
 
   it("bans a named kind of load at the named site, or anywhere when no site was named", () => {
-    expect(verdict([r({ site: "shoulder", mechanisms: ["overhead"] })], "Push Press")).toBe("avoid");
-    expect(verdict([r({ site: "shoulder", mechanisms: ["overhead"] })], "Pull-up")).toBe("ok");
-    expect(verdict([r({ site: "knee", mechanisms: ["overhead"] })], "Push Press")).toBe("ok");
-    expect(verdict([r({ mechanisms: ["overhead"] })], "Push Press")).toBe("avoid");
+    expect(verdict([r({ site: "shoulder", mechanisms: ["overhead"] })], "Test Press")).toBe("avoid");
+    expect(verdict([r({ site: "shoulder", mechanisms: ["overhead"] })], "Test Pull")).toBe("ok");
+    expect(verdict([r({ site: "knee", mechanisms: ["overhead"] })], "Test Press")).toBe("ok");
+    expect(verdict([r({ mechanisms: ["overhead"] })], "Test Press")).toBe("avoid");
   });
 
   it("bans a named position", () => {
-    expect(verdict([r({ positions: ["hanging"] })], "Toes-to-Bar")).toBe("avoid");
+    expect(verdict([r({ positions: ["hanging"] })], "Test Hang Raise")).toBe("avoid");
   });
 
   it("activates nothing for a restriction that names nothing (context only)", () => {
     expect(restrictionConditions([r({ site: "shoulder" })])).toEqual([]);
     expect(hasScope(r({ site: "shoulder" }))).toBe(false);
-    expect(hasScope(r({ movements: ["Power Snatch"] }))).toBe(true);
+    expect(hasScope(r({ movements: ["Test Hoist"] }))).toBe(true);
   });
 
   it("keys each restriction by its index, offset for refine", () => {
-    const active = restrictionConditions([r({ site: "shoulder" }), r({ movements: ["Power Snatch"] })], 2);
+    const active = restrictionConditions([r({ site: "shoulder" }), r({ movements: ["Test Hoist"] })], 2);
     expect(active.map((a) => [a.contraindication.key, a.contraindication.kind])).toEqual([["today_3", "limitation"]]);
   });
 

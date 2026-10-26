@@ -1,62 +1,68 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { FakeProvider } from "@/lib/ai/fake-provider";
-import { getDomainData, type DomainData } from "@/lib/domain/repository";
 import { analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
-import { FRAN_TEXT, component, franDraft } from "../fixtures/workouts";
+import { COUPLET_TEXT, component, coupletDraft, fixtureDomain } from "../fixtures/workouts";
 
-let domain: DomainData;
-beforeAll(async () => { domain = await getDomainData(); });
+const domain = fixtureDomain();
 
 const shoulder = { site: "shoulder", side: "right", movements: [], mechanisms: [], positions: [], evidence: "me duele el hombro derecho" };
-const pregnancy = { key: "pregnancy", side: null, severity: "moderate", evidence: "estoy embarazada" };
+const condition = { key: "test_condition", side: null, severity: "moderate", evidence: "test evidence" };
 
 describe("analyzePaste", () => {
   it("returns a resolved session, restrictions, non-pain conditions and unavailable equipment", async () => {
-    const draft = franDraft();
-    draft.blocks[0].components[1] = component("Pull-ups", { reps: "21-15-9" });
+    const draft = coupletDraft();
+    draft.blocks[0].components[1] = component("Test Pulls", { reps: "21-15-9" });
     const provider = new FakeProvider({
       PasteAnalysis: {
         workout: draft,
-        restrictions: [shoulder, { ...shoulder, movements: ["thrusters", "Made-up Lift", "Thruster", "Snatch"], evidence: "no thrusters" }],
+        restrictions: [shoulder, { ...shoulder, movements: ["test combos", "Made-up Lift", "Test Combo", "Test Hoist"], evidence: "no combos" }],
         conditions: [
-          pregnancy, { key: "made_up_key", side: null, severity: "mild", evidence: "?" },
-          { key: "shoulder_impingement", side: "right", severity: "moderate", evidence: "hombro" },
+          condition, { key: "made_up_key", side: null, severity: "mild", evidence: "?" },
+          { key: "test_shoulder", side: "right", severity: "moderate", evidence: "hombro" },
         ],
         unavailableEquipment: ["rower", "rower"],
       },
     });
-    const a = await analyzePaste(provider, FRAN_TEXT, "Me duele el hombro derecho. Hoy no hay remo.", domain);
+    const a = await analyzePaste(provider, COUPLET_TEXT, "Me duele el hombro derecho. Hoy no hay remo.", domain);
     expect(a.analyzed).toBe(true);
     expect(a.workout.source).toBe("paste");
-    expect(a.workout.rawText).toBe(FRAN_TEXT);
-    expect(a.workout.blocks[0].components.map((c) => c.canonical)).toEqual(["Thruster", "Pull-up"]);
-    // Pain is a restriction; only non-pain catalog conditions are read today.
-    expect(a.conditions.map((c) => c.key)).toEqual(["pregnancy"]);
-    // Movement names resolve to the library; a general name covers its variants; unknown names are dropped.
+    expect(a.workout.rawText).toBe(COUPLET_TEXT);
+    // A plural spelling resolves to the library row.
+    expect(a.workout.blocks[0].components.map((c) => c.canonical)).toEqual(["Test Combo", "Test Pull"]);
+    // Pain is a restriction; only non-pain catalog conditions are read today. Unknown keys are dropped.
+    expect(a.conditions.map((c) => c.key)).toEqual(["test_condition"]);
+    // Movement names resolve to the library, a general name covers its variants, unknown names are dropped.
     expect(a.restrictions[0].movements).toEqual([]);
-    expect(a.restrictions[1].movements).toEqual(expect.arrayContaining(["Thruster", "Power Snatch", "Hang Power Snatch", "Dumbbell Snatch"]));
-    expect(a.restrictions[1].movements).not.toContain("Made-up Lift");
+    expect(a.restrictions[1].movements).toEqual(["Test Combo", "Test Hoist"]);
     expect(a.restrictions[0]).toEqual({ ...shoulder, replacements: [] });
     expect(a.unavailableEquipment).toEqual(["rower"]);
   });
 
   it("sends the library, the non-pain catalog, the taxonomy and the situation to the model", async () => {
-    const provider = new FakeProvider({ PasteAnalysis: { workout: franDraft(), restrictions: [], conditions: [], unavailableEquipment: [] } });
-    await analyzePaste(provider, FRAN_TEXT, "Sore right shoulder", domain);
+    const provider = new FakeProvider({ PasteAnalysis: { workout: coupletDraft(), restrictions: [], conditions: [], unavailableEquipment: [] } });
+    await analyzePaste(provider, COUPLET_TEXT, "Sore right shoulder", domain);
     const prompt = provider.calls[0].prompt;
-    expect(prompt).toContain("- Toes-to-Bar (aka T2B, TTB)");
-    expect(prompt).toContain("- pregnancy: Pregnancy [condition]");
-    expect(prompt).not.toContain("shoulder_impingement");
+    expect(prompt).toContain("- Test Hang Raise (aka THR)");
+    expect(prompt).toContain("- Test Combo\n");
+    expect(prompt).toContain("- test_condition: Test Condition [condition]");
+    expect(prompt).not.toContain("test_shoulder");
     expect(prompt).toContain("- glycolytic:");
     expect(prompt).toContain("Sore right shoulder");
-    expect(prompt).toContain(FRAN_TEXT);
+    expect(prompt).toContain(COUPLET_TEXT);
   });
 
   it("forces verbatim block text: a paraphrased slice falls back to the session text", async () => {
-    const draft = franDraft();
+    const draft = coupletDraft();
     draft.blocks[0].rawText = "a paraphrase, not a slice";
-    const a = await analyzePaste(new FakeProvider({ PasteAnalysis: { workout: draft, restrictions: [], conditions: [], unavailableEquipment: [] } }), FRAN_TEXT, "", domain);
-    expect(a.workout.blocks[0].rawText).toBe(FRAN_TEXT);
+    const a = await analyzePaste(new FakeProvider({ PasteAnalysis: { workout: draft, restrictions: [], conditions: [], unavailableEquipment: [] } }), COUPLET_TEXT, "", domain);
+    expect(a.workout.blocks[0].rawText).toBe(COUPLET_TEXT);
+  });
+
+  it("keeps a block slice that appears in the session text", async () => {
+    const draft = coupletDraft();
+    draft.blocks[0].rawText = "21-15-9 for time";
+    const a = await analyzePaste(new FakeProvider({ PasteAnalysis: { workout: draft, restrictions: [], conditions: [], unavailableEquipment: [] } }), COUPLET_TEXT, "", domain);
+    expect(a.workout.blocks[0].rawText).toBe("21-15-9 for time");
   });
 
   it("degrades to one raw block and still analyzes the situation", async () => {
@@ -95,8 +101,18 @@ describe("analyzeSituation", () => {
 
   it("sends the movement library, so a named movement maps to its library variants", async () => {
     const provider = new FakeProvider({ SituationAnalysis: { restrictions: [], conditions: [], unavailableEquipment: [] } });
-    await analyzeSituation(provider, "no puedo hacer snatch", domain);
-    expect(provider.calls[0].prompt).toContain("- Hang Power Snatch");
-    expect(provider.calls[0].systemPrompt).toContain("every snatch variant");
+    await analyzeSituation(provider, "no puedo hacer hoist", domain);
+    expect(provider.calls[0].prompt).toContain("- Test Hang Hoist");
+    expect(provider.calls[0].systemPrompt).toContain("A general name covers every library variant");
+  });
+
+  it("covers every library variant of a general movement name and drops names it cannot place", async () => {
+    const provider = new FakeProvider({
+      SituationAnalysis: {
+        restrictions: [{ ...shoulder, movements: ["hoist", "Made-up Lift"] }], conditions: [], unavailableEquipment: [],
+      },
+    });
+    const s = await analyzeSituation(provider, "no puedo hacer hoist", domain);
+    expect(s.restrictions[0].movements).toEqual(["Test Hoist", "Test Hang Hoist", "Test Dumbbell Hoist"]);
   });
 });

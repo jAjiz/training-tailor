@@ -1,16 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import movementsJson from "../../data/movements.json";
-import { MovementSchema } from "@/lib/domain/types";
 import { createMovementResolver } from "@/lib/domain/resolve";
 import type { PipelineResult, WorkoutComponent } from "@/lib/engine/types";
 import { collectUnrecognized, newlyResolved, recordUnrecognized, type UnrecognizedStore } from "@/lib/unrecognized";
-import { fran, identityResult } from "../fixtures/workouts";
+import { couplet, fixtureDomain, identityResult } from "../fixtures/workouts";
 
 const unknown = (base: WorkoutComponent, movement: string): WorkoutComponent => ({ ...base, movement, canonical: null });
 
 function result(extraOriginal: string[] = [], extraTailored: string[] = []): PipelineResult {
-  const original = fran();
-  const tailored = identityResult(fran());
+  const original = couplet();
+  const tailored = identityResult(couplet());
   const base = original.blocks[0].components[0];
   original.blocks[0].components.push(...extraOriginal.map((m) => unknown(base, m)));
   tailored.blocks[0].components.push(...extraTailored.map((m) => unknown(base, m)));
@@ -27,9 +25,9 @@ describe("collectUnrecognized", () => {
   });
 
   it("collects each unresolved name once, from the original and the tailored session", () => {
-    expect(collectUnrecognized(result(["Zercher Carry"], [" zercher carry ", "Sandbag Bear Hug Squat"]))).toEqual([
-      { key: "zerchercarry", example: "Zercher Carry" },
-      { key: "sandbagbearhugsquat", example: "Sandbag Bear Hug Squat" },
+    expect(collectUnrecognized(result(["Test Unlisted Carry"], [" test unlisted carry ", "Test Unlisted Squat"]))).toEqual([
+      { key: "testunlistedcarry", example: "Test Unlisted Carry" },
+      { key: "testunlistedsquat", example: "Test Unlisted Squat" },
     ]);
   });
 
@@ -42,8 +40,8 @@ describe("collectUnrecognized", () => {
 describe("recordUnrecognized", () => {
   it("records the entries", async () => {
     const s = store();
-    await recordUnrecognized(s, result(["Zercher Carry"]));
-    expect(s.record).toHaveBeenCalledWith([{ key: "zerchercarry", example: "Zercher Carry" }]);
+    await recordUnrecognized(s, result(["Test Unlisted Carry"]));
+    expect(s.record).toHaveBeenCalledWith([{ key: "testunlistedcarry", example: "Test Unlisted Carry" }]);
   });
 
   it("does not touch the store when there is nothing to record", async () => {
@@ -54,7 +52,7 @@ describe("recordUnrecognized", () => {
 
   it("never fails the request when the store fails", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(recordUnrecognized(store(true), result(["Zercher Carry"]))).resolves.toBeUndefined();
+    await expect(recordUnrecognized(store(true), result(["Test Unlisted Carry"]))).resolves.toBeUndefined();
     expect(error).toHaveBeenCalled();
     error.mockRestore();
   });
@@ -62,10 +60,10 @@ describe("recordUnrecognized", () => {
 
 describe("newlyResolved", () => {
   it("closes the entries the library now resolves", () => {
-    const resolve = createMovementResolver(movementsJson.map((m) => MovementSchema.parse(m)));
+    const resolve = createMovementResolver(fixtureDomain().movements);
     expect(newlyResolved([
-      { key: "t2b", example: "T2B" },
-      { key: "zerchercarry", example: "Zercher Carry" },
-    ], resolve)).toEqual([{ key: "t2b", resolvedTo: "Toes-to-Bar" }]);
+      { key: "thr", example: "THR" },
+      { key: "testunlistedcarry", example: "Test Unlisted Carry" },
+    ], resolve)).toEqual([{ key: "thr", resolvedTo: "Test Hang Raise" }]);
   });
 });

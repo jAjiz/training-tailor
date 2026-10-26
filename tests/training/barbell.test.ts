@@ -1,23 +1,31 @@
 import { describe, it, expect } from "vitest";
-import { getDomainData } from "@/lib/domain/repository";
+import { testMovement } from "../helpers/library-builders";
 import { describeSets, isLiftMovement, liftCatalog, percentToKg } from "@/lib/training/barbell";
 
 describe("liftCatalog", () => {
-  it("groups barbell movements by their first pattern, squats first", async () => {
-    const { movements } = await getDomainData();
-    const groups = liftCatalog(movements);
-    expect(groups[0].pattern).toBe("squat");
-    expect(groups[0].movements).toContain("Back Squat");
-    const all = groups.flatMap((g) => g.movements);
-    expect(all).not.toContain("Pull-up");
-    expect(new Set(all).size).toBe(all.length);
+  const library = [
+    testMovement("Test Rower", { patterns: ["horizontal_pull"], equipment: ["barbell"] }),
+    testMovement("Test Hoist", { patterns: ["olympic"], equipment: ["barbell"] }),
+    testMovement("Test Squat B", { patterns: ["squat", "vertical_push"], equipment: ["barbell"] }),
+    testMovement("Test Squat A", { patterns: ["squat"], equipment: ["barbell", "box"] }),
+    testMovement("Test Odd", { patterns: ["core"], equipment: ["barbell"] }),
+    testMovement("Test Pull", { patterns: ["vertical_pull"], equipment: ["pullup_bar"] }),
+  ];
+
+  it("groups barbell movements by their first pattern, squats first and unlisted patterns last", () => {
+    const groups = liftCatalog(library);
+    expect(groups).toEqual([
+      { pattern: "squat", movements: ["Test Squat A", "Test Squat B"] },
+      { pattern: "olympic", movements: ["Test Hoist"] },
+      { pattern: "horizontal_pull", movements: ["Test Rower"] },
+      { pattern: "core", movements: ["Test Odd"] },
+    ]);
   });
 
-  it("recognizes lift movements by exact name", async () => {
-    const { movements } = await getDomainData();
-    expect(isLiftMovement("Back Squat", movements)).toBe(true);
-    expect(isLiftMovement("back squat", movements)).toBe(false);
-    expect(isLiftMovement("Air Squat", movements)).toBe(false);
+  it("recognizes lift movements by exact name", () => {
+    expect(isLiftMovement("Test Squat A", library)).toBe(true);
+    expect(isLiftMovement("test squat a", library)).toBe(false);
+    expect(isLiftMovement("Test Pull", library)).toBe(false);
   });
 });
 

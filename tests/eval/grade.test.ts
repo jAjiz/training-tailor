@@ -1,18 +1,17 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { describe, it, expect } from "vitest";
 import { EvalCaseSchema, gradeCase, resolveCase } from "@/lib/eval/grade";
 import type { PipelineResult } from "@/lib/engine/types";
-import { fran } from "../fixtures/workouts";
+import { couplet, fixtureDomain } from "../fixtures/workouts";
 
 const baseCase = EvalCaseSchema.parse({
-  id: "fran-shoulder", description: "Fran with a sore shoulder",
-  rawText: "Fran",
+  id: "test-shoulder", description: "Test workout with a sore shoulder",
+  rawText: "Test Workout",
   request: { situation: "sore shoulder" },
-  expect: { mustAvoid: ["Thruster"], mustRestrict: ["shoulder"], maxTotalMinutes: 10 },
+  expect: { mustAvoid: ["Test Combo"], mustRestrict: ["shoulder"], maxTotalMinutes: 10 },
 });
 
 function result(overrides: Partial<PipelineResult> = {}): PipelineResult {
-  const original = fran();
+  const original = couplet();
   return {
     original,
     conditions: [],
@@ -22,15 +21,14 @@ function result(overrides: Partial<PipelineResult> = {}): PipelineResult {
       name: null, rawText: "x", droppedBlocks: [], changes: [], rationale: "r", safetyNote: null,
       blocks: original.blocks.map((b, i) => ({
         ...b, sourceBlocks: [i],
-        components: [{ ...b.components[1], movement: "Ring Row", canonical: "Ring Row" }],
+        components: [{ ...b.components[1], movement: "Test Row", canonical: "Test Row" }],
       })),
     },
     findings: [], feedbackHistory: [], model: "fake", ...overrides,
   };
 }
 
-let domain: DomainData;
-beforeAll(async () => { domain = await getDomainData(); });
+const domain = fixtureDomain();
 
 describe("eval grading", () => {
   it("fills defaults for profile, request and expectations", () => {
@@ -53,13 +51,13 @@ describe("eval grading", () => {
       restrictions: [],
       findings: [{ kind: "time_cap_exceeded", severity: "violation", blockIndex: null, movement: null, message: "over" }],
     });
-    bad.tailored.blocks[0].components = [{ ...bad.tailored.blocks[0].components[0], movement: "Thruster", canonical: "Thruster" }];
+    bad.tailored.blocks[0].components = [{ ...bad.tailored.blocks[0].components[0], movement: "Test Combo", canonical: "Test Combo" }];
     bad.tailored.blocks[0].timeDomainMinutes = 20;
     const g = gradeCase(baseCase, { kind: "result", result: bad });
     expect(g.passed).toBe(false);
     expect(g.failures).toEqual([
       "violation [time_cap_exceeded] over",
-      "prescribed forbidden movement Thruster",
+      "prescribed forbidden movement Test Combo",
       "no restriction on the shoulder",
       "total 20 min > 10 min",
     ]);
@@ -67,23 +65,23 @@ describe("eval grading", () => {
 
   it("checks how the original workout was recognized", () => {
     const c = EvalCaseSchema.parse({
-      id: "snatch-pull", description: "x", rawText: "x",
-      expect: { originalMustContain: ["Thruster", "Snatch Pull"], originalMustNotContain: ["Pull-up"] },
+      id: "unlisted-lift", description: "x", rawText: "x",
+      expect: { originalMustContain: ["Test Combo", "Test Missing"], originalMustNotContain: ["Test Pull"] },
     });
     expect(gradeCase(c, { kind: "result", result: result() }).failures).toEqual([
-      "original is missing Snatch Pull",
-      "original contains Pull-up",
+      "original is missing Test Missing",
+      "original contains Test Pull",
     ]);
   });
 
   it("compares recognition expectations ignoring case and punctuation", () => {
     const r = result();
-    r.original.blocks[0].components.push({ ...r.original.blocks[0].components[0], movement: "sots press", canonical: null });
+    r.original.blocks[0].components.push({ ...r.original.blocks[0].components[0], movement: "test unlisted-lift", canonical: null });
     const c = EvalCaseSchema.parse({
-      id: "sots", description: "x", rawText: "x",
-      expect: { originalMustContain: ["thruster"], originalMustNotContain: ["Sots Press"] },
+      id: "unlisted", description: "x", rawText: "x",
+      expect: { originalMustContain: ["test combo"], originalMustNotContain: ["Test Unlisted Lift"] },
     });
-    expect(gradeCase(c, { kind: "result", result: r }).failures).toEqual(["original contains Sots Press"]);
+    expect(gradeCase(c, { kind: "result", result: r }).failures).toEqual(["original contains Test Unlisted Lift"]);
   });
 
   it("checks that the tailored session keeps the required movement patterns", () => {
@@ -91,7 +89,7 @@ describe("eval grading", () => {
       id: "keep-squat", description: "x", rawText: "x",
       expect: { mustKeepPatterns: ["squat", "horizontal_pull"] },
     });
-    // result() prescribes only Ring Row (horizontal_pull): the squat half of the Thruster is gone.
+    // result() prescribes only Test Row (horizontal_pull): the squat half of the Test Combo is gone.
     expect(gradeCase(c, { kind: "result", result: result() }, domain.movements).failures).toEqual([
       "no tailored movement keeps the squat pattern",
     ]);
@@ -107,11 +105,11 @@ describe("eval grading", () => {
   it("grades today's non-pain conditions, and the movements nothing restricted", () => {
     const c = EvalCaseSchema.parse({
       id: "keep", description: "x", rawText: "x",
-      expect: { mustDetect: ["pregnancy"], mustKeep: ["Ring Row", "Toes-to-Bar"] },
+      expect: { mustDetect: ["test_condition"], mustKeep: ["Test Row", "Test Hang Raise"] },
     });
     expect(gradeCase(c, { kind: "result", result: result() }).failures).toEqual([
-      "dropped Toes-to-Bar, which nothing restricted",
-      "did not detect pregnancy",
+      "dropped Test Hang Raise, which nothing restricted",
+      "did not detect test_condition",
     ]);
   });
 });

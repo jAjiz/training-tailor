@@ -3,10 +3,10 @@ import { engineStreamResponse } from "@/lib/engine-stream";
 import { readEngineOutcome, readEngineStream, type EngineEvent } from "@/lib/engine-events";
 import { EngineUnsafeError } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
-import { fran, identityResult } from "../fixtures/workouts";
+import { couplet, identityResult } from "../fixtures/workouts";
 
 const result: PipelineResult = {
-  original: fran(), conditions: [], restrictions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  original: couplet(), conditions: [], restrictions: [], unavailableEquipment: [], tailored: identityResult(couplet()),
   findings: [], feedbackHistory: [], model: "fake",
 };
 

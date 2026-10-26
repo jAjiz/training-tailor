@@ -1,21 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { AnalyzeBodySchema, AnalyzeFeedbackBodySchema, RefineBodySchema, SaveBodySchema, TailorBodySchema } from "@/lib/api-schemas";
 import { RestrictionDraftSchema, emptyRequest, type PipelineResult } from "@/lib/engine/types";
-import { fran, identityResult } from "../fixtures/workouts";
+import { couplet, identityResult } from "../fixtures/workouts";
 
 const result: PipelineResult = {
-  original: fran(), conditions: [], restrictions: [], unavailableEquipment: [], tailored: identityResult(fran()),
+  original: couplet(), conditions: [], restrictions: [], unavailableEquipment: [], tailored: identityResult(couplet()),
   findings: [], feedbackHistory: [], model: "fake",
 };
-const pregnancy = { key: "pregnancy", side: null, severity: "moderate", evidence: "embarazada" };
-const snatch = {
-  site: "shoulder", side: null, movements: ["Power Snatch"], mechanisms: [], positions: [], evidence: "no snatch",
-  replacements: [{ blockIndex: 0, componentIndex: 0, replacement: "Power Clean" }],
+const condition = { key: "test_condition", side: null, severity: "moderate", evidence: "embarazada" };
+const hoist = {
+  site: "shoulder", side: null, movements: ["Test Hoist"], mechanisms: [], positions: [], evidence: "no hoist",
+  replacements: [{ blockIndex: 0, componentIndex: 0, replacement: "Test Clean" }],
 };
 
 describe("API bodies", () => {
   it("accepts a pasted workout to analyze", () => {
-    expect(AnalyzeBodySchema.safeParse({ rawText: "Fran", request: emptyRequest() }).success).toBe(true);
+    expect(AnalyzeBodySchema.safeParse({ rawText: "Test Workout", request: emptyRequest() }).success).toBe(true);
   });
 
   it("rejects an empty or oversized paste", () => {
@@ -25,18 +25,18 @@ describe("API bodies", () => {
 
   it("tailors an analyzed session with today's conditions and answered restrictions", () => {
     const body = (restrictions: unknown[]) => ({
-      analysis: { original: fran(), unavailableEquipment: [] }, confirmed: [pregnancy], restrictions, request: emptyRequest(),
+      analysis: { original: couplet(), unavailableEquipment: [] }, confirmed: [condition], restrictions, request: emptyRequest(),
     });
-    expect(TailorBodySchema.safeParse(body([snatch])).success).toBe(true);
+    expect(TailorBodySchema.safeParse(body([hoist])).success).toBe(true);
     // An older client without replacements still validates.
-    const bare = RestrictionDraftSchema.parse(snatch); // zod strips the replacements
+    const bare = RestrictionDraftSchema.parse(hoist); // zod strips the replacements
     expect(TailorBodySchema.parse(body([bare])).restrictions[0].replacements).toEqual([]);
-    expect(TailorBodySchema.safeParse(body([{ ...snatch, site: "toe" }])).success).toBe(false);
-    expect(TailorBodySchema.safeParse(body(Array.from({ length: 21 }, () => snatch))).success).toBe(false);
+    expect(TailorBodySchema.safeParse(body([{ ...hoist, site: "toe" }])).success).toBe(false);
+    expect(TailorBodySchema.safeParse(body(Array.from({ length: 21 }, () => hoist))).success).toBe(false);
   });
 
   it("requires feedback to analyze or refine", () => {
-    const session = { original: fran(), conditions: [], restrictions: [snatch], unavailableEquipment: [] };
+    const session = { original: couplet(), conditions: [], restrictions: [hoist], unavailableEquipment: [] };
     const analyze = (feedback: string) => ({ feedback, session, request: emptyRequest() });
     expect(AnalyzeFeedbackBodySchema.safeParse(analyze("  ")).success).toBe(false);
     expect(AnalyzeFeedbackBodySchema.safeParse(analyze("too easy")).success).toBe(true);

@@ -9,5 +9,11 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    coverage: {
+      provider: "v8",
+      include: ["src/lib/engine/**", "src/lib/domain/**", "src/lib/eval/**"],
+      reporter: ["text-summary"],
+      thresholds: { lines: 80 },
+    },
   },
 });

@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
-import { getDomainData, type DomainData } from "@/lib/domain/repository";
+import { describe, it, expect, vi } from "vitest";
 import { emptyProfile, type AthleteProfile } from "@/lib/engine/types";
 import { normalizeProfile, sanitizeProfile } from "@/lib/profile";
+import { fixtureDomain } from "../fixtures/workouts";
 
-let domain: DomainData;
-beforeAll(async () => { domain = await getDomainData(); });
+const domain = fixtureDomain();
 
 describe("normalizeProfile", () => {
   it("returns an empty profile for a new athlete", () => {
@@ -28,21 +27,21 @@ describe("sanitizeProfile", () => {
     const p = sanitizeProfile({
       ...emptyProfile(),
       injuries: [
-        { key: "knee_pain", side: "left", severity: "mild", notes: null, since: null },
-        { key: "knee_pain", side: "right", severity: "acute", notes: null, since: null },
-        { key: "broken_heart", side: null, severity: "acute", notes: null, since: null },
+        { key: "test_knee", side: "left", severity: "mild", notes: null, since: null },
+        { key: "test_knee", side: "right", severity: "acute", notes: null, since: null },
+        { key: "test_missing", side: null, severity: "acute", notes: null, since: null },
       ],
       benchmarks: [
-        { movement: "T2B", kind: "max_reps", value: 15, unit: "reps", recordedAt: null },
-        { movement: "Zercher Carry", kind: "1rm", value: 100, unit: "kg", recordedAt: null },
+        { movement: "THR", kind: "max_reps", value: 15, unit: "reps", recordedAt: null },
+        { movement: "Test Unlisted Carry", kind: "1rm", value: 100, unit: "kg", recordedAt: null },
       ],
       goals: [
-        { movement: "pull ups", description: "First strict pull-up" },
-        { movement: "Moonwalk", description: "Dance" },
+        { movement: "test pulls", description: "First strict test pull" },
+        { movement: "Test Unlisted Move", description: "Dance" },
       ],
     }, domain);
-    expect(p.injuries.map((i) => [i.key, i.side])).toEqual([["knee_pain", "left"]]);
-    expect(p.benchmarks.map((b) => b.movement)).toEqual(["Toes-to-Bar"]);
-    expect(p.goals.map((g) => g.movement)).toEqual(["Pull-up", null]);
+    expect(p.injuries.map((i) => [i.key, i.side])).toEqual([["test_knee", "left"]]);
+    expect(p.benchmarks.map((b) => b.movement)).toEqual(["Test Hang Raise"]);
+    expect(p.goals.map((g) => g.movement)).toEqual(["Test Pull", null]);
   });
 });

@@ -1,21 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { MovementSchema, ContraindicationSchema, StimulusDefSchema } from "@/lib/domain/types";
 import { matchesContraindication } from "@/lib/domain/assess";
+import { testContraindication, testMovement } from "../helpers/library-builders";
 
 describe("domain schemas", () => {
   it("validates a movement with patterns, positions, site stresses, and equipment", () => {
     const m = MovementSchema.parse({
-      name: "Pull-up",
+      name: "Test Pull",
       patterns: ["vertical_pull"],
       positions: ["hanging"],
       stresses: [
-        { site: "shoulder", mechanisms: ["traction", "kipping"] },
-        { site: "elbow", mechanisms: ["traction", "kipping"] },
-        { site: "biceps", mechanisms: ["eccentric"] },
+        { site: "shoulder", mechanisms: ["traction", "kipping"], load: "high" },
+        { site: "elbow", mechanisms: ["traction", "kipping"], load: "high" },
+        { site: "biceps", mechanisms: ["eccentric"], load: "high" },
       ],
       equipment: ["pullup_bar"],
       skill: "intermediate",
-      substitutes: ["Ring Row", "Banded Pull-up"],
+      substitutes: ["Test Row", "Test Band Pull"],
     });
     expect(m.patterns[0]).toBe("vertical_pull");
     expect(m.positions).toEqual(["hanging"]);
@@ -24,109 +25,69 @@ describe("domain schemas", () => {
   });
 
   it("accepts hold as a movement pattern", () => {
-    const m = MovementSchema.parse({
-      name: "Handstand Hold", patterns: ["hold"], positions: ["inverted"], stresses: [],
-      equipment: [], skill: "advanced", substitutes: [],
-    });
-    expect(m.patterns).toEqual(["hold"]);
+    expect(testMovement("Test Hold", { patterns: ["hold"], positions: ["inverted"] }).patterns).toEqual(["hold"]);
   });
 
   it("accepts partial_inversion as a position", () => {
-    const m = MovementSchema.parse({
-      name: "Wall Climb", patterns: ["vertical_push"], positions: ["partial_inversion"], stresses: [],
-      equipment: [], skill: "intermediate", substitutes: [],
-    });
-    expect(m.positions).toEqual(["partial_inversion"]);
+    expect(testMovement("Test Climb", { positions: ["partial_inversion"] }).positions).toEqual(["partial_inversion"]);
   });
 
   it("accepts lats as a stress site", () => {
-    const m = MovementSchema.parse({
-      name: "Pull-up", patterns: ["vertical_pull"], positions: ["hanging"],
-      stresses: [{ site: "lats", mechanisms: ["kipping", "eccentric"] }],
-      equipment: ["pullup_bar"], skill: "intermediate", substitutes: [],
-    });
+    const m = testMovement("Test Pull", { stresses: [{ site: "lats", mechanisms: ["kipping", "eccentric"], load: "high" }] });
     expect(m.stresses[0].site).toBe("lats");
   });
 
   it("accepts triceps as a stress site", () => {
-    const m = MovementSchema.parse({
-      name: "Ring Dip", patterns: ["vertical_push"], positions: [],
-      stresses: [{ site: "triceps", mechanisms: ["eccentric"] }],
-      equipment: ["rings"], skill: "advanced", substitutes: [],
-    });
+    const m = testMovement("Test Dip", { stresses: [{ site: "triceps", mechanisms: ["eccentric"], load: "high" }] });
     expect(m.stresses[0].site).toBe("triceps");
   });
 
   it("accepts sandbag and d_ball as equipment", () => {
     for (const e of ["sandbag", "d_ball"] as const) {
-      const m = MovementSchema.parse({
-        name: "X", patterns: ["carry"], positions: [], stresses: [],
-        equipment: [e], skill: "beginner", substitutes: [],
-      });
-      expect(m.equipment).toEqual([e]);
+      expect(testMovement("Test Carry", { patterns: ["carry"], equipment: [e] }).equipment).toEqual([e]);
     }
   });
 
   it("accepts rope as equipment", () => {
-    const m = MovementSchema.parse({
-      name: "Rope Climb", patterns: ["vertical_pull"], positions: ["hanging"], stresses: [],
-      equipment: ["rope"], skill: "intermediate", substitutes: [],
-    });
-    expect(m.equipment).toEqual(["rope"]);
+    expect(testMovement("Test Rope Climb", { equipment: ["rope"] }).equipment).toEqual(["rope"]);
   });
 
   it("accepts ski_erg as equipment", () => {
-    const m = MovementSchema.parse({
-      name: "Ski (Erg)", patterns: ["monostructural"], positions: [], stresses: [],
-      equipment: ["ski_erg"], skill: "beginner", substitutes: [],
-    });
-    expect(m.equipment).toEqual(["ski_erg"]);
+    expect(testMovement("Test Erg", { equipment: ["ski_erg"] }).equipment).toEqual(["ski_erg"]);
   });
 
   it("accepts air_bike as equipment", () => {
-    const m = MovementSchema.parse({
-      name: "Air Bike", patterns: ["monostructural"], positions: [], stresses: [],
-      equipment: ["air_bike"], skill: "beginner", substitutes: [],
-    });
-    expect(m.equipment).toEqual(["air_bike"]);
+    expect(testMovement("Test Bike", { equipment: ["air_bike"] }).equipment).toEqual(["air_bike"]);
   });
 
   it("defaults aliases to an empty array when omitted", () => {
     const m = MovementSchema.parse({
-      name: "X", patterns: ["squat"], positions: [], stresses: [],
+      name: "Test X", patterns: ["squat"], positions: [], stresses: [],
       equipment: [], skill: "beginner", substitutes: [],
     });
     expect(m.aliases).toEqual([]);
   });
 
   it("accepts aliases", () => {
-    const m = MovementSchema.parse({
-      name: "Toes-to-Bar", patterns: ["core"], positions: ["hanging"], stresses: [],
-      equipment: ["pullup_bar"], skill: "intermediate", substitutes: [], aliases: ["T2B", "TTB"],
-    });
-    expect(m.aliases).toEqual(["T2B", "TTB"]);
+    expect(testMovement("Test Raise", { aliases: ["TR", "TRX"] }).aliases).toEqual(["TR", "TRX"]);
   });
 
   it("accepts deep_extension as a stress mechanism", () => {
-    const m = MovementSchema.parse({
-      name: "Ring Dip", patterns: ["vertical_push"], positions: [],
-      stresses: [{ site: "shoulder", mechanisms: ["deep_extension"] }],
-      equipment: ["rings"], skill: "intermediate", substitutes: [],
-    });
+    const m = testMovement("Test Dip", { stresses: [{ site: "shoulder", mechanisms: ["deep_extension"], load: "high" }] });
     expect(m.stresses[0].mechanisms).toEqual(["deep_extension"]);
   });
 
   it("requires at least one pattern", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: [], positions: [], stresses: [], equipment: [],
+        name: "Test X", patterns: [], positions: [], stresses: [], equipment: [],
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
   });
 
   it("rejects values outside the pattern, position, site, and mechanism vocabularies", () => {
-    const base = { name: "X", equipment: [], skill: "beginner", substitutes: [] };
+    const base = { name: "Test X", equipment: [], skill: "beginner", substitutes: [] };
     expect(() =>
       MovementSchema.parse({ ...base, patterns: ["yoga"], positions: [], stresses: [] })
     ).toThrow();
@@ -136,13 +97,13 @@ describe("domain schemas", () => {
     expect(() =>
       MovementSchema.parse({
         ...base, patterns: ["squat"], positions: [],
-        stresses: [{ site: "pinky", mechanisms: ["compression"] }],
+        stresses: [{ site: "pinky", mechanisms: ["compression"], load: "high" }],
       })
     ).toThrow();
     expect(() =>
       MovementSchema.parse({
         ...base, patterns: ["squat"], positions: [],
-        stresses: [{ site: "knee", mechanisms: ["vibes"] }],
+        stresses: [{ site: "knee", mechanisms: ["vibes"], load: "high" }],
       })
     ).toThrow();
   });
@@ -150,7 +111,7 @@ describe("domain schemas", () => {
   it("rejects an equipment value outside the vocabulary", () => {
     expect(() =>
       MovementSchema.parse({
-        name: "X", patterns: ["squat"], positions: [], stresses: [], equipment: ["rocket"],
+        name: "Test X", patterns: ["squat"], positions: [], stresses: [], equipment: ["rocket"],
         skill: "beginner", substitutes: [],
       })
     ).toThrow();
@@ -159,45 +120,29 @@ describe("domain schemas", () => {
   it("validates a contraindication and stimulus def", () => {
     expect(
       ContraindicationSchema.parse({
-        key: "shoulder_impingement", label: "Shoulder impingement", kind: "injury",
+        key: "test_shoulder", label: "Test shoulder", kind: "injury",
         rules: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"], tier: "avoid" }],
         positionRules: [], avoidMovements: [], notes: null,
       }).key
-    ).toBe("shoulder_impingement");
+    ).toBe("test_shoulder");
     expect(
-      StimulusDefSchema.parse({ key: "aerobic_capacity", label: "Aerobic capacity", description: "Sustained..." }).key
-    ).toBe("aerobic_capacity");
+      StimulusDefSchema.parse({ key: "test_quality", label: "Test quality", description: "Test description" }).key
+    ).toBe("test_quality");
   });
 });
 
 describe("matchesContraindication", () => {
-  const overheadInjury = ContraindicationSchema.parse({
-    key: "shoulder_impingement", label: "Shoulder impingement", kind: "injury",
+  const overheadInjury = testContraindication("test_overhead", {
     rules: [{ site: "shoulder", mechanisms: ["overhead", "ballistic"], tier: "avoid" }],
-    positionRules: [], avoidMovements: ["Bench Press"], notes: null,
+    avoidMovements: ["Test Listed"],
   });
-  const noInversion = ContraindicationSchema.parse({
-    key: "no_inversion", label: "Unable to go inverted", kind: "limitation",
-    rules: [], positionRules: [{ position: "inverted", tier: "avoid" }], avoidMovements: [], notes: null,
+  const noInversion = testContraindication("test_no_inversion", {
+    kind: "limitation", positionRules: [{ position: "inverted", tier: "avoid" }],
   });
-  const press = MovementSchema.parse({
-    name: "Shoulder Press", patterns: ["vertical_push"], positions: [],
-    stresses: [{ site: "shoulder", mechanisms: ["overhead"] }],
-    equipment: ["barbell"], skill: "beginner", substitutes: [],
-  });
-  const row = MovementSchema.parse({
-    name: "Ring Row", patterns: ["horizontal_pull"], positions: [],
-    stresses: [{ site: "shoulder", mechanisms: ["traction"] }],
-    equipment: ["rings"], skill: "beginner", substitutes: [],
-  });
-  const bench = MovementSchema.parse({
-    name: "Bench Press", patterns: ["horizontal_push"], positions: [], stresses: [],
-    equipment: ["barbell", "bench"], skill: "beginner", substitutes: [],
-  });
-  const handstandPushUp = MovementSchema.parse({
-    name: "Handstand Push-up", patterns: ["vertical_push"], positions: ["inverted"], stresses: [],
-    equipment: [], skill: "advanced", substitutes: [],
-  });
+  const press = testMovement("Test Press", { stresses: [{ site: "shoulder", mechanisms: ["overhead"], load: "high" }] });
+  const row = testMovement("Test Row", { stresses: [{ site: "shoulder", mechanisms: ["traction"], load: "high" }] });
+  const listed = testMovement("Test Listed");
+  const inverted = testMovement("Test Inverted", { positions: ["inverted"] });
 
   it("blocks a movement whose stress overlaps an avoided site+mechanism", () => {
     expect(matchesContraindication(press, overheadInjury)).toBe(true);
@@ -208,11 +153,11 @@ describe("matchesContraindication", () => {
   });
 
   it("blocks a movement listed explicitly in avoidMovements even without stress overlap", () => {
-    expect(matchesContraindication(bench, overheadInjury)).toBe(true);
+    expect(matchesContraindication(listed, overheadInjury)).toBe(true);
   });
 
   it("blocks a movement requiring an avoided position even without stress overlap", () => {
-    expect(matchesContraindication(handstandPushUp, noInversion)).toBe(true);
+    expect(matchesContraindication(inverted, noInversion)).toBe(true);
   });
 
   it("allows a movement that does not require the avoided position", () => {
