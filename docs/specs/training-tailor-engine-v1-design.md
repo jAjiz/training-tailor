@@ -72,7 +72,7 @@ same engine.
 | AI provider | **Gemini** via `@google/genai`, behind a provider-agnostic `LlmProvider` interface (server-side only). Model **pinned** through `GEMINI_MODEL` (default `gemini-3.8-flash`); never a `-latest` alias, so behavior changes only on an explicit upgrade. |
 | Auth | **Google OAuth** via **Better Auth** (`better-auth`, Prisma adapter, database sessions). Route protection in Next 16 `src/proxy.ts` (Node runtime) for pages; API routes check the session themselves and return 401. |
 | User data | **Postgres via Prisma 7** (driver adapter `@prisma/adapter-pg`), schema evolved with **`prisma migrate`** (no `db push` once v2 lands). |
-| Domain data | **Versioned JSON in the repo** (`data/`), Zod-validated at load, accessed only through `src/lib/domain/repository.ts`. Moves to the DB in Phase C behind the same interface. |
+| Domain data | **Versioned JSON in the repo** (`data/`), Zod-validated at load, accessed only through `src/lib/domain/repository.ts`. Moves to the DB in Phase C behind the same interface (done: see `training-tailor-domain-library-design.md`). |
 | Ingestion (v1) | Free-text paste (LLM analysis) only: coaches publish workouts as free text. |
 | Hosting | **Vercel** (Fluid compute; engine routes declare `maxDuration = 120`) + **Neon** Postgres. |
 | Cost control | Per-user daily quota on engine calls (`DAILY_ENGINE_LIMIT`, default 30, counted per kind: analyze, tailor, refine), enforced server-side. |
@@ -258,7 +258,8 @@ Engine pipeline (server-side, provider-agnostic)
 
 ## Domain-grounding assets
 
-All in `data/`, validated by Zod schemas and by integrity tests.
+All in `data/`, validated by Zod schemas and by integrity tests. The library now lives in the
+database (`training-tailor-domain-library-design.md`); the shapes below still hold.
 
 ### Movement (`data/movements.json`)
 
