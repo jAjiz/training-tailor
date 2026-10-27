@@ -2,6 +2,7 @@
   "name": "training-tailor",
   "version": "0.1.0",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "packageManager": "pnpm@11.4.0",
   "scripts": {
     "dev": "next dev",

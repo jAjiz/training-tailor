@@ -58,3 +58,8 @@ Vercel deploys every push to `main` to production. The build command in
 ## Documentation
 
 Design specs and implementation plans live in [`docs/`](docs/).
+
+## License
+
+[Functional Source License 1.1, Apache 2.0 future license](LICENSE.md) (FSL-1.1-ALv2): any
+use except a competing one, and each version becomes Apache 2.0 two years after its release.
