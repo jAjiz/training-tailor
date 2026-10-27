@@ -4,7 +4,7 @@
 // Adding a movement stays a reviewed data change (scripts/migrations + a test), never automatic.
 import "dotenv/config";
 import { prisma } from "@/lib/db";
-import { getDomainData } from "@/lib/domain/repository";
+import { loadDomainDataFromFiles } from "@/lib/domain/files";
 import { createMovementResolver } from "@/lib/domain/resolve";
 import { newlyResolved } from "@/lib/unrecognized";
 
@@ -17,7 +17,7 @@ async function main() {
     return;
   }
 
-  const { movements } = await getDomainData();
+  const { movements } = loadDomainDataFromFiles();
   const pending = await prisma.unrecognizedMovement.findMany({
     where: { status: "pending" },
     orderBy: [{ count: "desc" }, { lastSeenAt: "desc" }],

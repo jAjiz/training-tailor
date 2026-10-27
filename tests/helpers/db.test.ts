@@ -27,4 +27,9 @@ describe("createTestDb", () => {
       .rejects.toMatchObject({ code: "P2002" });
     expect(await tdb.prisma.user.count()).toBe(1); // the connection survives the error
   });
+
+  it("has the domain library tables", async () => {
+    await expect(tdb.prisma.domainLibraryState.upsert({ where: { id: 1 }, create: {}, update: {} })).resolves.toBeDefined();
+    expect(await tdb.prisma.domainLibraryVersion.count()).toBe(0);
+  });
 });

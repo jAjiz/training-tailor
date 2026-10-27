@@ -1,27 +1,32 @@
-import { z } from "zod";
-import movementsJson from "../../../data/movements.json";
-import contraindicationsJson from "../../../data/contraindications.json";
-import taxonomyJson from "../../../data/stimulus-taxonomy.json";
-import conversionsJson from "../../../data/conversions.json";
-import {
-  ContraindicationSchema, ConversionsSchema, MovementSchema, StimulusTaxonomySchema,
-  type Contraindication, type Conversions, type Movement, type StimulusTaxonomy,
-} from "./types";
+import { cache } from "react";
+import { prisma } from "@/lib/db";
+import { libraryOf } from "@/lib/training/services/library";
+import type { DbOrTx } from "@/lib/training/services/types";
+import { loadDomainDataFromFiles } from "./files";
+import { createLibraryReader } from "./library-reader";
+import type { DomainData } from "./library";
 
-export interface DomainData {
-  movements: Movement[];
-  contraindications: Contraindication[];
-  taxonomy: StimulusTaxonomy;
-  conversions: Conversions;
+export type { DomainData };
+
+const readLibrary = createLibraryReader({
+  async publishedId(db) {
+    const state = await db.domainLibraryState.findUnique({ where: { id: 1 } });
+    return state?.publishedVersionId ?? null;
+  },
+  async load(db, id) {
+    const row = await db.domainLibraryVersion.findUniqueOrThrow({ where: { id } });
+    return { number: row.number, library: libraryOf(row) };
+  },
+  fallback: loadDomainDataFromFiles,
+});
+
+// Reads the published pointer once per request; the reader itself keeps the library across requests.
+const readForRequest = cache(readLibrary);
+
+export async function getDomainData(db: DbOrTx = prisma): Promise<DomainData> {
+  return (await readForRequest(db)).domain;
 }
 
-const data: DomainData = {
-  movements: z.array(MovementSchema).parse(movementsJson),
-  contraindications: z.array(ContraindicationSchema).parse(contraindicationsJson),
-  taxonomy: StimulusTaxonomySchema.parse(taxonomyJson),
-  conversions: ConversionsSchema.parse(conversionsJson),
-};
-
-export async function getDomainData(): Promise<DomainData> {
-  return data;
+export async function getPublishedLibraryVersion(db: DbOrTx = prisma): Promise<number | null> {
+  return (await readForRequest(db)).version;
 }

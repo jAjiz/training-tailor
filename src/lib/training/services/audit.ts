@@ -5,7 +5,7 @@ export type AuditEntry = {
   actorUserId: string | null;
   action: string;
   targetUserId?: string | null;
-  targetType?: "coach" | "athlete" | "program" | "user";
+  targetType?: "coach" | "athlete" | "program" | "user" | "library";
   targetId?: string | null;
   targetLabel?: string | null;
   impersonating?: boolean;

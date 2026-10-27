@@ -3,6 +3,7 @@ import { MAX_RESULT_BODY_CHARS, SaveBodySchema } from "@/lib/api-schemas";
 import { prisma } from "@/lib/db";
 import { engineUserId } from "@/lib/engine-access";
 import { jsonError, readJsonBody } from "@/lib/http";
+import { getPublishedLibraryVersion } from "@/lib/domain/repository";
 import { toJson } from "@/lib/json";
 
 // Persists exactly what the athlete reviewed; never re-runs the nondeterministic engine.
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
   const saved = await prisma.tailoredWorkout.create({
     data: {
       userId,
+      libraryVersion: await getPublishedLibraryVersion(),
       original: toJson(result.original),
       request: toJson(request),
       conditions: toJson(result.conditions),

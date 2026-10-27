@@ -5,7 +5,7 @@ import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { getProvider } from "@/lib/ai";
-import { getDomainData } from "@/lib/domain/repository";
+import { loadDomainDataFromFiles } from "@/lib/domain/files";
 import { applyAnswers, conservativeAnswers } from "@/lib/engine/clarify";
 import { EngineUnsafeError, analyzeWorkout, runTailorPipeline } from "@/lib/engine/pipeline";
 import { EvalCaseSchema, gradeCase, resolveCase, type EvalOutcome } from "@/lib/eval/grade";
@@ -14,7 +14,7 @@ async function main() {
   const dir = path.join(process.cwd(), "evals", "cases");
   const only = process.argv[2];
   const provider = getProvider();
-  const domain = await getDomainData();
+  const domain = loadDomainDataFromFiles();
   const rows: unknown[] = [];
   let failed = 0;
 

@@ -103,6 +103,7 @@ model TailoredWorkout {
   findings        Json // Finding[]
   feedbackHistory Json     @default("[]") // string[]
   model           String
+  libraryVersion  Int? // DomainLibraryVersion.number live when saved
   createdAt       DateTime @default(now())
 
   @@index([userId, createdAt])
@@ -348,4 +349,31 @@ model NotificationPreference {
   enabled Boolean
 
   @@id([userId, kind])
+}
+
+model DomainLibraryVersion {
+  id                String    @id @default(cuid())
+  number            Int       @unique
+  basedOnVersionId  String?
+  revision          Int       @default(0)
+  movements         Json
+  contraindications Json
+  taxonomy          Json
+  conversions       Json
+  expectations      Json
+  evalCases         Json
+  renames           Json      @default("[]")
+  note              String?
+  createdByUserId   String?
+  publishedByUserId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  publishedAt       DateTime?
+}
+
+model DomainLibraryState {
+  id                 Int       @id @default(1)
+  publishedVersionId String?
+  draftVersionId     String?
+  lastExportedAt     DateTime?
 }

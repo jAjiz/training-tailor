@@ -19,7 +19,7 @@ export function listMovementPrs(db: Db, athleteId: string, movement: string) {
 }
 
 export async function addPr(db: Db, athlete: { id: string; timezone: string }, input: PrInputValue, now: Date = new Date()) {
-  await assertLiftMovement(input.movement);
+  await assertLiftMovement(db, input.movement);
   if (input.achievedOn > todayIn(athlete.timezone, now)) throw new TrainingError("invalid_request");
   return db.personalRecord.create({
     data: { athleteId: athlete.id, movement: input.movement, kg: input.kg, achievedOn: toDbDate(input.achievedOn) },

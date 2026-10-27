@@ -33,7 +33,7 @@ export async function runAction<T>(name: string, fn: (session: SessionContext | 
     return { ok: true, value };
   } catch (e) {
     unstable_rethrow(e); // let redirect()/notFound() through
-    if (e instanceof TrainingError) return { ok: false, code: e.code };
+    if (e instanceof TrainingError) return e.issues ? { ok: false, code: e.code, issues: e.issues } : { ok: false, code: e.code };
     console.error("[action] failed", e);
     return { ok: false, code: "internal" };
   }

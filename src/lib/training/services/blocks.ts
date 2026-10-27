@@ -74,7 +74,7 @@ export async function listWeekBlocks(db: Db, programId: string, weekIndex: numbe
 export async function createBlock(db: Db, coachId: string, programId: string, dayIndex: number, input: BlockInputValue) {
   const program = await writableProgram(db, coachId, programId);
   assertDay(program, dayIndex);
-  if (input.kind === "barbell") await assertLiftMovement(input.movement);
+  if (input.kind === "barbell") await assertLiftMovement(db, input.movement);
   return db.block.create({
     data: { programId, dayIndex, position: await nextPosition(db, programId, dayIndex), ...columns(input) },
   });
@@ -86,7 +86,7 @@ export async function updateBlock(db: Db, coachId: string, blockId: string, inpu
   const scoringChanged = input.kind !== block.kind
     || (input.kind === "custom" && (input.scoring !== block.scoring || input.timeCapSeconds !== block.timeCapSeconds));
   if (block._count.results > 0 && scoringChanged) throw new TrainingError("scoring_locked");
-  if (input.kind === "barbell") await assertLiftMovement(input.movement);
+  if (input.kind === "barbell") await assertLiftMovement(db, input.movement);
   return db.block.update({ where: { id: blockId }, data: columns(input) });
 }
 

@@ -25,7 +25,7 @@ export function activateConditions(
   for (const ref of merged.values()) {
     const contraindication = byKey.get(ref.key);
     if (!contraindication) {
-      console.warn(`conditions: unknown key "${ref.key}" ignored`);
+      console.error(`conditions: unknown key "${ref.key}" ignored`);
       continue;
     }
     out.active.push({ contraindication, side: ref.side, severity: ref.severity });

@@ -22,16 +22,20 @@ export const ERROR_CODES = [
   "announcement_too_long",
   "push_unavailable",
   "week_empty",
+  "library_conflict",
+  "library_draft_exists",
+  "library_no_draft",
+  "library_invalid",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /** A refusal the user can be told about; its code maps to `errors.<code>` in the messages. */
 export class TrainingError extends Error {
-  constructor(public readonly code: ErrorCode) {
+  constructor(public readonly code: ErrorCode, public readonly issues?: string[]) {
     super(code);
     this.name = "TrainingError";
   }
 }
 
-export type ActionResult<T = void> = { ok: true; value: T } | { ok: false; code: ErrorCode };
+export type ActionResult<T = void> = { ok: true; value: T } | { ok: false; code: ErrorCode; issues?: string[] };
