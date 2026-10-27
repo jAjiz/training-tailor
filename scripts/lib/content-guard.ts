@@ -9,8 +9,6 @@ export function contentViolations(files: readonly string[], sample: LibraryExpor
   for (const file of files) {
     if (file.startsWith("data/") && file.endsWith(".json") && file !== SAMPLE_PATH) {
       out.push(`${file}: library data lives in the database; only ${SAMPLE_PATH} may live in data/.`);
-    } else if (file.startsWith("evals/")) {
-      out.push(`${file}: eval cases live in the library, in the database.`);
     }
   }
   for (const [key, cap] of Object.entries(CAPS) as [keyof typeof CAPS, number][]) {

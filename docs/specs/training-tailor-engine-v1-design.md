@@ -440,8 +440,8 @@ more than one distinct `day`.
 - **Unit tests** (Vitest, deterministic, no network/DB): domain integrity, assessment,
   resolver, conversions, candidates, validator, engine steps with a `FakeProvider`, quota,
   stream helper.
-- **Evaluation harness** (`pnpm eval`, needs `GEMINI_API_KEY`): synthetic/public cases in
-  a local, untracked `evals/cases/` folder run through the real pipeline and graded by the deterministic
+- **Evaluation harness** (`pnpm eval`, needs `GEMINI_API_KEY`): synthetic/public eval cases
+  run through the real pipeline and graded by the deterministic
   validator plus per-case expectations. The harness plays the athlete: a site question is
   answered "everything that loads it" (the conservative answer) and a replacement question
   takes the preselected option. Expectations: (`mustAvoid`, `mustKeep` (original movements
@@ -477,9 +477,3 @@ more than one distinct `day`.
 - Photo/OCR ingestion; native app / offline
 - Persisting every refine attempt (only the feedback history of the saved result is kept)
 - Runtime-editable domain data (Phase C)
-
-## Next steps
-
-1. ~~Revise spec (revision 2).~~
-2. Revise the implementation plan.
-3. Execute it.

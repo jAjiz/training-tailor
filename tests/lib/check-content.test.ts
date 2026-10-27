@@ -22,10 +22,6 @@ describe("contentViolations", () => {
     expect(contentViolations([...CLEAN, "data/movements.json"], sample())).toHaveLength(1);
   });
 
-  it("refuses eval cases in the repository", () => {
-    expect(contentViolations([...CLEAN, "evals/cases/a.json"], sample())).toHaveLength(1);
-  });
-
   it("refuses a sample over its size caps", () => {
     expect(contentViolations(CLEAN, sample(16))).toHaveLength(1);
     const big = sample();
