@@ -1,5 +1,5 @@
 import type { ActiveCondition } from "@/lib/domain/assess";
-import type { DomainData } from "@/lib/domain/repository";
+import type { DomainData, DomainLibrary } from "@/lib/domain/library";
 import {
   ContraindicationSchema, MovementSchema,
   type Contraindication, type Movement, type Severity, type Side, type StimulusDef,
@@ -56,4 +56,20 @@ export function active(
   contraindication: Contraindication, severity: Severity = "moderate", side: Side | null = null,
 ): ActiveCondition {
   return { contraindication, side, severity };
+}
+
+/** The library seeded for service tests: two barbell lifts, one non-lift. */
+export function serviceLibrary(): DomainLibrary {
+  return {
+    ...testDomain({
+      movements: [
+        testMovement("Test Back Squat", { equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
+        testMovement("Test Deadlift", { patterns: ["hinge"], equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
+        testMovement("Test Air Squat", { substitutes: ["Test Back Squat"] }),
+      ],
+      contraindications: [testContraindication("test_injury")],
+    }),
+    expectations: [],
+    evalCases: [],
+  };
 }

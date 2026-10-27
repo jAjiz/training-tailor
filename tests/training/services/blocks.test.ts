@@ -17,7 +17,7 @@ const custom = (title: string, scoring: "for_time" | "amrap" | "none" = "for_tim
   kind: "custom", title, color: "neutral", coachingTips: null, videoUrl: null,
   description: "21-15-9", scoring, timeCapSeconds: null,
 });
-const barbell = (movement = "Back Squat"): BlockInputValue => ({
+const barbell = (movement = "Test Back Squat"): BlockInputValue => ({
   kind: "barbell", title: null, color: "blue", coachingTips: null, videoUrl: null,
   movement, sets: [{ reps: 5, percent: 80, kg: null }], instructions: null,
 });
@@ -35,14 +35,14 @@ describe("blocks", () => {
     const { coach, program } = await setup();
     await createBlock(tdb.prisma, coach.id, program.id, 2, custom("A"));
     await createBlock(tdb.prisma, coach.id, program.id, 2, barbell());
-    expect(await titles(program.id, 2)).toEqual(["0:A", "1:Back Squat"]);
+    expect(await titles(program.id, 2)).toEqual(["0:A", "1:Test Back Squat"]);
   });
 
   it("validates the movement, the day and the owner", async () => {
     const { coach, program } = await setup();
     const other = await makeCoach(tdb.prisma);
     const closed = await makeClosed(tdb.prisma, coach.id, 2);
-    await expect(createBlock(tdb.prisma, coach.id, program.id, 0, barbell("Air Squat"))).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(createBlock(tdb.prisma, coach.id, program.id, 0, barbell("Test Air Squat"))).rejects.toMatchObject({ code: "invalid_request" });
     await expect(createBlock(tdb.prisma, coach.id, program.id, -1, custom("A"))).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(createBlock(tdb.prisma, coach.id, closed.id, 14, custom("A"))).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(createBlock(tdb.prisma, other.id, program.id, 0, custom("A"))).rejects.toMatchObject({ code: "not_found" });
@@ -57,8 +57,8 @@ describe("blocks", () => {
   it("switches a block between kinds and clears the other kind's fields", async () => {
     const { coach, program } = await setup();
     const b = await createBlock(tdb.prisma, coach.id, program.id, 0, custom("A"));
-    const updated = await updateBlock(tdb.prisma, coach.id, b.id, barbell("Deadlift"));
-    expect(updated).toMatchObject({ kind: "barbell", movement: "Deadlift", description: null, scoring: null });
+    const updated = await updateBlock(tdb.prisma, coach.id, b.id, barbell("Test Deadlift"));
+    expect(updated).toMatchObject({ kind: "barbell", movement: "Test Deadlift", description: null, scoring: null });
   });
 
   it("locks the scoring once results exist", async () => {

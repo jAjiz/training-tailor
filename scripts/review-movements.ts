@@ -1,10 +1,10 @@
 // Reviews the unrecognized-movement queue (needs DATABASE_URL).
 // Usage: pnpm review:movements               — close entries the library now resolves, list the pending ones
 //        pnpm review:movements ignore <key>  — mark a non-movement (drill, cue, typo) as ignored
-// Adding a movement stays a reviewed data change (scripts/migrations + a test), never automatic.
+// Adding a movement stays a reviewed library change in /admin/library, never automatic.
 import "dotenv/config";
 import { prisma } from "@/lib/db";
-import { loadDomainDataFromFiles } from "@/lib/domain/files";
+import { getDomainData } from "@/lib/domain/repository";
 import { createMovementResolver } from "@/lib/domain/resolve";
 import { newlyResolved } from "@/lib/unrecognized";
 
@@ -17,7 +17,7 @@ async function main() {
     return;
   }
 
-  const { movements } = loadDomainDataFromFiles();
+  const { movements } = await getDomainData(prisma);
   const pending = await prisma.unrecognizedMovement.findMany({
     where: { status: "pending" },
     orderBy: [{ count: "desc" }, { lastSeenAt: "desc" }],

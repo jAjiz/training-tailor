@@ -2,7 +2,6 @@ import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { libraryOf } from "@/lib/training/services/library";
 import type { DbOrTx } from "@/lib/training/services/types";
-import { loadDomainDataFromFiles } from "./files";
 import { createLibraryReader } from "./library-reader";
 import type { DomainData } from "./library";
 
@@ -17,7 +16,6 @@ const readLibrary = createLibraryReader({
     const row = await db.domainLibraryVersion.findUniqueOrThrow({ where: { id } });
     return { number: row.number, library: libraryOf(row) };
   },
-  fallback: loadDomainDataFromFiles,
 });
 
 // Reads the published pointer once per request; the reader itself keeps the library across requests.
@@ -27,6 +25,6 @@ export async function getDomainData(db: DbOrTx = prisma): Promise<DomainData> {
   return (await readForRequest(db)).domain;
 }
 
-export async function getPublishedLibraryVersion(db: DbOrTx = prisma): Promise<number | null> {
+export async function getPublishedLibraryVersion(db: DbOrTx = prisma): Promise<number> {
   return (await readForRequest(db)).version;
 }

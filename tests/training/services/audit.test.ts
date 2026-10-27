@@ -3,7 +3,7 @@ import { createTestDb, type TestDb } from "../../helpers/db";
 import { listAudit, writeAudit } from "@/lib/training/services/audit";
 
 let tdb: TestDb;
-beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
+beforeAll(async () => { tdb = await createTestDb({ library: false }); }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
 

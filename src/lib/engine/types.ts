@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Equipment, Position, Severity, Side, Site, StressMechanism } from "@/lib/domain/types";
 
-// ---- stimulus (mirrors data/stimulus-taxonomy.json; pinned by a sync test) ----
+// ---- stimulus (mirrors the library taxonomy; checked by validateLibrary) ----
 export const Quality = z.enum(["strength", "power", "skill", "conditioning", "muscular_endurance", "preparation"]);
 export type Quality = z.infer<typeof Quality>;
 export const EnergySystem = z.enum(["phosphagen", "glycolytic", "oxidative"]);

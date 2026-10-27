@@ -14,12 +14,27 @@ Better Auth (Google OAuth) · Gemini · Vitest
 
 ```bash
 pnpm install
-cp .env.example .env   # fill in the values
+cp .env.example .env   # fill in the values, DOMAIN_IMPORT_HOST included
 pnpm db:migrate
 pnpm dev
 ```
 
-The app runs at http://localhost:3000.
+The app runs at http://localhost:3000. Sign in once, then make yourself an admin and publish
+the demo library:
+
+```bash
+pnpm admin:grant <your-email>
+pnpm domain:import data/sample/library.json
+```
+
+## Domain library
+
+The movements, contraindications, stimulus taxonomy, conversions, library expectations and
+eval cases live in the database as versioned snapshots, edited and published from
+`/admin/library`. Nothing is served until a version is published. The repository carries only
+a small demo library, [`data/sample/library.json`](data/sample/library.json), which
+`pnpm domain:import` publishes on the development database (it refuses any host other than
+`DOMAIN_IMPORT_HOST`).
 
 ## Scripts
 
@@ -29,7 +44,10 @@ The app runs at http://localhost:3000.
 | `pnpm build` | Production build |
 | `pnpm lint` | ESLint |
 | `pnpm test` | Unit tests (Vitest) |
-| `pnpm eval` | Evaluation harness for the tailoring engine |
+| `pnpm test:cov` | Unit tests with the coverage threshold |
+| `pnpm eval` | Runs the published library's eval cases through the tailoring engine |
+| `pnpm domain:import <file>` | Imports and publishes a library file on the development database |
+| `pnpm check:content` | Fails if library data is duplicated in the repository outside the sample |
 
 ## Deploy
 

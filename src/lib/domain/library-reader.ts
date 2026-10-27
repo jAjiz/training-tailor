@@ -12,12 +12,11 @@ export class LibraryUnavailableError extends Error {
 export interface LibrarySource {
   publishedId(db: DbOrTx): Promise<string | null>;
   load(db: DbOrTx, id: string): Promise<{ number: number; library: DomainLibrary }>;
-  fallback: (() => DomainData) | null;
 }
 
 export interface LoadedDomain {
   domain: DomainData;
-  version: number | null;
+  version: number;
 }
 
 /**
@@ -29,10 +28,7 @@ export function createLibraryReader(source: LibrarySource): (db: DbOrTx) => Prom
 
   return async (db) => {
     const id = await source.publishedId(db);
-    if (id === null) {
-      if (!source.fallback) throw new LibraryUnavailableError();
-      return { domain: source.fallback(), version: null };
-    }
+    if (id === null) throw new LibraryUnavailableError();
     if (cached?.id === id) return cached.promise;
     const promise = source.load(db, id).then(({ number, library }) => ({ domain: toDomainData(library), version: number }));
     const entry = { id, promise };

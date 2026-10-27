@@ -12,7 +12,7 @@ import {
 } from "@/lib/training/services/admin";
 
 let tdb: TestDb;
-beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
+beforeAll(async () => { tdb = await createTestDb({ library: false }); }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
 
@@ -314,7 +314,7 @@ describe("athlete administration", () => {
     const theirs = await makeResult(db, block.id, other.id);
     await db.fistBump.create({ data: { resultId: theirs.id, athleteId: athlete.id } });
     await db.fistBump.create({ data: { resultId: mine.id, athleteId: other.id } });
-    await db.personalRecord.create({ data: { athleteId: athlete.id, movement: "Back Squat", kg: 100, achievedOn: new Date("2026-10-05T00:00:00Z") } });
+    await db.personalRecord.create({ data: { athleteId: athlete.id, movement: "Test Back Squat", kg: 100, achievedOn: new Date("2026-10-05T00:00:00Z") } });
 
     expect(await previewAthleteDeletion(db, athlete.id)).toEqual({ enrollments: 1, results: 1, prs: 1 });
     await expect(deleteAthlete(db, admin.id, athlete.id, "wrong@test.local")).rejects.toMatchObject({ code: "invalid_request" });

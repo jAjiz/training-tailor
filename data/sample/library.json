@@ -1,0 +1,173 @@
+{
+  "format": 1,
+  "number": null,
+  "exportedAt": "2026-10-27T00:00:00.000Z",
+  "library": {
+    "movements": [
+      {
+        "name": "Air Squat", "patterns": ["squat"], "positions": [],
+        "stresses": [{ "site": "knee", "mechanisms": ["flexion"], "load": "low" }],
+        "equipment": [], "skill": "beginner", "substitutes": ["Box Squat"], "aliases": ["Squat"], "unilateral": null
+      },
+      {
+        "name": "Box Squat", "patterns": ["squat"], "positions": [],
+        "stresses": [{ "site": "knee", "mechanisms": ["flexion"], "load": "low" }],
+        "equipment": ["box"], "skill": "beginner", "substitutes": ["Air Squat"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Goblet Squat", "patterns": ["squat"], "positions": [],
+        "stresses": [{ "site": "knee", "mechanisms": ["deep_flexion"], "load": "high" }],
+        "equipment": ["dumbbell"], "skill": "beginner", "substitutes": ["Air Squat", "Box Squat"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Front Squat", "patterns": ["squat"], "positions": [],
+        "stresses": [
+          { "site": "knee", "mechanisms": ["deep_flexion"], "load": "high" }
+        ],
+        "equipment": ["barbell"], "skill": "intermediate", "substitutes": ["Goblet Squat", "Box Squat"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Thruster", "patterns": ["squat", "vertical_push"], "positions": [],
+        "stresses": [
+          { "site": "knee", "mechanisms": ["deep_flexion"], "load": "high" },
+          { "site": "shoulder", "mechanisms": ["overhead"], "load": "high" }
+        ],
+        "equipment": ["barbell"], "skill": "intermediate", "substitutes": ["Dumbbell Thruster", "Goblet Squat", "Air Squat"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Dumbbell Thruster", "patterns": ["squat", "vertical_push"], "positions": [],
+        "stresses": [
+          { "site": "knee", "mechanisms": ["deep_flexion"], "load": "high" },
+          { "site": "shoulder", "mechanisms": ["overhead"], "load": "high" }
+        ],
+        "equipment": ["dumbbell"], "skill": "beginner", "substitutes": ["Goblet Squat", "Air Squat"], "aliases": ["DB Thruster"], "unilateral": null
+      },
+      {
+        "name": "Deadlift", "patterns": ["hinge"], "positions": [],
+        "stresses": [{ "site": "lumbar", "mechanisms": ["compression"], "load": "high" }],
+        "equipment": ["barbell"], "skill": "intermediate", "substitutes": ["Kettlebell Swing"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Kettlebell Swing", "patterns": ["hinge"], "positions": [],
+        "stresses": [{ "site": "lumbar", "mechanisms": ["ballistic"], "load": "high" }],
+        "equipment": ["kettlebell"], "skill": "beginner", "substitutes": ["Deadlift"], "aliases": ["KB Swing"], "unilateral": null
+      },
+      {
+        "name": "Strict Press", "patterns": ["vertical_push"], "positions": [],
+        "stresses": [{ "site": "shoulder", "mechanisms": ["overhead"], "load": "high" }],
+        "equipment": ["barbell"], "skill": "beginner", "substitutes": ["Push-up"], "aliases": ["Press"], "unilateral": null
+      },
+      {
+        "name": "Push-up", "patterns": ["horizontal_push"], "positions": [],
+        "stresses": [],
+        "equipment": [], "skill": "beginner", "substitutes": ["Strict Press"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Dumbbell Row", "patterns": ["horizontal_pull"], "positions": [],
+        "stresses": [],
+        "equipment": ["dumbbell"], "skill": "beginner", "substitutes": ["Ring Row"], "aliases": ["DB Row"], "unilateral": null
+      },
+      {
+        "name": "Ring Row", "patterns": ["horizontal_pull"], "positions": [],
+        "stresses": [],
+        "equipment": ["rings"], "skill": "beginner", "substitutes": ["Dumbbell Row"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Burpee", "patterns": ["horizontal_push", "jump"], "positions": ["prone"],
+        "stresses": [
+          { "site": "knee", "mechanisms": ["impact"], "load": "low" }
+        ],
+        "equipment": [], "skill": "beginner", "substitutes": ["Push-up"], "aliases": [], "unilateral": null
+      },
+      {
+        "name": "Row (Erg)", "patterns": ["monostructural"], "positions": [],
+        "stresses": [],
+        "equipment": ["rower"], "skill": "beginner", "substitutes": ["Run"], "aliases": ["Row"], "unilateral": null
+      },
+      {
+        "name": "Run", "patterns": ["monostructural"], "positions": [],
+        "stresses": [{ "site": "knee", "mechanisms": ["impact"], "load": "low" }],
+        "equipment": [], "skill": "beginner", "substitutes": ["Row (Erg)"], "aliases": [], "unilateral": null
+      }
+    ],
+    "contraindications": [
+      {
+        "key": "sore_shoulder", "label": "Sore shoulder", "kind": "injury",
+        "rules": [{ "site": "shoulder", "mechanisms": ["overhead"], "tier": "avoid" }],
+        "positionRules": [], "avoidMovements": [], "notes": null
+      },
+      {
+        "key": "sore_knee", "label": "Sore knee", "kind": "injury",
+        "rules": [
+          { "site": "knee", "mechanisms": ["deep_flexion"], "tier": "avoid" },
+          { "site": "knee", "mechanisms": ["impact"], "tier": "caution" }
+        ],
+        "positionRules": [], "avoidMovements": [], "notes": null
+      },
+      {
+        "key": "sore_lower_back", "label": "Sore lower back", "kind": "injury",
+        "rules": [{ "site": "lumbar", "mechanisms": ["compression", "ballistic"], "tier": "avoid" }],
+        "positionRules": [], "avoidMovements": [], "notes": null
+      }
+    ],
+    "taxonomy": {
+      "qualities": [
+        { "key": "strength", "label": "Strength", "description": "Moving heavy loads for few reps." },
+        { "key": "power", "label": "Power", "description": "Moving loads fast." },
+        { "key": "skill", "label": "Skill", "description": "Practising a technical movement." },
+        { "key": "conditioning", "label": "Conditioning", "description": "Sustained mixed work for time or rounds." },
+        { "key": "muscular_endurance", "label": "Muscular endurance", "description": "Many reps at a light or moderate load." },
+        { "key": "preparation", "label": "Preparation", "description": "Warm-up and mobility." }
+      ],
+      "energySystems": [
+        { "key": "phosphagen", "label": "Phosphagen", "description": "Efforts under about 15 seconds." },
+        { "key": "glycolytic", "label": "Glycolytic", "description": "Hard efforts of roughly 30 seconds to a few minutes." },
+        { "key": "oxidative", "label": "Oxidative", "description": "Longer, steady efforts." }
+      ],
+      "loadIntensities": [
+        { "key": "light", "label": "Light", "description": "Easy to move for many reps." },
+        { "key": "moderate", "label": "Moderate", "description": "Challenging but repeatable." },
+        { "key": "heavy", "label": "Heavy", "description": "Close to a maximal effort." }
+      ]
+    },
+    "conversions": {
+      "effort": [
+        {
+          "key": "row-run", "note": "Rowing and running distances of similar effort.",
+          "equivalents": [
+            { "movement": "Row (Erg)", "unit": "meters", "male": 500, "female": 500 },
+            { "movement": "Run", "unit": "meters", "male": 400, "female": 400 }
+          ]
+        }
+      ],
+      "implementLoad": [
+        {
+          "from": "barbell", "to": "dumbbell", "perHandFraction": { "low": 0.3, "high": 0.4 },
+          "note": "Each dumbbell weighs about a third of the barbell load."
+        }
+      ]
+    },
+    "expectations": [
+      { "kind": "verdict", "contraindication": "sore_shoulder", "movements": ["Thruster", "Strict Press"], "is": "avoid" },
+      { "kind": "substitutes", "movement": "Thruster", "startsWith": ["Dumbbell Thruster"] },
+      {
+        "kind": "candidates", "movement": "Thruster", "conditions": [{ "key": "sore_shoulder" }],
+        "first": "Goblet Squat", "note": "keeps the squat, drops the overhead press"
+      }
+    ],
+    "evalCases": [
+      {
+        "id": "sample-front-squat-sore-knee",
+        "description": "Front squats with a sore knee keep a squat without the deep knee bend",
+        "rawText": "AMRAP 12 min\n10 Front Squats 60/40 kg\n12 Burpees\n200 m Run",
+        "profile": {
+          "injuries": [{ "key": "sore_knee", "side": null, "severity": "moderate", "notes": null, "since": null }]
+        },
+        "expect": {
+          "mustAvoid": ["Front Squat", "Goblet Squat", "Thruster"],
+          "mustKeepPatterns": ["squat"]
+        }
+      }
+    ]
+  }
+}

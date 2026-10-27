@@ -1,18 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { LibraryUnavailableError, createLibraryReader, type LibrarySource } from "@/lib/domain/library-reader";
-import { emptyLibrary, toDomainData } from "@/lib/domain/library";
+import { emptyLibrary } from "@/lib/domain/library";
 import type { DbOrTx } from "@/lib/training/services/types";
 
 const db = {} as DbOrTx;
 
-function fakeSource(ids: Array<string | null>, overrides: Partial<LibrarySource> = {}) {
+function fakeSource(ids: Array<string | null>) {
   let call = 0;
   const load = vi.fn(async (_db: DbOrTx, id: string) => ({ number: Number(id.slice(1)), library: emptyLibrary() }));
   const source: LibrarySource = {
     publishedId: async () => ids[Math.min(call++, ids.length - 1)],
     load,
-    fallback: null,
-    ...overrides,
   };
   return { source, load };
 }
@@ -52,16 +50,9 @@ describe("createLibraryReader", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to the files when nothing is published", async () => {
-    const domain = toDomainData(emptyLibrary());
-    const { source, load } = fakeSource([null], { fallback: () => domain });
-    const read = createLibraryReader(source);
-    expect(await read(db)).toEqual({ domain, version: null });
-    expect(load).not.toHaveBeenCalled();
-  });
-
-  it("throws LibraryUnavailableError without a fallback", async () => {
-    const { source } = fakeSource([null]);
+  it("throws LibraryUnavailableError when nothing is published", async () => {
+    const { source, load } = fakeSource([null]);
     await expect(createLibraryReader(source)(db)).rejects.toBeInstanceOf(LibraryUnavailableError);
+    expect(load).not.toHaveBeenCalled();
   });
 });

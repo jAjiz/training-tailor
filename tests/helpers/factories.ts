@@ -69,7 +69,7 @@ export async function makeCustomBlock(
 }
 
 export async function makeBarbellBlock(
-  db: PrismaClient, programId: string, dayIndex: number, movement = "Back Squat",
+  db: PrismaClient, programId: string, dayIndex: number, movement = "Test Back Squat",
   sets: { reps: number; percent: number | null; kg: number | null }[] = [{ reps: 5, percent: 80, kg: null }],
 ) {
   return db.block.create({

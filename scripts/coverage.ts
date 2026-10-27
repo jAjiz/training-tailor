@@ -1,10 +1,11 @@
-// Measures how much of a real corpus resolves to the movement library (needs GEMINI_API_KEY).
+// Measures how much of a real corpus resolves to the published movement library (needs DATABASE_URL and GEMINI_API_KEY).
 // Put .txt/.md files under data/corpus/ (gitignored). Usage: pnpm coverage
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { getProvider } from "@/lib/ai";
-import { loadDomainDataFromFiles } from "@/lib/domain/files";
+import { prisma } from "@/lib/db";
+import { getDomainData } from "@/lib/domain/repository";
 import { normalizeMovementName } from "@/lib/domain/resolve";
 import { analyzePaste } from "@/lib/engine/analyze";
 
@@ -20,7 +21,8 @@ async function main() {
   const corpus = files(path.join(process.cwd(), "data", "corpus"));
   if (corpus.length === 0) throw new Error("No .txt/.md files under data/corpus/");
   const provider = getProvider();
-  const domain = loadDomainDataFromFiles();
+  const domain = await getDomainData(prisma);
+  await prisma.$disconnect();
   const unresolved = new Map<string, { example: string; count: number }>();
   let total = 0;
   let resolved = 0;

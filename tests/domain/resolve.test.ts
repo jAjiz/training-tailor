@@ -19,7 +19,9 @@ describe("createMovementResolver", () => {
   const hspu = testMovement("Test Strict Handstand Push-up");
   const muscleUp = testMovement("Test Ring Muscle-up");
   const bar = testMovement("Test Toes-to-Bar");
-  const resolve = createMovementResolver([goblet, press, dbPress, row, hold, hspu, muscleUp, bar]);
+  const pullUp = testMovement("Test Pull-up", { aliases: ["Test PU"] });
+  const dbOhs = testMovement("Test Dumbbell Overhead Squat");
+  const resolve = createMovementResolver([goblet, press, dbPress, row, hold, hspu, muscleUp, bar, pullUp, dbOhs]);
 
   it("resolves a canonical name and an alias to its own movement", () => {
     expect(resolve("Test Kettlebell Goblet Squat")).toBe(goblet);
@@ -31,6 +33,7 @@ describe("createMovementResolver", () => {
       expect(resolve(n), n).toBe(goblet);
     }
     expect(resolve("Test Press Push")).toBe(press);
+    expect(resolve("Ups Pull Test")).toBe(pullUp);
   });
 
   it("expands common abbreviations before comparing", () => {
@@ -39,6 +42,7 @@ describe("createMovementResolver", () => {
     expect(resolve("Test Hold HS")).toBe(hold);
     expect(resolve("Test Strict HS Push-ups")).toBe(hspu);
     expect(resolve("Test Ring MU")).toBe(muscleUp);
+    expect(resolve("Test DB OHS")).toBe(dbOhs);
   });
 
   it("never matches on a subset of the words", () => {
@@ -52,6 +56,7 @@ describe("createMovementResolver", () => {
     expect(resolve("  test toes to bars ")).toBe(bar);
     expect(resolve("Test Handstand Holds")).toBe(hold);
     expect(resolve("test toes-to-bars")).toBe(bar);
+    expect(resolve("Test PUs")).toBe(pullUp);
   });
 
   it("returns null for an unknown movement", () => {

@@ -30,6 +30,7 @@ jobs:
 
       - run: pnpm exec tsc --noEmit
       - run: pnpm lint
+      - run: pnpm check:content
       # Deterministic: service tests run on in-memory PGlite, no network or keys.
       - run: pnpm test
       - run: pnpm build

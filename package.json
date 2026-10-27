@@ -21,7 +21,8 @@
     "admin:grant": "tsx scripts/grant-admin.ts",
     "coach:approve": "tsx scripts/approve-coach.ts",
     "push:keys": "tsx scripts/push-keys.ts",
-    "domain:import": "tsx scripts/domain-import.ts"
+    "domain:import": "tsx scripts/domain-import.ts",
+    "check:content": "tsx scripts/check-content.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

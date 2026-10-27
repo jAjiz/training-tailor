@@ -4,6 +4,7 @@ import {
   DomainLibrarySchema, LibraryExportSchema, MovementRenameSchema, emptyLibrary,
   type DomainLibrary, type LibraryDocument, type LibraryExport, type LibraryExpectation, type MovementRename,
 } from "@/lib/domain/library";
+import { LibraryUnavailableError } from "@/lib/domain/library-reader";
 import { ContraindicationSchema, MovementSchema } from "@/lib/domain/types";
 import { toJson } from "@/lib/json";
 import { TrainingError } from "../errors";
@@ -155,13 +156,24 @@ async function withNewDraft(
   });
 }
 
-/** The published library, or an empty one while nothing is published. */
-export async function liveLibrary(tx: DbOrTx): Promise<DomainLibrary> {
+async function publishedLibrary(tx: DbOrTx): Promise<DomainLibrary | null> {
   const state = await tx.domainLibraryState.findUnique({ where: { id: 1 } });
   const live = state?.publishedVersionId
     ? await tx.domainLibraryVersion.findUnique({ where: { id: state.publishedVersionId } })
     : null;
-  return live ? libraryOf(live) : emptyLibrary();
+  return live ? libraryOf(live) : null;
+}
+
+/** The published library, or an empty one while nothing is published. */
+export async function liveLibrary(tx: DbOrTx): Promise<DomainLibrary> {
+  return (await publishedLibrary(tx)) ?? emptyLibrary();
+}
+
+/** The published library, with its expectations and eval cases; throws while nothing is published. */
+export async function readPublishedLibrary(tx: DbOrTx): Promise<DomainLibrary> {
+  const library = await publishedLibrary(tx);
+  if (!library) throw new LibraryUnavailableError();
+  return library;
 }
 
 export async function openDraft(db: Db, adminId: string): Promise<Draft> {

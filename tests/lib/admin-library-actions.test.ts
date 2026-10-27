@@ -23,7 +23,7 @@ import {
 } from "@/app/admin/library/actions";
 
 let tdb: TestDb;
-beforeAll(async () => { tdb = await createTestDb(); db.current = tdb.prisma; }, 60_000);
+beforeAll(async () => { tdb = await createTestDb({ library: false }); db.current = tdb.prisma; }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => {
   await tdb.reset();

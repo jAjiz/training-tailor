@@ -1,25 +1,27 @@
-// Runs every evals/cases/*.json through the real pipeline (needs GEMINI_API_KEY).
+// Runs every eval case of the published library through the real pipeline (needs DATABASE_URL and GEMINI_API_KEY).
 // Usage: pnpm eval            — all cases
 //        pnpm eval <caseId>   — one case
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { getProvider } from "@/lib/ai";
-import { loadDomainDataFromFiles } from "@/lib/domain/files";
+import { prisma } from "@/lib/db";
+import { toDomainData } from "@/lib/domain/library";
 import { applyAnswers, conservativeAnswers } from "@/lib/engine/clarify";
 import { EngineUnsafeError, analyzeWorkout, runTailorPipeline } from "@/lib/engine/pipeline";
-import { EvalCaseSchema, gradeCase, resolveCase, type EvalOutcome } from "@/lib/eval/grade";
+import { gradeCase, resolveCase, type EvalOutcome } from "@/lib/eval/grade";
+import { readPublishedLibrary } from "@/lib/training/services/library";
 
 async function main() {
-  const dir = path.join(process.cwd(), "evals", "cases");
   const only = process.argv[2];
   const provider = getProvider();
-  const domain = loadDomainDataFromFiles();
+  const library = await readPublishedLibrary(prisma);
+  await prisma.$disconnect();
+  const domain = toDomainData(library);
   const rows: unknown[] = [];
   let failed = 0;
 
-  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
-    const c = EvalCaseSchema.parse(JSON.parse(fs.readFileSync(path.join(dir, file), "utf8")));
+  for (const c of library.evalCases) {
     if (only && c.id !== only) continue;
     const started = Date.now();
     let outcome: EvalOutcome;

@@ -28,8 +28,10 @@ describe("createTestDb", () => {
     expect(await tdb.prisma.user.count()).toBe(1); // the connection survives the error
   });
 
-  it("has the domain library tables", async () => {
-    await expect(tdb.prisma.domainLibraryState.upsert({ where: { id: 1 }, create: {}, update: {} })).resolves.toBeDefined();
-    expect(await tdb.prisma.domainLibraryVersion.count()).toBe(0);
+  it("publishes the service library on every reset", async () => {
+    expect(await tdb.prisma.domainLibraryVersion.count()).toBe(1);
+    const state = await tdb.prisma.domainLibraryState.findUniqueOrThrow({ where: { id: 1 } });
+    expect(state.publishedVersionId).not.toBeNull();
+    expect(state.draftVersionId).toBeNull();
   });
 });
