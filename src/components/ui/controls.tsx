@@ -1,7 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { cx } from "./cx";
 
-/** Filled control (Strivee's Workout Log): no visible border until focus. No width: Field stretches it. */
+/** Filled control: no visible border until focus. No width: Field stretches it. */
 export function controlClasses(compact = false): string {
   return cx(
     "rounded-xl bg-surface-2 text-foreground outline-none ring-1 ring-transparent transition placeholder:text-muted focus:ring-foreground disabled:opacity-50",

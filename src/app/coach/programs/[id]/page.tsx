@@ -9,7 +9,7 @@ import { formatDay, formatDayRange } from "@/lib/format";
 import { liftCatalog } from "@/lib/training/barbell";
 import { addDays, daysBetween, fromDbDate, todayIn, weekIndexOf } from "@/lib/training/dates";
 import type { BarbellSet } from "@/lib/training/schemas";
-import { listWeekBlocks } from "@/lib/training/services/blocks";
+import { listWeekBlocks, weeksWithBlocks } from "@/lib/training/services/blocks";
 import { getOwnedProgram, publishedWeeks } from "@/lib/training/services/programs";
 import { ProgramHeader } from "./ProgramHeader";
 import type { PlannerBlockData, PlannerContext } from "./planner/types";
@@ -43,8 +43,9 @@ export default async function PlannerPage({ params, searchParams }: Params) {
     ? requested
     : startDate ? weekIndexOf(daysBetween(startDate, todayIn("UTC"))) : 0);
 
-  const [blocks, weeks, domain] = await Promise.all([
+  const [blocks, filledWeeks, weeks, domain] = await Promise.all([
     listWeekBlocks(prisma, program.id, weekIndex),
+    weeksWithBlocks(prisma, program.id),
     publishedWeeks(prisma, program.id),
     getDomainData(),
   ]);
@@ -66,6 +67,10 @@ export default async function PlannerPage({ params, searchParams }: Params) {
     ? formatDayRange(addDays(startDate, weekIndex * 7), addDays(startDate, weekIndex * 7 + 6), locale)
     : t("planner.week", { week: weekIndex + 1 });
   const published = continuous ? weeks.has(weekIndex) : program.publishedAt !== null;
+  // Publishing a closed program publishes all its weeks at once.
+  const allPublished = continuous
+    ? [...weeks]
+    : program.publishedAt !== null ? Array.from({ length: (maxWeek as number) + 1 }, (_, w) => w) : [];
 
   return (
     <section className="flex flex-col gap-6">
@@ -81,7 +86,8 @@ export default async function PlannerPage({ params, searchParams }: Params) {
           </h2>
           <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
         </div>
-        <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} empty={blocks.length === 0} />
+        <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} empty={blocks.length === 0}
+          publishedWeeks={allPublished} filledWeeks={filledWeeks} />
       </div>
       <WeekBoard
         days={Array.from({ length: 7 }, (_, d) => weekIndex * 7 + d).map((dayIndex) => ({ dayIndex, label: dayLabel(dayIndex) }))}

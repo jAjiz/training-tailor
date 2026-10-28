@@ -33,6 +33,16 @@ describe("Modal", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("cannot be dismissed while busy", () => {
+    const onClose = vi.fn();
+    render(<Modal title="Edit block" closeLabel="Close" onClose={onClose} busy><p>Body</p></Modal>);
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+    fireEvent.pointerDown(screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("dialog"));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("closes on a backdrop click but not on a click inside", () => {
     const onClose = vi.fn();
     open(onClose);

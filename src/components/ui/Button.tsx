@@ -11,7 +11,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
   secondary: "bg-surface-2 text-foreground hover:brightness-95 dark:hover:brightness-125",
   ghost: "text-foreground hover:bg-surface-2",
   danger: "text-danger ring-1 ring-inset ring-danger/40 hover:bg-danger/10",
-  // Inside an element with data-color: the block's ink on its fill (Strivee's "Coaching Tips" / "Log Result").
+  // Inside an element with data-color: the block's ink on its fill (e.g. "Coaching Tips" / "Log Result").
   tinted: "bg-(--block-fill) text-(--block-ink) hover:brightness-95 dark:hover:brightness-125",
 };
 const SIZES: Record<ButtonSize, string> = { sm: "h-9 px-3 text-sm", md: "h-12 px-5 text-[15px]" };

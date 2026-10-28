@@ -4,7 +4,7 @@ import { TrainingError } from "../errors";
 import type { BlockInputValue } from "../schemas";
 import { assertLiftMovement } from "./catalog";
 import { assertWritable, getOwnedProgram } from "./programs";
-import type { Db } from "./types";
+import type { Db, DbOrTx } from "./types";
 
 type ProgramRange = { kind: string; weeks: number | null };
 
@@ -53,7 +53,7 @@ async function writableProgram(db: Db, coachId: string, programId: string) {
   return program;
 }
 
-const nextPosition = (db: Db, programId: string, dayIndex: number) => db.block.count({ where: { programId, dayIndex } });
+const nextPosition = (db: DbOrTx, programId: string, dayIndex: number) => db.block.count({ where: { programId, dayIndex } });
 
 /** `_count.results` counts every result (scoring lock, delete warning); `visibleResultCount` skips disabled athletes (badge). */
 export async function listWeekBlocks(db: Db, programId: string, weekIndex: number) {
@@ -136,17 +136,51 @@ export async function duplicateBlock(db: Db, coachId: string, blockId: string, t
   });
 }
 
-/** Appends `blocks` (already ordered) to the day `toDay(block)`, after what is there. */
-async function appendCopies(db: Db, programId: string, blocks: Block[], toDay: (b: Block) => number) {
+/** Appends `entries` (already ordered) to their days, after what is there, in one statement: all or nothing. */
+async function appendAll(db: DbOrTx, programId: string, entries: { dayIndex: number; columns: ReturnType<typeof copyOf> }[]) {
   const positions = new Map<number, number>();
   const data = [];
-  for (const b of blocks) {
-    const day = toDay(b);
-    const position = positions.get(day) ?? (await nextPosition(db, programId, day));
-    positions.set(day, position + 1);
-    data.push({ programId, dayIndex: day, position, ...copyOf(b) });
+  for (const { dayIndex, columns } of entries) {
+    const position = positions.get(dayIndex) ?? (await nextPosition(db, programId, dayIndex));
+    positions.set(dayIndex, position + 1);
+    data.push({ programId, dayIndex, position, ...columns });
   }
   if (data.length) await db.block.createMany({ data });
+}
+
+const appendCopies = (db: Db, programId: string, blocks: Block[], toDay: (b: Block) => number) =>
+  appendAll(db, programId, blocks.map((b) => ({ dayIndex: toDay(b), columns: copyOf(b) })));
+
+export type ImportItem = { dayIndex: number; block: BlockInputValue };
+export type ImportMode = "append" | "replace";
+
+/**
+ * Creates the selected translated blocks in one transaction; returns how many. "append" puts them after
+ * what is already in their days. "replace" first deletes every block of each week that receives one
+ * (results go with them, as with deleteBlock); weeks receiving nothing are not touched.
+ */
+export async function importBlocks(db: Db, coachId: string, programId: string, items: ImportItem[], mode: ImportMode = "append") {
+  const program = await writableProgram(db, coachId, programId);
+  for (const { dayIndex } of items) assertDay(program, dayIndex);
+  const lifts = new Set(items.flatMap(({ block }) => (block.kind === "barbell" ? [block.movement] : [])));
+  for (const movement of lifts) await assertLiftMovement(db, movement);
+  await db.$transaction(async (tx) => {
+    if (mode === "replace") {
+      const weeks = [...new Set(items.map(({ dayIndex }) => Math.floor(dayIndex / 7)))];
+      const where = { programId, OR: weeks.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } })) };
+      const results = await tx.result.findMany({ where: { block: where }, select: { id: true } });
+      await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: results.map((r) => r.id) } } });
+      await tx.block.deleteMany({ where });
+    }
+    await appendAll(tx, programId, items.map(({ dayIndex, block }) => ({ dayIndex, columns: columns(block) })));
+  });
+  return items.length;
+}
+
+/** Week indexes that hold at least one block. */
+export async function weeksWithBlocks(db: Db, programId: string): Promise<number[]> {
+  const days = await db.block.findMany({ where: { programId }, distinct: ["dayIndex"], select: { dayIndex: true } });
+  return [...new Set(days.map((d) => Math.floor(d.dayIndex / 7)))].sort((a, b) => a - b);
 }
 
 export async function duplicateDay(db: Db, coachId: string, programId: string, fromDay: number, toDay: number) {

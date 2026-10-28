@@ -10,7 +10,7 @@
 
 Coaches sell or share training programs (daily programming for a box, or closed cycles of a
 few weeks), and athletes need one place to follow them: see today's session, log what they
-did, see how others did, and keep their maxes. Strivee and TrainHeroic are the references.
+did, see how others did, and keep their maxes. Existing coaching apps are the references.
 Training Tailor needs this base product before the AI tailoring can be offered as an extra
 (and later monetized).
 

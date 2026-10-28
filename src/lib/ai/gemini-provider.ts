@@ -2,6 +2,14 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { parseStructured, StructuredOutputError, type GenerateStructuredArgs, type LlmProvider } from "./provider";
 
+/** The `contents` for generateContent: attachments as inline data first, then the prompt text. */
+export function geminiContents(args: GenerateStructuredArgs<unknown>) {
+  const files = (args.attachments ?? []).map((a) => ({
+    inlineData: { mimeType: a.mimeType, data: Buffer.from(a.data).toString("base64") },
+  }));
+  return [{ role: "user", parts: [...files, { text: args.prompt }] }];
+}
+
 // The only file that imports the Gemini SDK.
 export class GeminiProvider implements LlmProvider {
   private readonly client: GoogleGenAI;
@@ -18,7 +26,7 @@ export class GeminiProvider implements LlmProvider {
   async generateStructured<T>(args: GenerateStructuredArgs<T>): Promise<T> {
     const response = await this.client.models.generateContent({
       model: this.model,
-      contents: [{ role: "user", parts: [{ text: args.prompt }] }],
+      contents: geminiContents(args),
       config: {
         systemInstruction: args.systemPrompt,
         responseMimeType: "application/json",

@@ -26,6 +26,12 @@ export const ERROR_CODES = [
   "library_draft_exists",
   "library_no_draft",
   "library_invalid",
+  "import_pdf_invalid",
+  "import_pdf_too_large",
+  "import_unavailable",
+  "import_quota",
+  "import_empty",
+  "import_failed",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

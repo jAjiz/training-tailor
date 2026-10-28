@@ -1,13 +1,13 @@
-# Training Tailor — UI Restyle Design (Strivee look, light and dark)
+# Training Tailor — UI Restyle Design (light and dark)
 
 > Revision 1 (2026-10-08). Restyles the screens shipped in coaching phase 1 so the app looks and
-> feels like Strivee (references: `C:\Dev\strivee images`, not in the repo). Coaching phase 2
+> feels like the reference screenshots (not in the repo). Coaching phase 2
 > (results, leaderboard, PRs) starts after this and is built directly in the new style.
 
 ## Problem
 
 Phase 1 shipped working screens with placeholder styling: plain borders, underlined links,
-light-only. Athletes and coaches compare the product with Strivee, whose UI is clean, card-based
+light-only. Athletes and coaches compare the product with the apps they already use, whose UI is clean, card-based
 and follows the system theme. The restyle closes that gap before phase 2 adds more screens, so
 those are not built twice.
 
@@ -119,7 +119,7 @@ comes in through props, so they are testable without providers.
 - **Athlete layout**: `background` page, `max-w-md` column, bottom padding clears the tab bar.
   The day view puts `AthleteHeader` outside the padded column so it spans the full width.
 - **`CoachNav`** (replaces the header in `coach/layout.tsx`): `surface` bar with a hairline; brand
-  at the left, section links as pills (active one `inverted`, like Strivee's black "Planning"),
+  at the left, section links as pills (active one `inverted`),
   avatar (`session.user.image`, initials fallback) with a `Menu` holding sign out at the right.
 - **Coach layout**: `background` page, `max-w-7xl` content.
 
@@ -190,7 +190,7 @@ The existing suite (390 tests), `tsc`, lint and build must stay green; CI enforc
 **Browser verification**: the seven phase 1 flows, each in light and dark (`colorScheme`
 emulation) and at 375 px and desktop width; planner drag and drop with mouse and keyboard; the
 block editor operated with the keyboard only (open, switch kind, save, Esc). Screenshots of every
-screen in both themes go to the user next to the matching Strivee reference.
+screen in both themes go to the user next to the matching reference screenshot.
 
 ## 6. Delivery
 

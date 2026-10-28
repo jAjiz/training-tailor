@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makeResult } from "../../helpers/factories";
 import {
-  createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, listWeekBlocks, moveBlock, updateBlock,
+  createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, listWeekBlocks, moveBlock, updateBlock,
+  weeksWithBlocks,
 } from "@/lib/training/services/blocks";
 import { enroll } from "../../helpers/factories";
 import { archiveProgram } from "@/lib/training/services/programs";
@@ -162,5 +163,80 @@ describe("deleteBlock fist-bump cleanup", () => {
     }
     await deleteBlock(tdb.prisma, coach.id, a.id);
     expect((await tdb.prisma.notification.findMany()).map((n) => n.entityId)).toEqual([rb.id]);
+  });
+});
+
+describe("importBlocks", () => {
+  it("imports blocks after the existing ones, in order, across days", async () => {
+    const { coach, program } = await setup();
+    await createBlock(tdb.prisma, coach.id, program.id, 2, custom("A"));
+    const count = await importBlocks(tdb.prisma, coach.id, program.id, [
+      { dayIndex: 2, block: custom("B") }, { dayIndex: 2, block: custom("C") }, { dayIndex: 9, block: custom("D") },
+    ]);
+    expect(count).toBe(3);
+    expect(await titles(program.id, 2)).toEqual(["0:A", "1:B", "2:C"]);
+    expect(await titles(program.id, 9)).toEqual(["0:D"]);
+  });
+
+  it("creates nothing when any item is invalid", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const closed = await makeClosed(tdb.prisma, coach.id, 2);
+    await expect(importBlocks(tdb.prisma, coach.id, closed.id, [
+      { dayIndex: 0, block: custom("A") }, { dayIndex: 14, block: custom("B") },
+    ])).rejects.toMatchObject({ code: "day_out_of_range" });
+    expect(await tdb.prisma.block.count({ where: { programId: closed.id } })).toBe(0);
+  });
+
+  it("creates nothing when a barbell movement is not a lift", async () => {
+    const { coach, program } = await setup();
+    await expect(importBlocks(tdb.prisma, coach.id, program.id, [
+      { dayIndex: 0, block: custom("A") }, { dayIndex: 1, block: barbell("Test Air Squat") },
+    ])).rejects.toMatchObject({ code: "invalid_request" });
+    expect(await tdb.prisma.block.count({ where: { programId: program.id } })).toBe(0);
+  });
+
+  it("replaces only the weeks that receive blocks, with their results and fist bumps", async () => {
+    const { coach, program } = await setup();
+    const ana = await makeAthlete(tdb.prisma);
+    await enroll(tdb.prisma, program.id, ana.id);
+    const old = await makeCustomBlock(tdb.prisma, program.id, 1);
+    await makeCustomBlock(tdb.prisma, program.id, 6);
+    await createBlock(tdb.prisma, coach.id, program.id, 7, custom("Kept"));
+    const result = await makeResult(tdb.prisma, old.id, ana.id);
+    await tdb.prisma.notification.create({
+      data: { userId: ana.userId, audience: "athlete", kind: "fist_bump", entityId: result.id, groupKey: `fist_bump:${result.id}`, data: {} },
+    });
+    await importBlocks(tdb.prisma, coach.id, program.id, [{ dayIndex: 1, block: custom("A") }, { dayIndex: 1, block: custom("B") }], "replace");
+    expect(await titles(program.id, 1)).toEqual(["0:A", "1:B"]);
+    expect(await tdb.prisma.block.count({ where: { programId: program.id, dayIndex: 6 } })).toBe(0);
+    expect(await titles(program.id, 7)).toEqual(["0:Kept"]);
+    expect(await tdb.prisma.result.count()).toBe(0);
+    expect(await tdb.prisma.notification.count({ where: { kind: "fist_bump" } })).toBe(0);
+  });
+
+  it("deletes nothing when a replace fails", async () => {
+    const { coach, program } = await setup();
+    await createBlock(tdb.prisma, coach.id, program.id, 0, custom("Old"));
+    await expect(importBlocks(tdb.prisma, coach.id, program.id, [
+      { dayIndex: 0, block: custom("A") }, { dayIndex: 1, block: barbell("Test Air Squat") },
+    ], "replace")).rejects.toMatchObject({ code: "invalid_request" });
+    expect(await titles(program.id, 0)).toEqual(["0:Old"]);
+  });
+
+  it("refuses another coach's program and archived programs", async () => {
+    const { coach, program } = await setup();
+    const other = await makeCoach(tdb.prisma);
+    const items = [{ dayIndex: 0, block: custom("A") }];
+    await expect(importBlocks(tdb.prisma, other.id, program.id, items)).rejects.toMatchObject({ code: "not_found" });
+    await archiveProgram(tdb.prisma, coach.id, program.id);
+    await expect(importBlocks(tdb.prisma, coach.id, program.id, items)).rejects.toMatchObject({ code: "program_archived" });
+  });
+});
+
+describe("weeksWithBlocks", () => {
+  it("lists each week that holds a block, once, in order", async () => {
+    const { coach, program } = await setup();
+    for (const day of [15, 0, 6, 15]) await createBlock(tdb.prisma, coach.id, program.id, day, custom("A"));
+    expect(await weeksWithBlocks(tdb.prisma, program.id)).toEqual([0, 2]);
   });
 });

@@ -12,7 +12,9 @@ type Props = {
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
+  /** While true the modal cannot be dismissed (close control, Esc, backdrop), e.g. during a write. */
+  busy?: boolean;
 };
 
 /**
@@ -20,7 +22,8 @@ type Props = {
  * Mounted open; the parent unmounts it to close, and may decline (e.g. after a "discard changes?" confirm).
  * Portaled to document.body so transformed ancestors (dnd-kit sortables) cannot offset it.
  */
-export function Modal({ title, closeLabel, onClose, children, footer, size = "lg" }: Props) {
+export function Modal({ title, closeLabel, onClose, children, footer, size = "lg", busy = false }: Props) {
+  const dismiss = () => { if (!busy) onClose(); };
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   // Only a press that starts and ends on the backdrop closes: a text selection dragged out of a field must not.
@@ -40,13 +43,13 @@ export function Modal({ title, closeLabel, onClose, children, footer, size = "lg
   if (typeof document === "undefined") return null;
   return createPortal(
     <dialog ref={ref} aria-labelledby={titleId}
-      onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onCancel={(e) => { e.preventDefault(); dismiss(); }}
       // A close the browser forces (a repeated Esc without user activation skips "cancel") still reaches the
       // parent; if the parent keeps it mounted, it opens again. The event is async: the one queued by the effect
       // cleanup (StrictMode remounts effects in development) arrives when the dialog is already open again.
       onClose={(e) => {
         if (e.currentTarget.open) return;
-        onClose();
+        dismiss();
         requestAnimationFrame(() => {
           const dialog = ref.current;
           if (dialog?.isConnected && !dialog.open) dialog.showModal();
@@ -54,16 +57,16 @@ export function Modal({ title, closeLabel, onClose, children, footer, size = "lg
       }}
       onPointerDown={(e) => { pressedBackdrop.current = e.target === e.currentTarget; }}
       onClick={(e) => {
-        if (pressedBackdrop.current && e.target === e.currentTarget) onClose();
+        if (pressedBackdrop.current && e.target === e.currentTarget) dismiss();
         pressedBackdrop.current = false;
       }}
       className={cx(
         "m-auto max-h-[90vh] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-chrome/50 open:flex",
-        size === "lg" ? "max-w-2xl" : size === "md" ? "max-w-md" : "max-w-sm",
+        size === "xl" ? "max-w-5xl" : size === "lg" ? "max-w-2xl" : size === "md" ? "max-w-md" : "max-w-sm",
       )}>
       <header className="flex items-center justify-between gap-4 px-6 pb-2 pt-5">
         <h2 id={titleId} className="text-lg font-bold">{title}</h2>
-        <IconButton label={closeLabel} onClick={onClose}><X size={18} aria-hidden /></IconButton>
+        <IconButton label={closeLabel} onClick={dismiss} disabled={busy}><X size={18} aria-hidden /></IconButton>
       </header>
       <div className="flex-1 overflow-y-auto px-6 pb-5 pt-2">{children}</div>
       {footer && <footer className="flex flex-wrap items-center justify-end gap-3 border-t px-6 py-4">{footer}</footer>}

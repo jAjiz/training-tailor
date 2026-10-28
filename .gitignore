@@ -47,3 +47,6 @@ next-env.d.ts
 /data/corpus/
 /reports/
 /evals/cases/
+
+# brainstorming companion and subagent workspaces
+/.superpowers/

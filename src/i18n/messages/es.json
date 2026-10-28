@@ -58,7 +58,13 @@
     "library_conflict": "El borrador cambió desde que lo abriste. Recarga e inténtalo de nuevo.",
     "library_draft_exists": "Ya hay un borrador abierto. Publícalo o descártalo primero.",
     "library_no_draft": "No hay ningún borrador abierto.",
-    "library_invalid": "Los datos de la biblioteca no son válidos."
+    "library_invalid": "Los datos de la biblioteca no son válidos.",
+    "import_pdf_invalid": "Elige un archivo PDF.",
+    "import_pdf_too_large": "El PDF pesa más de 4 MB.",
+    "import_unavailable": "La importación no está disponible ahora.",
+    "import_quota": "Has alcanzado el límite de importaciones de hoy. Inténtalo mañana.",
+    "import_empty": "No se encontró ningún bloque de entrenamiento en el PDF.",
+    "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo."
   },
   "onboarding": {
     "preparing": "Preparando tu cuenta…",
@@ -736,5 +742,30 @@
     "copyLink": "Copiar enlace",
     "copied": "Enlace copiado",
     "signInAgain": "Después de instalarla, vuelve a iniciar sesión con Google."
+  },
+  "import": {
+    "button": "Importar",
+    "tooltip": "Importar semana desde PDF",
+    "file": "Archivo PDF",
+    "dataNotice": "El PDF se procesa con Google Gemini, y Google puede usar su contenido para mejorar sus productos.",
+    "read": "Leer PDF",
+    "reading": "Leyendo el PDF… puede tardar un minuto.",
+    "weekOf": "Semana {week} de {total}",
+    "weekTarget": "Semana {week} del PDF → {target}",
+    "datedWeek": "Semana {week} ({dates})",
+    "selectWeek": "Seleccionar toda la semana",
+    "published": "Esta semana ya está publicada: los bloques serán visibles para los atletas.",
+    "pastEnd": "Esta semana queda fuera del programa: no se importará.",
+    "weekEmpty": "No se ha podido leer ningún bloque de esta semana.",
+    "tooManyWeeks": "El PDF tiene {found} semanas: solo se muestran las {max} primeras, el resto se ha ignorado.",
+    "daysUnnamed": "Los días del PDF no indican el día de la semana: se han colocado desde el lunes.",
+    "dropped": "{count, plural, one {# bloque no se pudo leer} other {# bloques no se pudieron leer}}",
+    "selected": "{count, plural, one {# bloque seleccionado} other {# bloques seleccionados}}",
+    "confirm": "Importar selección",
+    "clash": "{count, plural, one {{weeks} ya tiene bloques.} other {Estas semanas ya tienen bloques: {weeks}.}} ¿Qué hacemos con ellos?",
+    "modeLabel": "Bloques existentes",
+    "modeAppend": "Añadir a los existentes",
+    "modeReplace": "Reemplazarlos",
+    "replaceWarning": "{count, plural, one {Se borrarán los bloques actuales de esa semana} other {Se borrarán los bloques actuales de esas semanas}}, junto con los resultados que hayan registrado los atletas."
   }
 }
