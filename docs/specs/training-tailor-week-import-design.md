@@ -6,7 +6,7 @@
 
 ## Problem
 
-Coaches already write their weeks elsewhere (Strivee exports, Word tables saved as PDF, their
+Coaches already write their weeks elsewhere (calendar exports from training apps, Word tables saved as PDF, their
 own templates) and have to retype every block into the planner. That is the slowest part of
 running a program in Training Tailor. The documents vary a lot between coaches: one is a
 seven-column week with coloured blocks and separate "Coaching tips"; another is a table of
@@ -53,7 +53,7 @@ created.
 | Entry point | A new **"Importar"** button in the planner's week tools (`WeekTools.tsx`), with the tooltip **"Importar semana desde PDF"**. Only shown when the planner is not read-only. |
 | Input | One PDF, picked with a file input that accepts `application/pdf`. *Builder's call:* a size cap that fits Vercel's request body limit (4.5 MB), e.g. 4 MB, checked on the client and again on the server. The two sample documents are 140 KB and 320 KB. |
 | Data notice | The Gemini API key is on the **free tier**, where Google may use inputs to improve its products. The upload step shows an **informative notice** (no checkbox, nothing to accept) that the PDF is processed with Google Gemini and Google may use its content (owner, 2026-10-28). Wording is the builder's; it must be in both locales. Revisit if the key moves to a paid tier. |
-| How the PDF reaches the model | A **calendar PDF** (Strivee) is cut into days and blocks in code from its text layer, and the model only tidies each block's text; any other PDF goes to the model **as a file** (see "Translation"). Plain extracted text is jumbled for column layouts, so the calendar path groups it by position first. |
+| How the PDF reaches the model | A **calendar PDF** is cut into days and blocks in code from its text layer, and the model only tidies each block's text; any other PDF goes to the model **as a file** (see "Translation"). Plain extracted text is jumbled for column layouts, so the calendar path groups it by position first. |
 | Days without weekday names | Both samples name weekdays ("Lunes", "SEMANA 1 - Martes"). When a document numbers days instead ("Día 1, Día 2…"), they are placed in order from Monday, and the review window says so ("Los días del PDF no indican el día de la semana: se han colocado desde el lunes"). The coach moves blocks afterwards in the planner. No day-mapping control in the window. *My call.* |
 | Week detection | The model returns a list of weeks, each with blocks per day (Monday–Sunday). A single-week document returns one week. If it finds more than 4, the response keeps the **first 4** and says how many were found; the window shows a warning that the rest were ignored (owner). |
 | Target weeks | PDF week 1 goes to the week open in the planner, week 2 to the next, and so on. *My call.* Each week's header shows where it goes (for example, "Semana 1 del PDF → Semana 3 (28 sep – 4 oct)", or the week number for closed programs). |
@@ -84,10 +84,10 @@ the retry. No other caller changes.
 ### Translation
 
 `src/lib/import/` has two paths, chosen by the PDF's layout (owner, 2026-10-28, after testing with
-the Strivee sample: the lite model put its blocks on the wrong days from the page image, and no
+the first sample: the lite model put its blocks on the wrong days from the page image, and no
 prompt fixed it):
 
-- **Calendar PDFs** (Strivee: one column per weekday, a row of weekday headers on page 1, columns
+- **Calendar PDFs** (one column per weekday, a row of weekday headers on page 1, columns
   continuing on later pages without headers). Code reads the PDF's text layer (`unpdf`), assigns
   each line to the column it sits in, and starts a block at each line in a larger font than the
   body. Text above a day's first heading on a later page continues that day's previous block; a

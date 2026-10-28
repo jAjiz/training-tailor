@@ -55,7 +55,7 @@ function linesOf(items: TextItem[], body: number): Line[] {
 }
 
 /**
- * Reads a calendar laid out as one column per weekday (Strivee's export): page 1 has a row of weekday
+ * Reads a calendar laid out as one column per weekday: page 1 has a row of weekday
  * headers, and later pages continue the same columns without them. Text goes to the column it sits in;
  * a line in a larger font than the body starts a block, and text before a day's first heading on a later
  * page continues that day's previous block. A heading with no text under it (a day or page title) is not

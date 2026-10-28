@@ -15,7 +15,7 @@ export function Pill({ tone = "neutral", className, children }: { tone?: PillTon
   );
 }
 
-/** Navigation pill: the active one inverted, like Strivee's top navigation. */
+/** Navigation pill: the active one inverted. */
 export const navPillClasses = (active: boolean): string =>
   cx("rounded-full px-4 py-1.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-foreground",
     active ? "bg-primary text-on-primary" : "text-muted hover:bg-surface-2 hover:text-foreground");

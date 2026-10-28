@@ -14,7 +14,7 @@ type Props<T extends string> = {
   className?: string;
 };
 
-/** Segmented control (Strivee's Rx / Scaled) as an accessible radio group: one tab stop, arrows move and select. */
+/** Segmented control (e.g. Rx / Scaled) as an accessible radio group: one tab stop, arrows move and select. */
 export function Segmented<T extends string>({ options, value, onChange, label, size = "md", className }: Props<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const disabled = options.map((o) => Boolean(o.disabled));

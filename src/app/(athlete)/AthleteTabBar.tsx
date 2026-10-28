@@ -14,7 +14,7 @@ const ITEMS = [
   { href: "/me", key: "me", Icon: UserRound, keepProgram: false },
 ] as const;
 
-/** Bottom tab bar (Strivee's WOD / PRs / Profile row), limited to the pages that exist. */
+/** Bottom tab bar (WOD / PRs / Profile), limited to the pages that exist. */
 export function AthleteTabBar() {
   const t = useTranslations("nav");
   const pathname = usePathname();

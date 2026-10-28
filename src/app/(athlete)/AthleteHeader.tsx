@@ -6,7 +6,7 @@ import { ProgramTitle, type ProgramOption } from "./ProgramTitle";
 
 const ICON = "grid size-9 place-items-center rounded-full hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-on-chrome";
 
-/** The black band on top of athlete pages (black in both themes, like Strivee): program, then e.g. the week strip. */
+/** The black band on top of athlete pages (black in both themes): program, then e.g. the week strip. */
 export function AthleteHeader({ programs, selected, basePath, children }: {
   programs: ProgramOption[]; selected: string; basePath: "/" | "/calendar"; children?: React.ReactNode;
 }) {
