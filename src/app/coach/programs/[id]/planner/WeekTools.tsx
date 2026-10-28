@@ -20,9 +20,11 @@ type Props = {
   empty: boolean;
   /** Every published week index, so the import window can warn on any week it targets. */
   publishedWeeks: number[];
+  /** Week indexes that already hold blocks: importing there asks whether to add or replace. */
+  filledWeeks: number[];
 };
 
-export function WeekTools({ ctx, kind, published, empty, publishedWeeks }: Props) {
+export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledWeeks }: Props) {
   const t = useTranslations("planner");
   const ti = useTranslations("import");
   const te = useTranslations("errors");
@@ -67,7 +69,7 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks }: Props
           onCopy={(toWeek) => duplicateWeekAction({ programId: ctx.programId, fromWeek: ctx.weekIndex, toWeek })}
           onClose={() => setCopying(false)} onDone={() => router.refresh()} />
       )}
-      {importing && <ImportDialog ctx={ctx} publishedWeeks={publishedWeeks} onClose={() => setImporting(false)} />}
+      {importing && <ImportDialog ctx={ctx} publishedWeeks={publishedWeeks} filledWeeks={filledWeeks} onClose={() => setImporting(false)} />}
     </div>
   );
 }

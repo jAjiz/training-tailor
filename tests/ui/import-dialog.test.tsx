@@ -55,12 +55,12 @@ function respond(status: number, body: unknown) {
   return fetch;
 }
 
-async function open(body: unknown, status = 200) {
+async function open(body: unknown, status = 200, filledWeeks: number[] = []) {
   const fetch = respond(status, body);
   const onClose = vi.fn();
   render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <ImportDialog ctx={ctx} publishedWeeks={[]} onClose={onClose} />
+      <ImportDialog ctx={ctx} publishedWeeks={[]} filledWeeks={filledWeeks} onClose={onClose} />
     </NextIntlClientProvider>,
   );
   const pdf = new File(["%PDF-1.4"], "test.pdf", { type: "application/pdf" });
@@ -76,7 +76,7 @@ describe("ImportDialog", () => {
   it("shows the data notice before a PDF is read", () => {
     render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <ImportDialog ctx={ctx} publishedWeeks={[]} onClose={vi.fn()} />
+        <ImportDialog ctx={ctx} publishedWeeks={[]} filledWeeks={[]} onClose={vi.fn()} />
       </NextIntlClientProvider>,
     );
     expect(screen.getByText(en.import.dataNotice)).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("ImportDialog", () => {
     const fetch = respond(200, preview());
     render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <ImportDialog ctx={ctx} publishedWeeks={[]} onClose={vi.fn()} />
+        <ImportDialog ctx={ctx} publishedWeeks={[]} filledWeeks={[]} onClose={vi.fn()} />
       </NextIntlClientProvider>,
     );
     const big = new File([new Uint8Array(4 * 1024 * 1024 + 1)], "big.pdf", { type: "application/pdf" });
@@ -109,7 +109,8 @@ describe("ImportDialog", () => {
     fireEvent.click(confirmButton());
     expect(confirmButton()).toBeDisabled();
     expect(actions.importBlocksAction).toHaveBeenCalledOnce();
-    expect(actions.importBlocksAction).toHaveBeenCalledWith({ programId: "p1", items: selectedItems(allKeys(preview()), preview(), ctx) });
+    expect(actions.importBlocksAction).toHaveBeenCalledWith({ programId: "p1", items: selectedItems(allKeys(preview()), preview(), ctx), mode: "append" });
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
 
     finish({ ok: true, value: undefined });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -147,6 +148,18 @@ describe("ImportDialog", () => {
     expect(within(dialog).getByText("The PDF has 6 weeks: only the first 4 are shown and the rest were ignored.")).toBeInTheDocument();
     expect(within(dialog).getByText(en.import.daysUnnamed)).toBeInTheDocument();
     expect(within(dialog).getByText("2 blocks couldn't be read")).toBeInTheDocument();
+  });
+
+  it("asks whether to add to or replace a target week that already has blocks", async () => {
+    actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
+    await open(preview(), 200, [3, 9]);
+    await screen.findByText("4 blocks selected");
+    expect(screen.getByText("Week 4 already has blocks. What should happen to them?")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: en.import.modeAppend })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: en.import.modeReplace }));
+    expect(screen.getByText(/The current blocks of that week will be deleted/)).toBeInTheDocument();
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(actions.importBlocksAction).toHaveBeenCalledWith(expect.objectContaining({ mode: "replace" })));
   });
 
   it("shows the server's refusal", async () => {

@@ -761,6 +761,11 @@
     "daysUnnamed": "The PDF's days don't name a weekday, so they've been placed from Monday.",
     "dropped": "{count, plural, one {# block couldn't be read} other {# blocks couldn't be read}}",
     "selected": "{count, plural, one {# block selected} other {# blocks selected}}",
-    "confirm": "Import selection"
+    "confirm": "Import selection",
+    "clash": "{count, plural, one {{weeks} already has blocks.} other {These weeks already have blocks: {weeks}.}} What should happen to them?",
+    "modeLabel": "Existing blocks",
+    "modeAppend": "Add to them",
+    "modeReplace": "Replace them",
+    "replaceWarning": "{count, plural, one {The current blocks of that week will be deleted} other {The current blocks of those weeks will be deleted}}, along with any results athletes logged."
   }
 }

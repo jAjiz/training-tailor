@@ -29,7 +29,7 @@ created.
   PDF. The provider change below should not rule out adding `.docx` later.
 - Editing block contents inside the review window: the coach selects or deselects, then edits in
   the normal block editor after import.
-- Replacing or merging with blocks already in the target weeks.
+- Merging imported blocks into existing ones (the choice is add after them or replace the week).
 - Importing more than 4 weeks from one PDF.
 - Translating the text into another language.
 - Keeping the PDF: it is processed once and not stored.
@@ -44,7 +44,7 @@ created.
   typos) but must not change anything that matters: movements, reps, loads, percentages, times,
   levels (Rx+/Rx/Int/Esc), notes. A wrong load in an athlete's week is worse than an
   untidy one.
-- **Deleting or overwriting the coach's existing blocks.**
+- **Deleting the coach's existing blocks without asking.** Only an explicit "Reemplazarlos" deletes them.
 
 ## Decisions
 
@@ -60,7 +60,7 @@ created.
 | Closed programs | Weeks that fall past the program's last week are shown disabled with a notice and are not imported. *My call.* |
 | Review window | Layout **A** (owner): a modal with the week as **columns per day**, like the planner. Each block is a tile with a checkbox, its title, a one-line summary and its kind (custom / barbell). **All blocks start selected** (owner). With several weeks, the coach moves **sideways between weeks** (‹ › and "Semana 1 de 4") and selects or deselects in each (owner). *My call:* a checkbox in each week's header selects or deselects the whole week. A short footer shows how many blocks are selected in total. |
 | Confirm | One button, **"Importar selección"** (owner), which creates the selected blocks of every week. Disabled when nothing is selected. |
-| Where blocks land | Appended after the blocks already on each day, in document order. Nothing existing is touched. *My call.* |
+| Where blocks land | Appended after the blocks already on each day, in document order. When a week that receives blocks already has some, the window asks (owner, 2026-10-28): **add** to them (default) or **replace** them. Replace deletes every block of each week that receives at least one, with their results, in the same transaction as the import; weeks receiving nothing are untouched, and the window warns that results go too. |
 | Published weeks | Importing does not change publish state. If a target week is already published, the imported blocks are visible to athletes straight away, as with any block the coach adds there. *My call:* the window says so on that week ("Esta semana ya está publicada: los bloques serán visibles para los atletas"). |
 | Text handling | The model keeps the document's language and may tidy formatting and obvious typos without changing content (owner). |
 | Coaching tips | Text the document marks as coaching tips, objectives or coach notes for a block goes to the block's `coachingTips`; the workout itself goes to `description` (custom) or `instructions` (barbell). |

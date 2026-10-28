@@ -32,9 +32,12 @@ export async function createBlockAction(raw: unknown) {
 
 export async function importBlocksAction(raw: unknown) {
   return coachAction("importBlocksAction", async (coachId) => {
-    const { programId, items } = parse(
-      z.object({ programId: Id, items: z.array(z.object({ dayIndex: Day, block: BlockInput })).min(1).max(200) }), raw);
-    await importBlocks(prisma, coachId, programId, items);
+    const { programId, items, mode } = parse(z.object({
+      programId: Id,
+      items: z.array(z.object({ dayIndex: Day, block: BlockInput })).min(1).max(200),
+      mode: z.enum(["append", "replace"]).default("append"),
+    }), raw);
+    await importBlocks(prisma, coachId, programId, items, mode);
   });
 }
 

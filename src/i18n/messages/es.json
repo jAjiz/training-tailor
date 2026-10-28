@@ -761,6 +761,11 @@
     "daysUnnamed": "Los días del PDF no indican el día de la semana: se han colocado desde el lunes.",
     "dropped": "{count, plural, one {# bloque no se pudo leer} other {# bloques no se pudieron leer}}",
     "selected": "{count, plural, one {# bloque seleccionado} other {# bloques seleccionados}}",
-    "confirm": "Importar selección"
+    "confirm": "Importar selección",
+    "clash": "{count, plural, one {{weeks} ya tiene bloques.} other {Estas semanas ya tienen bloques: {weeks}.}} ¿Qué hacemos con ellos?",
+    "modeLabel": "Bloques existentes",
+    "modeAppend": "Añadir a los existentes",
+    "modeReplace": "Reemplazarlos",
+    "replaceWarning": "{count, plural, one {Se borrarán los bloques actuales de esa semana} other {Se borrarán los bloques actuales de esas semanas}}, junto con los resultados que hayan registrado los atletas."
   }
 }

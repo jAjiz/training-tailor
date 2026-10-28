@@ -12,6 +12,7 @@ import { Field } from "@/components/ui/Field";
 import { IconButton } from "@/components/ui/IconButton";
 import { Modal } from "@/components/ui/Modal";
 import { Pill } from "@/components/ui/Pill";
+import { Segmented } from "@/components/ui/Segmented";
 import { formatDay, formatDayRange } from "@/lib/format";
 import { MAX_IMPORT_WEEKS } from "@/lib/import/schema";
 import {
@@ -22,6 +23,7 @@ import { describeSets } from "@/lib/training/barbell";
 import { addDays } from "@/lib/training/dates";
 import { ERROR_CODES, type ActionResult, type ErrorCode } from "@/lib/training/errors";
 import type { BlockInputValue } from "@/lib/training/schemas";
+import type { ImportMode } from "@/lib/training/services/blocks";
 import { importBlocksAction } from "../../../block-actions";
 import type { PlannerContext } from "./types";
 
@@ -31,6 +33,8 @@ type Props = {
   ctx: PlannerContext;
   /** Week indexes athletes already see: imported blocks there are visible straight away. */
   publishedWeeks: number[];
+  /** Week indexes that already hold blocks: importing there asks whether to add or replace. */
+  filledWeeks: number[];
   onClose: () => void;
 };
 
@@ -49,7 +53,7 @@ function summary(block: BlockInputValue): string {
  * Upload a PDF, review its translated weeks (columns per day, one week at a time, every block selected)
  * and import the selection in one write. The preview lives only here: closing discards it.
  */
-export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
+export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Props) {
   const t = useTranslations();
   const locale = useLocale();
   const router = useRouter();
@@ -59,6 +63,7 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selection, setSelection] = useState<Set<BlockKey>>(new Set());
   const [week, setWeek] = useState(0);
+  const [mode, setMode] = useState<ImportMode>("append");
   const [error, setError] = useState<ErrorCode | null>(null);
   const request = useRef<AbortController | null>(null);
 
@@ -105,7 +110,9 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
     setError(null);
     let r: ActionResult;
     try {
-      r = await importBlocksAction({ programId: ctx.programId, items: selectedItems(selection, preview, ctx) });
+      const items = selectedItems(selection, preview, ctx);
+      const clashes = items.some((i) => filledWeeks.includes(Math.floor(i.dayIndex / 7)));
+      r = await importBlocksAction({ programId: ctx.programId, items, mode: clashes ? mode : "append" });
     } catch {
       r = { ok: false, code: "internal" };
     }
@@ -146,13 +153,19 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
   const importable = isWeekImportable(ctx, week);
   const keys = weekKeys(preview, week);
   const weekChecked = keys.length > 0 && keys.every((k) => selection.has(k));
-  const count = selectedItems(selection, preview, ctx).length;
-  const targetLabel = ctx.startDate
+  const items = selectedItems(selection, preview, ctx);
+  const count = items.length;
+  const weekLabel = (w: number) => ctx.startDate
     ? t("import.datedWeek", {
-      week: target + 1,
-      dates: formatDayRange(addDays(ctx.startDate, target * 7), addDays(ctx.startDate, target * 7 + 6), locale),
+      week: w + 1,
+      dates: formatDayRange(addDays(ctx.startDate, w * 7), addDays(ctx.startDate, w * 7 + 6), locale),
     })
-    : t("planner.week", { week: target + 1 });
+    : t("planner.week", { week: w + 1 });
+  const targetLabel = weekLabel(target);
+  // Program weeks that would receive blocks and already have some: only then is there a choice to make.
+  const clashing = [...new Set(items.map((i) => Math.floor(i.dayIndex / 7)))]
+    .filter((w) => filledWeeks.includes(w)).sort((a, b) => a - b);
+  const clashLabel = clashing.map(weekLabel).join(", ");
   const dayLabel = (day: number) => ctx.startDate
     ? formatDay(addDays(ctx.startDate, target * 7 + day), locale)
     : t("planner.dayNumber", { day: day + 1 });
@@ -198,6 +211,18 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
           ? <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">{t("import.pastEnd")}</p>
           : publishedWeeks.includes(target) && <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">{t("import.published")}</p>}
         {keys.length === 0 && <p className="text-sm text-muted">{t("import.weekEmpty")}</p>}
+
+        {clashing.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm">
+            <p>{t("import.clash", { weeks: clashLabel, count: clashing.length })}</p>
+            <Segmented label={t("import.modeLabel")} size="sm" className="w-fit" value={mode} onChange={setMode}
+              options={[
+                { value: "append", label: t("import.modeAppend"), disabled: importing },
+                { value: "replace", label: t("import.modeReplace"), disabled: importing },
+              ]} />
+            {mode === "replace" && <p className="text-danger">{t("import.replaceWarning", { count: clashing.length })}</p>}
+          </div>
+        )}
 
         <div className={cx("-mx-6 overflow-x-auto px-6 pb-2", !importable && "opacity-50")}>
           <div className="grid min-w-[840px] grid-cols-7 gap-2">
