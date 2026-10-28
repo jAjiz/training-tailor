@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import type { ActionResult } from "@/lib/training/errors";
 import { BlockInput, parse } from "@/lib/training/schemas";
 import {
-  createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, moveBlock, updateBlock,
+  createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, moveBlock, updateBlock,
 } from "@/lib/training/services/blocks";
 
 const Id = z.string().min(1).max(64);
@@ -27,6 +27,14 @@ export async function createBlockAction(raw: unknown) {
   return coachAction("createBlockAction", async (coachId) => {
     const { programId, dayIndex, block } = parse(z.object({ programId: Id, dayIndex: Day, block: BlockInput }), raw);
     await createBlock(prisma, coachId, programId, dayIndex, block);
+  });
+}
+
+export async function importBlocksAction(raw: unknown) {
+  return coachAction("importBlocksAction", async (coachId) => {
+    const { programId, items } = parse(
+      z.object({ programId: Id, items: z.array(z.object({ dayIndex: Day, block: BlockInput })).min(1).max(200) }), raw);
+    await importBlocks(prisma, coachId, programId, items);
   });
 }
 

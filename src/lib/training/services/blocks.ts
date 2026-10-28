@@ -136,17 +136,31 @@ export async function duplicateBlock(db: Db, coachId: string, blockId: string, t
   });
 }
 
-/** Appends `blocks` (already ordered) to the day `toDay(block)`, after what is there. */
-async function appendCopies(db: Db, programId: string, blocks: Block[], toDay: (b: Block) => number) {
+/** Appends `entries` (already ordered) to their days, after what is there, in one statement: all or nothing. */
+async function appendAll(db: Db, programId: string, entries: { dayIndex: number; columns: ReturnType<typeof copyOf> }[]) {
   const positions = new Map<number, number>();
   const data = [];
-  for (const b of blocks) {
-    const day = toDay(b);
-    const position = positions.get(day) ?? (await nextPosition(db, programId, day));
-    positions.set(day, position + 1);
-    data.push({ programId, dayIndex: day, position, ...copyOf(b) });
+  for (const { dayIndex, columns } of entries) {
+    const position = positions.get(dayIndex) ?? (await nextPosition(db, programId, dayIndex));
+    positions.set(dayIndex, position + 1);
+    data.push({ programId, dayIndex, position, ...columns });
   }
   if (data.length) await db.block.createMany({ data });
+}
+
+const appendCopies = (db: Db, programId: string, blocks: Block[], toDay: (b: Block) => number) =>
+  appendAll(db, programId, blocks.map((b) => ({ dayIndex: toDay(b), columns: copyOf(b) })));
+
+export type ImportItem = { dayIndex: number; block: BlockInputValue };
+
+/** Creates the selected translated blocks after what is already in their days; returns how many. */
+export async function importBlocks(db: Db, coachId: string, programId: string, items: ImportItem[]) {
+  const program = await writableProgram(db, coachId, programId);
+  for (const { dayIndex } of items) assertDay(program, dayIndex);
+  const lifts = new Set(items.flatMap(({ block }) => (block.kind === "barbell" ? [block.movement] : [])));
+  for (const movement of lifts) await assertLiftMovement(db, movement);
+  await appendAll(db, programId, items.map(({ dayIndex, block }) => ({ dayIndex, columns: columns(block) })));
+  return items.length;
 }
 
 export async function duplicateDay(db: Db, coachId: string, programId: string, fromDay: number, toDay: number) {
