@@ -745,13 +745,18 @@
   },
   "import": {
     "button": "Import",
+    "title": "Import",
     "tooltip": "Import week from PDF",
     "file": "PDF file",
+    "choose": "Choose a PDF",
+    "change": "Change",
     "dataNotice": "The PDF is processed with Google Gemini, and Google may use its content to improve its products.",
     "read": "Read PDF",
-    "reading": "Reading the PDF… this can take a minute.",
+    "reading": "Reading the PDF…",
+    "readingHint": "This can take a minute. Keep this window open.",
+    "importing": "Importing the blocks…",
     "weekOf": "Week {week} of {total}",
-    "weekTarget": "PDF week {week} → {target}",
+    "importWeek": "Import week",
     "datedWeek": "Week {week} ({dates})",
     "selectWeek": "Select the whole week",
     "published": "This week is already published: athletes will see the blocks straight away.",
@@ -762,10 +767,10 @@
     "dropped": "{count, plural, one {# block couldn't be read} other {# blocks couldn't be read}}",
     "selected": "{count, plural, one {# block selected} other {# blocks selected}}",
     "confirm": "Import selection",
+    "clashTitle": "Weeks with blocks",
     "clash": "{count, plural, one {{weeks} already has blocks.} other {These weeks already have blocks: {weeks}.}} What should happen to them?",
-    "modeLabel": "Existing blocks",
     "modeAppend": "Add to them",
     "modeReplace": "Replace them",
-    "replaceWarning": "{count, plural, one {The current blocks of that week will be deleted} other {The current blocks of those weeks will be deleted}}, along with any results athletes logged."
+    "replaceWarning": "Replacing deletes the current blocks of {count, plural, one {that week} other {those weeks}}, along with any results athletes logged."
   }
 }

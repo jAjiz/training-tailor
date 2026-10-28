@@ -745,13 +745,18 @@
   },
   "import": {
     "button": "Importar",
+    "title": "Importar",
     "tooltip": "Importar semana desde PDF",
     "file": "Archivo PDF",
+    "choose": "Elegir un PDF",
+    "change": "Cambiar",
     "dataNotice": "El PDF se procesa con Google Gemini, y Google puede usar su contenido para mejorar sus productos.",
     "read": "Leer PDF",
-    "reading": "Leyendo el PDF… puede tardar un minuto.",
+    "reading": "Leyendo el PDF…",
+    "readingHint": "Puede tardar un minuto. No cierres esta ventana.",
+    "importing": "Importando los bloques…",
     "weekOf": "Semana {week} de {total}",
-    "weekTarget": "Semana {week} del PDF → {target}",
+    "importWeek": "Importar semana",
     "datedWeek": "Semana {week} ({dates})",
     "selectWeek": "Seleccionar toda la semana",
     "published": "Esta semana ya está publicada: los bloques serán visibles para los atletas.",
@@ -762,10 +767,10 @@
     "dropped": "{count, plural, one {# bloque no se pudo leer} other {# bloques no se pudieron leer}}",
     "selected": "{count, plural, one {# bloque seleccionado} other {# bloques seleccionados}}",
     "confirm": "Importar selección",
+    "clashTitle": "Semanas con bloques",
     "clash": "{count, plural, one {{weeks} ya tiene bloques.} other {Estas semanas ya tienen bloques: {weeks}.}} ¿Qué hacemos con ellos?",
-    "modeLabel": "Bloques existentes",
     "modeAppend": "Añadir a los existentes",
     "modeReplace": "Reemplazarlos",
-    "replaceWarning": "{count, plural, one {Se borrarán los bloques actuales de esa semana} other {Se borrarán los bloques actuales de esas semanas}}, junto con los resultados que hayan registrado los atletas."
+    "replaceWarning": "Reemplazarlos borra los bloques actuales {count, plural, one {de esa semana} other {de esas semanas}}, junto con los resultados que hayan registrado los atletas."
   }
 }

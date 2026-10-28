@@ -56,11 +56,11 @@ created.
 | How the PDF reaches the model | A **calendar PDF** is cut into days and blocks in code from its text layer, and the model only tidies each block's text; any other PDF goes to the model **as a file** (see "Translation"). Plain extracted text is jumbled for column layouts, so the calendar path groups it by position first. |
 | Days without weekday names | Both samples name weekdays ("Lunes", "SEMANA 1 - Martes"). When a document numbers days instead ("Día 1, Día 2…"), they are placed in order from Monday, and the review window says so ("Los días del PDF no indican el día de la semana: se han colocado desde el lunes"). The coach moves blocks afterwards in the planner. No day-mapping control in the window. *My call.* |
 | Week detection | The model returns a list of weeks, each with blocks per day (Monday–Sunday). A single-week document returns one week. If it finds more than 4, the response keeps the **first 4** and says how many were found; the window shows a warning that the rest were ignored (owner). |
-| Target weeks | PDF week 1 goes to the week open in the planner, week 2 to the next, and so on. *My call.* Each week's header shows where it goes (for example, "Semana 1 del PDF → Semana 3 (28 sep – 4 oct)", or the week number for closed programs). |
+| Target weeks | PDF week 1 goes to the week open in the planner, week 2 to the next, and so on. *My call.* The day columns show the target dates (or day numbers for undated programs); the week's header only has its "Importar semana" checkbox (owner, 2026-10-28). |
 | Closed programs | Weeks that fall past the program's last week are shown disabled with a notice and are not imported. *My call.* |
 | Review window | Layout **A** (owner): a modal with the week as **columns per day**, like the planner. Each block is a tile with a checkbox, its title, a one-line summary and its kind (custom / barbell). **All blocks start selected** (owner). With several weeks, the coach moves **sideways between weeks** (‹ › and "Semana 1 de 4") and selects or deselects in each (owner). *My call:* a checkbox in each week's header selects or deselects the whole week. A short footer shows how many blocks are selected in total. |
 | Confirm | One button, **"Importar selección"** (owner), which creates the selected blocks of every week. Disabled when nothing is selected. |
-| Where blocks land | Appended after the blocks already on each day, in document order. When a week that receives blocks already has some, the window asks (owner, 2026-10-28): **add** to them (default) or **replace** them. Replace deletes every block of each week that receives at least one, with their results, in the same transaction as the import; weeks receiving nothing are untouched, and the window warns that results go too. |
+| Where blocks land | Appended after the blocks already on each day, in document order. When a week that receives blocks already has some, a popup after "Importar selección" asks (owner, 2026-10-28): **add** to them or **replace** them; nothing is asked when the selection leaves those weeks out. Replace deletes every block of each week that receives at least one, with their results, in the same transaction as the import; weeks receiving nothing are untouched, and the window warns that results go too. |
 | Published weeks | Importing does not change publish state. If a target week is already published, the imported blocks are visible to athletes straight away, as with any block the coach adds there. *My call:* the window says so on that week ("Esta semana ya está publicada: los bloques serán visibles para los atletas"). |
 | Text handling | The model keeps the document's language and may tidy formatting and obvious typos without changing content (owner). |
 | Coaching tips | Text the document marks as coaching tips, objectives or coach notes for a block goes to the block's `coachingTips`; the workout itself goes to `description` (custom) or `instructions` (barbell). |
@@ -122,9 +122,11 @@ discards it (and the quota is spent).
 
 ### Review window
 
-A client component opened from `WeekTools`, built from the existing `Modal`, `Button` and
-`BlockCard` styles. States: pick a file → translating → review (weeks, tiles, warnings) →
-importing → closed with the planner refreshed. Errors are shown inline in the modal using the
+A client component titled "Importar", opened from `WeekTools`, built from the existing `Modal`,
+`Button` and `BlockCard` styles. States: pick a file (our own file picker, the data notice as a
+blue info message) → translating → review (weeks, tiles, warnings) → importing → closed with the
+planner refreshed. Translating and importing fill the window with a loading view (owner,
+2026-10-28). Errors are shown inline in the modal using the
 `errors.*` messages. New strings go to both `es.json` and `en.json`.
 
 ## Testing
