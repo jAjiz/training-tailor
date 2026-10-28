@@ -30,3 +30,15 @@ export const ImportModelResponse = z.object({
   })),
 });
 export type ImportModelResponse = z.infer<typeof ImportModelResponse>;
+
+/** The tidy pass over blocks already cut from a calendar PDF: the model only rewraps text, by block id. */
+export const TidyResponse = z.object({
+  blocks: z.array(z.object({
+    id: z.number().int(),
+    description: z.string().max(5000),
+    coachingTips: z.string().max(2000).optional(),
+    scoring: Scoring.optional(),
+    timeCapSeconds: z.number().int().optional(),
+  })),
+});
+export type TidyResponse = z.infer<typeof TidyResponse>;

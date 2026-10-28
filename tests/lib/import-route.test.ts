@@ -11,7 +11,7 @@ const countSince = vi.fn();
 const record = vi.fn();
 vi.mock("@/lib/db", () => ({ get prisma() { return tdb.prisma; } }));
 vi.mock("@/lib/session", () => ({ getSessionContext: () => getSessionContext() }));
-vi.mock("@/lib/ai", () => ({ IMPORT_GEMINI_MODEL: "test-import-model", getProvider: (model?: string) => getProvider(model) }));
+vi.mock("@/lib/ai", () => ({ getProvider: () => getProvider() }));
 vi.mock("@/lib/quota-store", () => ({
   prismaQuotaStore: {
     countSince: (...a: unknown[]) => countSince(...a),
@@ -48,7 +48,7 @@ beforeEach(async () => {
   record.mockReset().mockResolvedValue(undefined);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 function call(over: { programId?: string | null; pdf?: Blob | string | null } = {}) {
   const form = new FormData();
@@ -185,10 +185,8 @@ describe("POST /api/coach/import", () => {
     expect(record).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the import model and sends the PDF bytes", async () => {
-    vi.stubEnv("GEMINI_IMPORT_MODEL", "");
+  it("sends the PDF bytes to the model", async () => {
     await call();
-    expect(getProvider).toHaveBeenCalledWith("test-import-model");
     expect(Array.from(fake.calls[0].attachments![0].data)).toEqual(Array.from(PDF_BYTES));
   });
 });

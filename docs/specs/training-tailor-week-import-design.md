@@ -53,7 +53,7 @@ created.
 | Entry point | A new **"Importar"** button in the planner's week tools (`WeekTools.tsx`), with the tooltip **"Importar semana desde PDF"**. Only shown when the planner is not read-only. |
 | Input | One PDF, picked with a file input that accepts `application/pdf`. *Builder's call:* a size cap that fits Vercel's request body limit (4.5 MB), e.g. 4 MB, checked on the client and again on the server. The two sample documents are 140 KB and 320 KB. |
 | Data notice | The Gemini API key is on the **free tier**, where Google may use inputs to improve its products. The upload step shows an **informative notice** (no checkbox, nothing to accept) that the PDF is processed with Google Gemini and Google may use its content (owner, 2026-10-28). Wording is the builder's; it must be in both locales. Revisit if the key moves to a paid tier. |
-| How the PDF reaches the model | The **PDF file itself**, not extracted text. Column layouts (Strivee) come out jumbled when the text is extracted; the model reads the page visually. This needs the provider to accept file parts (see "Provider"). Model: `gemini-3.8-flash` with low thinking (`GEMINI_IMPORT_MODEL` overrides it); the lite models put Strivee's blocks on the wrong days, because its day columns continue across pages without headers. The route allows 300 s. |
+| How the PDF reaches the model | A **calendar PDF** (Strivee) is cut into days and blocks in code from its text layer, and the model only tidies each block's text; any other PDF goes to the model **as a file** (see "Translation"). Plain extracted text is jumbled for column layouts, so the calendar path groups it by position first. |
 | Days without weekday names | Both samples name weekdays ("Lunes", "SEMANA 1 - Martes"). When a document numbers days instead ("Día 1, Día 2…"), they are placed in order from Monday, and the review window says so ("Los días del PDF no indican el día de la semana: se han colocado desde el lunes"). The coach moves blocks afterwards in the planner. No day-mapping control in the window. *My call.* |
 | Week detection | The model returns a list of weeks, each with blocks per day (Monday–Sunday). A single-week document returns one week. If it finds more than 4, the response keeps the **first 4** and says how many were found; the window shows a warning that the rest were ignored (owner). |
 | Target weeks | PDF week 1 goes to the week open in the planner, week 2 to the next, and so on. *My call.* Each week's header shows where it goes (for example, "Semana 1 del PDF → Semana 3 (28 sep – 4 oct)", or the week number for closed programs). |
@@ -83,18 +83,24 @@ the retry. No other caller changes.
 
 ### Translation
 
-A new module (for example `src/lib/import/`) builds the prompt and the response schema:
+`src/lib/import/` has two paths, chosen by the PDF's layout (owner, 2026-10-28, after testing with
+the Strivee sample: the lite model put its blocks on the wrong days from the page image, and no
+prompt fixed it):
 
-- **System prompt:** the task, the text rules (keep the language, tidy without changing content),
-  the block model (custom vs barbell, `Scoring` values, `BLOCK_COLORS`), the rules for coaching
-  tips, the 4-week cap, and the list of barbell movement names from the published library.
-- **Response schema:** `{ weeksFound, weeks: [{ label, days: [{ dayOfWeek: 0–6, blocks: [...] }] }] }`.
-  Each block matches the existing `BlockInput` (without `videoUrl`) so that whatever is imported
-  passes the same validation as a block created by hand. The schema keeps the model's output
-  bounded (string lengths match `BlockInput`).
-- **Post-processing in code:** truncate to 4 weeks; validate every block with `BlockInput`;
-  turn invalid barbell blocks into custom; drop blocks that cannot be made valid and count them,
-  so the window can say "N bloques no se pudieron leer".
+- **Calendar PDFs** (Strivee: one column per weekday, a row of weekday headers on page 1, columns
+  continuing on later pages without headers). Code reads the PDF's text layer (`unpdf`), assigns
+  each line to the column it sits in, and starts a block at each line in a larger font than the
+  body. Text above a day's first heading on a later page continues that day's previous block; a
+  heading with no text (day or page title) is not a block. The model gets only the blocks' text, by
+  id, and returns each one tidied (wrapping undone, the "Coaching tips" section moved out, scoring
+  when obvious). Days and titles come from code, so the model cannot move or drop a block; a block
+  it skips keeps the document's text. One week per PDF.
+- **Any other PDF** goes to the model whole, which returns weeks, days and blocks
+  (`{ weeksFound, daysNamed, weeks: [{ label, days: [{ day: 1–7, blocks }] }] }`), up to 4 weeks.
+
+Both paths validate every block with `BlockInput` and drop and count blocks that cannot be made
+valid, so the window can say "N bloques no se pudieron leer". The import uses the same model as the
+engine (`GEMINI_MODEL`).
 
 ### Endpoints
 

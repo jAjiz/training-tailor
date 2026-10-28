@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProvider, IMPORT_GEMINI_MODEL } from "@/lib/ai";
+import { getProvider } from "@/lib/ai";
 import type { LlmProvider } from "@/lib/ai/provider";
 import { prisma } from "@/lib/db";
 import { jsonError } from "@/lib/http";
@@ -11,8 +11,7 @@ import { TrainingError } from "@/lib/training/errors";
 import { getCoachByUserId } from "@/lib/training/services/accounts";
 import { assertWritable, getOwnedProgram } from "@/lib/training/services/programs";
 
-// A full week PDF takes the import model a few minutes to write out.
-export const maxDuration = 300;
+export const maxDuration = 120;
 
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
@@ -52,7 +51,7 @@ export async function POST(req: Request): Promise<Response> {
 
   let provider: LlmProvider;
   try {
-    provider = getProvider(process.env.GEMINI_IMPORT_MODEL || IMPORT_GEMINI_MODEL);
+    provider = getProvider();
   } catch (e) {
     console.error("import unavailable", e);
     return jsonError("import_unavailable", 503);

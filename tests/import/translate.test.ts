@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FakeProvider } from "@/lib/ai/fake-provider";
 import { ImportEmptyError, translatePdf } from "@/lib/import/translate";
+import type { TextItem } from "@/lib/import/layout";
 import type { ModelBlock } from "@/lib/import/schema";
 
 const PDF = new Uint8Array([37, 80, 68, 70]);
@@ -83,10 +84,10 @@ describe("translatePdf", () => {
     await expect(result).rejects.toBeInstanceOf(ImportEmptyError);
   });
 
-  it("sends the PDF as an attachment, with low thinking", async () => {
+  it("sends a PDF that is not a calendar to the model whole", async () => {
     const { fake, result } = run(script([block()]));
     await result;
-    expect(fake.calls[0].lowThinking).toBe(true);
+    expect(fake.calls[0].schemaName).toBe("WeekImport");
     expect(fake.calls[0].attachments?.[0].mimeType).toBe("application/pdf");
     expect(fake.calls[0].attachments?.[0].data).toBe(PDF);
   });
@@ -118,5 +119,44 @@ describe("translatePdf", () => {
   it("never reports fewer weeks found than it returns", async () => {
     const preview = await run(script([block()], { weeksFound: 0 })).result;
     expect(preview.weeksFound).toBe(1);
+  });
+});
+
+describe("translatePdf with a calendar PDF", () => {
+  const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const at = (str: string, x: number, y: number, h = 7.5): TextItem => ({ str, x, y, h });
+  // Two blocks on Monday and one on Wednesday; body text is the most common size.
+  const pages: TextItem[][] = [[
+    ...DAYS.map((d, i) => at(d, 10 + i * 100, 800, 9.5)),
+    at("Test Warm-up", 10, 780, 8.5), at("Test row 2 min", 10, 770), at("Test bike 2 min", 10, 760),
+    at("Test Strength", 10, 740, 8.5), at("Test 5 x 5", 10, 730),
+    at("Test Engine", 210, 780, 8.5), at("Test 20 min", 210, 770), at("Coaching tips", 210, 760), at("Test pace", 210, 750),
+  ]];
+  const readText = async () => pages;
+  const tidy = (blocks: unknown[]) => new FakeProvider({ BlockTidy: { blocks } });
+
+  it("keeps the code's days and titles and takes the tidied text by id", async () => {
+    const fake = tidy([
+      { id: 1, description: "Test row 2 min\nTest bike 2 min" },
+      { id: 2, description: "Test 5 x 5", scoring: "load" },
+      { id: 3, description: "Test 20 min", coachingTips: "Test pace" },
+    ]);
+    const preview = await translatePdf(fake, PDF, readText);
+    expect(fake.calls[0].schemaName).toBe("BlockTidy");
+    expect(fake.calls[0].attachments).toBeUndefined();
+    expect(fake.calls[0].prompt).toContain("[3] Test Engine");
+    expect(preview).toMatchObject({ weeksFound: 1, daysNamed: true, dropped: 0 });
+    expect(preview.weeks[0].days.map((d) => [d.day, d.blocks.map((b) => b.title)])).toEqual([
+      [0, ["Test Warm-up", "Test Strength"]],
+      [2, ["Test Engine"]],
+    ]);
+    expect(preview.weeks[0].days[0].blocks[1]).toMatchObject({ kind: "custom", description: "Test 5 x 5", scoring: "load" });
+    expect(preview.weeks[0].days[1].blocks[0]).toMatchObject({ coachingTips: "Test pace" });
+  });
+
+  it("keeps the document text for a block the model skipped", async () => {
+    const preview = await translatePdf(tidy([{ id: 1, description: "Test tidy" }]), PDF, readText);
+    expect(preview.weeks[0].days[0].blocks.map((b) => b.kind === "custom" && b.description))
+      .toEqual(["Test tidy", "Test 5 x 5"]);
   });
 });

@@ -12,8 +12,6 @@ export interface GenerateStructuredArgs<T> {
   schema: z.ZodType<T>;
   schemaName: string; // names the response for providers that need it; keys FakeProvider scripts
   attachments?: FileAttachment[];
-  /** Little reasoning for copy-like tasks, where thinking only adds latency. Providers without the knob ignore it. */
-  lowThinking?: boolean;
 }
 
 export interface LlmProvider {

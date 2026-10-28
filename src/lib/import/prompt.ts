@@ -13,3 +13,10 @@ export const IMPORT_SYSTEM_PROMPT = `Convert a coach's training programme PDF in
 - Omit fields that do not apply.`;
 
 export const IMPORT_USER_PROMPT = "Convert the attached PDF.";
+
+export const TIDY_SYSTEM_PROMPT = `Tidy the blocks of a coach's training week. Each block is "[id] heading" followed by its text, extracted from a PDF whose narrow columns wrapped long lines. Return every block by id.
+
+- "description": the block's text with the wrapping undone: keep one line per item (exercise, set, level, note) and join a line to the previous one only when it continues the same sentence or item. Fix obvious typos; never change movements, reps, loads, percentages, times, levels or notes. Do not repeat the heading.
+- "coachingTips": only the text after a "Coaching tips" label, wrapped the same way; drop the label. Everything else, including notes and objectives, stays in "description".
+- "scoring" only when obvious; "timeCapSeconds" only for for_time.
+- Omit fields that do not apply.`;

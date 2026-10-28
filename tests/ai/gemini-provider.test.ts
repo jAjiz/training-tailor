@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { GeminiProvider, geminiConfig, geminiContents } from "@/lib/ai/gemini-provider";
+import { GeminiProvider, geminiContents } from "@/lib/ai/gemini-provider";
 import { DEFAULT_GEMINI_MODEL } from "@/lib/ai";
 import { StimulusProfileSchema } from "@/lib/engine/types";
 
@@ -33,13 +33,5 @@ describe("geminiContents", () => {
   it("sends only the text without attachments", () => {
     expect(geminiContents({ prompt: "p", schema: z.object({}), schemaName: "X" }))
       .toEqual([{ role: "user", parts: [{ text: "p" }] }]);
-  });
-});
-
-describe("geminiConfig", () => {
-  const base = { prompt: "p", schema: z.object({}), schemaName: "X" };
-  it("asks for low thinking only when requested", () => {
-    expect(geminiConfig({ ...base, lowThinking: true }).thinkingConfig).toEqual({ thinkingLevel: "LOW" });
-    expect(geminiConfig(base)).not.toHaveProperty("thinkingConfig");
   });
 });
