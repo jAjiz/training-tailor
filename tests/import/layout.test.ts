@@ -29,14 +29,24 @@ describe("calendarBlocks", () => {
     expect(blocks?.[0].text).toBe("Test part 1\nTest part 2");
   });
 
-  it("joins a wrapped heading and drops a heading with no text", () => {
+  it("joins a wrapped heading, keeps a heading with no text and drops the page title", () => {
     const blocks = calendarBlocks([[
+      at("Test Planning", 10, 830, 12),
       ...HEADERS,
       at("Test day title", 10, 780, 8.5),
       at("Test Long", 10, 750, 8.5), at("Heading", 10, 740, 8.5),
       at("Test text 1", 10, 730), at("Test text 2", 10, 720), at("Test text 3", 10, 710), at("Test text 4", 10, 700),
     ]]);
-    expect(titles(blocks)).toEqual(["0:Test Long Heading"]);
+    expect(titles(blocks)).toEqual(["0:Test day title", "0:Test Long Heading"]);
+    expect(blocks?.[0].text).toBe("");
+  });
+
+  it("turns a gap of more than twice the body size into a blank line", () => {
+    const blocks = calendarBlocks([[
+      ...HEADERS,
+      at("Test H", 10, 780, 8.5), at("A) Test", 10, 770), at("Test wrapped", 10, 760.3), at("B) Test", 10, 741),
+    ]]);
+    expect(blocks?.[0].text).toBe("A) Test\nTest wrapped\n\nB) Test");
   });
 
   it("joins runs on one line", () => {

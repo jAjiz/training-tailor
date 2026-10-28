@@ -58,8 +58,10 @@ function linesOf(items: TextItem[], body: number): Line[] {
  * Reads a calendar laid out as one column per weekday: page 1 has a row of weekday
  * headers, and later pages continue the same columns without them. Text goes to the column it sits in;
  * a line in a larger font than the body starts a block, and text before a day's first heading on a later
- * page continues that day's previous block. A heading with no text under it (a day or page title) is not
- * a block. Returns null when the PDF is not such a calendar.
+ * page continues that day's previous block. A heading with no text under it (a day title or the week's
+ * objectives) is still a block, with empty text; the page title above the weekday row is dropped. A gap
+ * between two lines of more than twice the body size is a blank line. Returns null when the PDF is not
+ * such a calendar.
  */
 export function calendarBlocks(pages: TextItem[][]): SourceBlock[] | null {
   const items = pages.map((page) => page.filter((i) => i.str.trim()));
@@ -75,24 +77,29 @@ export function calendarBlocks(pages: TextItem[][]): SourceBlock[] | null {
     for (const a of anchors) if (x >= a.x - 4) day = weekdayOf(a.str);
     return day;
   };
-  const content = items.map((page, p) => (p === 0 ? page.filter((i) => Math.abs(i.y - rowY) >= SAME_LINE) : page));
+  // Page 1 keeps only what sits below the weekday row.
+  const content = items.map((page, p) => (p === 0 ? page.filter((i) => i.y < rowY - SAME_LINE) : page));
   const body = mostCommonHeight(content);
   const blocks: { day: number; title: string; lines: string[] }[] = [];
   for (let day = 0; day < 7; day++) {
     let current: (typeof blocks)[number] | null = null;
     content.forEach((page) => {
+      let lastY: number | null = null; // previous body line on this page, for blank lines
       const mine = page.filter((i) => dayOf(i.x) === day);
       for (const line of linesOf(mine, body)) {
         if (line.heading) {
           current = { day, title: line.text, lines: [] };
           blocks.push(current);
-        } else current?.lines.push(line.text);
+          lastY = null;
+        } else if (current) {
+          if (lastY !== null && lastY - line.y > body * 2) current.lines.push("");
+          current.lines.push(line.text);
+          lastY = line.y;
+        }
       }
     });
   }
-  return blocks
-    .filter((b) => b.lines.length > 0)
-    .map(({ day, title, lines }) => ({ day, title, text: lines.join("\n") }));
+  return blocks.map(({ day, title, lines }) => ({ day, title, text: lines.join("\n") }));
 }
 
 /** The text runs of every page; null when the PDF cannot be read. */

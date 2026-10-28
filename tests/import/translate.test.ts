@@ -125,38 +125,42 @@ describe("translatePdf", () => {
 describe("translatePdf with a calendar PDF", () => {
   const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const at = (str: string, x: number, y: number, h = 7.5): TextItem => ({ str, x, y, h });
-  // Two blocks on Monday and one on Wednesday; body text is the most common size.
+  // Two blocks on Monday, then a title-only box and one block on Wednesday; body text is the most common size.
   const pages: TextItem[][] = [[
     ...DAYS.map((d, i) => at(d, 10 + i * 100, 800, 9.5)),
     at("Test Warm-up", 10, 780, 8.5), at("Test row 2 min", 10, 770), at("Test bike 2 min", 10, 760),
     at("Test Strength", 10, 740, 8.5), at("Test 5 x 5", 10, 730),
-    at("Test Engine", 210, 780, 8.5), at("Test 20 min", 210, 770), at("Coaching tips", 210, 760), at("Test pace", 210, 750),
+    at("Test Day Summary", 210, 790, 8.5),
+    at("Test Engine", 210, 760, 8.5), at("Test 20 min", 210, 750), at("Coaching tips", 210, 740), at("Test pace", 210, 730),
   ]];
   const readText = async () => pages;
   const tidy = (blocks: unknown[]) => new FakeProvider({ BlockTidy: { blocks } });
 
-  it("keeps the code's days and titles and takes the tidied text by id", async () => {
+  it("keeps the code's days and titles and takes the tidied text and colour by id", async () => {
     const fake = tidy([
-      { id: 1, description: "Test row 2 min\nTest bike 2 min" },
-      { id: 2, description: "Test 5 x 5", scoring: "load" },
-      { id: 3, description: "Test 20 min", coachingTips: "Test pace" },
+      { id: 1, description: "test warm-up\nTest row 2 min\nTest bike 2 min", color: "blue" },
+      { id: 2, description: "Test 5 x 5", scoring: "load", color: "red" },
+      { id: 3, description: "", color: "purple" },
+      { id: 4, description: "Test 20 min", coachingTips: "Test pace", color: "yellow" },
     ]);
     const preview = await translatePdf(fake, PDF, readText);
     expect(fake.calls[0].schemaName).toBe("BlockTidy");
     expect(fake.calls[0].attachments).toBeUndefined();
-    expect(fake.calls[0].prompt).toContain("[3] Test Engine");
+    expect(fake.calls[0].prompt).toContain("[4] Test Engine");
     expect(preview).toMatchObject({ weeksFound: 1, daysNamed: true, dropped: 0 });
     expect(preview.weeks[0].days.map((d) => [d.day, d.blocks.map((b) => b.title)])).toEqual([
       [0, ["Test Warm-up", "Test Strength"]],
-      [2, ["Test Engine"]],
+      [2, [null, "Test Engine"]],
     ]);
-    expect(preview.weeks[0].days[0].blocks[1]).toMatchObject({ kind: "custom", description: "Test 5 x 5", scoring: "load" });
-    expect(preview.weeks[0].days[1].blocks[0]).toMatchObject({ coachingTips: "Test pace" });
+    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({ description: "Test row 2 min\nTest bike 2 min" });
+    expect(preview.weeks[0].days[0].blocks[1]).toMatchObject({ kind: "custom", description: "Test 5 x 5", scoring: "load", color: "red" });
+    expect(preview.weeks[0].days[1].blocks[0]).toMatchObject({ description: "Test Day Summary", color: "purple" });
+    expect(preview.weeks[0].days[1].blocks[1]).toMatchObject({ coachingTips: "Test pace", color: "yellow" });
   });
 
   it("keeps the document text for a block the model skipped", async () => {
-    const preview = await translatePdf(tidy([{ id: 1, description: "Test tidy" }]), PDF, readText);
-    expect(preview.weeks[0].days[0].blocks.map((b) => b.kind === "custom" && b.description))
-      .toEqual(["Test tidy", "Test 5 x 5"]);
+    const preview = await translatePdf(tidy([{ id: 1, description: "Test tidy", color: "blue" }]), PDF, readText);
+    expect(preview.weeks[0].days[0].blocks.map((b) => [b.kind === "custom" && b.description, b.color]))
+      .toEqual([["Test tidy", "blue"], ["Test 5 x 5", "neutral"]]);
   });
 });

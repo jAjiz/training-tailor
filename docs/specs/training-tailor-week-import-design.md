@@ -66,8 +66,9 @@ created.
 | Coaching tips | Text the document marks as coaching tips, objectives or coach notes for a block goes to the block's `coachingTips`; the workout itself goes to `description` (custom) or `instructions` (barbell). |
 | Block kind | Every imported block is **`custom`** with the document text (owner, 2026-10-28, after testing with the samples). Barbell blocks are made by hand in the editor. This keeps the model's output to copying text. |
 | Scoring | For `custom`, the model picks a `Scoring` only when the document makes it obvious (for time with a time cap, AMRAP, load); otherwise `none`. |
-| Colour | Imported blocks are `neutral`; the coach recolours them in the planner (owner, 2026-10-28: minimal model output). |
-| Week-level text | Text that is not a workout but belongs to the week (objectives, "Principios de entrenamiento") is still offered as a `custom` block on the day where it appears, so the coach can decide. *My call;* the coach deselects it if not wanted. |
+| Colour | The model picks each block's colour from `BLOCK_COLORS` by its kind (owner, 2026-10-28), with a fixed mapping in the prompt so every week looks the same: warm-up blue, weightlifting orange, strength red, conditioning yellow, endurance green, accessories purple, notes neutral. |
+| Week-level text | Text that is not a workout but belongs to the week or the day (objectives, day summaries, "Principios de entrenamiento") is still offered as a `custom` block on the day where it appears, so the coach can decide. A box with only a heading imports with the heading as its text and no title. A proper place for day and week objectives is a later feature (owner, 2026-10-28). |
+| Line breaks | The document's blank lines between sections are kept; lines the PDF wrapped in a narrow column are joined. |
 | Failure | If the model call fails, returns nothing usable or finds no blocks, the window shows an error and nothing is created. |
 | Quota | A new `UsageKind` `"import"` with its **own** daily count, using the same `DAILY_ENGINE_LIMIT` value (no change to how other kinds are counted). Like the engine routes, quota is spent before the model call, so a failed translation still counts. *My call.* |
 | Who | Approved coaches, on programs they own that are not archived. Impersonation sessions cannot import (they cannot spend quota on the coach's behalf, like the engine routes). |
@@ -91,10 +92,11 @@ prompt fixed it):
   continuing on later pages without headers). Code reads the PDF's text layer (`unpdf`), assigns
   each line to the column it sits in, and starts a block at each line in a larger font than the
   body. Text above a day's first heading on a later page continues that day's previous block; a
-  heading with no text (day or page title) is not a block. The model gets only the blocks' text, by
-  id, and returns each one tidied (wrapping undone, the "Coaching tips" section moved out, scoring
-  when obvious). Days and titles come from code, so the model cannot move or drop a block; a block
-  it skips keeps the document's text. One week per PDF.
+  heading with no text is a block of its own, and the page title above the weekday row is dropped. A
+  gap of more than twice the body size between lines is a blank line. The model gets only the
+  blocks' text, by id, and returns each one tidied (wrapping undone, blank lines kept, the "Coaching
+  tips" section moved out, scoring when obvious, a colour). Days and titles come from code, so the
+  model cannot move or drop a block; a block it skips keeps the document's text. One week per PDF.
 - **Any other PDF** goes to the model whole, which returns weeks, days and blocks
   (`{ weeksFound, daysNamed, weeks: [{ label, days: [{ day: 1–7, blocks }] }] }`), up to 4 weeks.
 

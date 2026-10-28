@@ -24,7 +24,7 @@ function toBlock(b: ModelBlock): BlockInputValue | null {
   const block = {
     kind: "custom" as const,
     title: b.title ?? null,
-    color: "neutral" as const,
+    color: b.color ?? "neutral",
     coachingTips: b.coachingTips ?? null,
     videoUrl: null,
     description: b.description,
@@ -60,12 +60,22 @@ async function tidyCalendar(provider: LlmProvider, source: SourceBlock[]): Promi
     schemaName: "BlockTidy",
   });
   const tidied = new Map(response.blocks.map((b) => [b.id, b]));
+  // The model sometimes repeats the heading as the first line; the title already shows it.
+  const withoutHeading = (text: string, title: string) => {
+    const [first, ...rest] = text.split("\n");
+    return first.trim().toLowerCase() === title.trim().toLowerCase() ? rest.join("\n").trimStart() : text;
+  };
   let dropped = 0;
   const byDay = new Map<number, BlockInputValue[]>();
   source.forEach((s, i) => {
     const t = tidied.get(i + 1);
-    // A block the model skipped or broke keeps the document's own text.
-    const block = (t && toBlock({ ...t, title: s.title })) ?? toBlock({ title: s.title, description: s.text });
+    const color = t?.color;
+    // A box with only a heading (a day or week summary) imports with the heading as its text. A block the
+    // model skipped or broke keeps the document's own text.
+    const block = s.text.trim() === ""
+      ? toBlock({ description: s.title, color })
+      : (t && toBlock({ ...t, title: s.title, description: withoutHeading(t.description, s.title) }))
+        ?? toBlock({ title: s.title, description: s.text, color });
     if (!block) {
       dropped++;
       return;

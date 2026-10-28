@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Scoring } from "@/lib/training/schemas";
+import { BlockColor, Scoring } from "@/lib/training/schemas";
 
 /** The most weeks one import keeps; the model is told to stop there too. */
 export const MAX_IMPORT_WEEKS = 4;
@@ -15,6 +15,7 @@ const ModelBlock = z.object({
   coachingTips: z.string().max(2000).optional(),
   scoring: Scoring.optional(),
   timeCapSeconds: z.number().int().optional(),
+  color: BlockColor.optional(),
 });
 export type ModelBlock = z.infer<typeof ModelBlock>;
 
@@ -39,6 +40,7 @@ export const TidyResponse = z.object({
     coachingTips: z.string().max(2000).optional(),
     scoring: Scoring.optional(),
     timeCapSeconds: z.number().int().optional(),
+    color: BlockColor,
   })),
 });
 export type TidyResponse = z.infer<typeof TidyResponse>;
