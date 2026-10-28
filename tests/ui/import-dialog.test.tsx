@@ -79,7 +79,24 @@ describe("ImportDialog", () => {
         <ImportDialog ctx={ctx} publishedWeeks={[]} filledWeeks={[]} onClose={vi.fn()} />
       </NextIntlClientProvider>,
     );
-    expect(screen.getByText(en.import.dataNotice)).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(en.import.dataNotice);
+    expect(screen.getByRole("dialog", { name: en.import.title })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: en.import.read })).toBeDisabled();
+  });
+
+  it("shows the chosen file name and a loading view while the PDF is read", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => {})));
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <ImportDialog ctx={ctx} publishedWeeks={[]} filledWeeks={[]} onClose={vi.fn()} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(en.import.choose)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(en.import.file), { target: { files: [new File(["%PDF-1.4"], "Test week.pdf", { type: "application/pdf" })] } });
+    expect(screen.getByText("Test week.pdf")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: en.import.read }));
+    expect(await screen.findByRole("status")).toHaveTextContent(en.import.reading);
+    expect(screen.queryByLabelText(en.import.file)).not.toBeInTheDocument();
   });
 
   it("refuses a PDF over 4 MB without calling the server", () => {
@@ -104,28 +121,24 @@ describe("ImportDialog", () => {
     expect(form.get("programId")).toBe("p1");
 
     expect(await screen.findByText("4 blocks selected")).toBeInTheDocument();
-    expect(screen.getByText("PDF week 1 → Week 3")).toBeInTheDocument();
     expect(confirmButton()).toBeEnabled();
     fireEvent.click(confirmButton());
-    expect(confirmButton()).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(en.import.importing);
+    expect(screen.queryByRole("button", { name: en.import.confirm })).not.toBeInTheDocument();
     expect(actions.importBlocksAction).toHaveBeenCalledOnce();
     expect(actions.importBlocksAction).toHaveBeenCalledWith({ programId: "p1", items: selectedItems(allKeys(preview()), preview(), ctx), mode: "append" });
-    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
 
     finish({ ok: true, value: undefined });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("blocks Cancel, the close control and the checkboxes while importing", async () => {
+  it("cannot be closed while importing", async () => {
     actions.importBlocksAction.mockReturnValue(new Promise(() => {}));
     const { onClose } = await open(preview());
     await screen.findByText("4 blocks selected");
     fireEvent.click(confirmButton());
-    expect(screen.getByRole("button", { name: en.common.cancel })).toBeDisabled();
     expect(screen.getByRole("button", { name: en.common.close })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: en.import.selectWeek })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Test A" })).toBeDisabled();
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -136,7 +149,6 @@ describe("ImportDialog", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: en.import.selectWeek }));
     expect(screen.getByText("1 block selected")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: en.planner.nextWeek }));
-    expect(screen.getByText("PDF week 2 → Week 4")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "Test D" }));
     expect(screen.getByText("0 blocks selected")).toBeInTheDocument();
     expect(confirmButton()).toBeDisabled();
@@ -150,16 +162,29 @@ describe("ImportDialog", () => {
     expect(within(dialog).getByText("2 blocks couldn't be read")).toBeInTheDocument();
   });
 
-  it("asks whether to add to or replace a target week that already has blocks", async () => {
+  it("asks after confirming whether to add to or replace a target week that already has blocks", async () => {
     actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
     await open(preview(), 200, [3, 9]);
     await screen.findByText("4 blocks selected");
-    expect(screen.getByText("Week 4 already has blocks. What should happen to them?")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: en.import.modeAppend })).toBeChecked();
-    fireEvent.click(screen.getByRole("radio", { name: en.import.modeReplace }));
-    expect(screen.getByText(/The current blocks of that week will be deleted/)).toBeInTheDocument();
+    expect(screen.queryByText(/already has blocks/)).not.toBeInTheDocument();
     fireEvent.click(confirmButton());
+    const ask = screen.getByRole("dialog", { name: en.import.clashTitle });
+    expect(within(ask).getByText("Week 4 already has blocks. What should happen to them?")).toBeInTheDocument();
+    expect(within(ask).getByText(/Replacing deletes the current blocks of that week/)).toBeInTheDocument();
+    expect(actions.importBlocksAction).not.toHaveBeenCalled();
+    fireEvent.click(within(ask).getByRole("button", { name: en.import.modeReplace }));
     await waitFor(() => expect(actions.importBlocksAction).toHaveBeenCalledWith(expect.objectContaining({ mode: "replace" })));
+  });
+
+  it("does not ask when the selection leaves the filled week out", async () => {
+    actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
+    await open(preview(), 200, [3]);
+    await screen.findByText("4 blocks selected");
+    fireEvent.click(screen.getByRole("button", { name: en.planner.nextWeek }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Test D" }));
+    fireEvent.click(confirmButton());
+    expect(screen.queryByRole("dialog", { name: en.import.clashTitle })).not.toBeInTheDocument();
+    await waitFor(() => expect(actions.importBlocksAction).toHaveBeenCalledWith(expect.objectContaining({ mode: "append" })));
   });
 
   it("shows the server's refusal", async () => {
