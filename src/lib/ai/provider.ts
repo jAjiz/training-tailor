@@ -1,10 +1,17 @@
 import { z } from "zod";
 
+/** A file sent to the model alongside the prompt (e.g. a PDF). */
+export interface FileAttachment {
+  mimeType: string;
+  data: Uint8Array;
+}
+
 export interface GenerateStructuredArgs<T> {
   systemPrompt?: string;
   prompt: string;
   schema: z.ZodType<T>;
   schemaName: string; // names the response for providers that need it; keys FakeProvider scripts
+  attachments?: FileAttachment[];
 }
 
 export interface LlmProvider {

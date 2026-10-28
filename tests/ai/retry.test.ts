@@ -26,4 +26,11 @@ describe("withValidationRetry", () => {
     await expect(withValidationRetry(fake).generateStructured({ prompt: "x", schema, schemaName: "Demo" })).rejects.toThrow("network");
     expect(fake.calls).toHaveLength(1);
   });
+
+  it("keeps attachments on the retry", async () => {
+    const fake = new FakeProvider({ Demo: sequence({ ok: "nope" }, { ok: true }) });
+    const attachments = [{ mimeType: "application/pdf", data: new Uint8Array([1, 2]) }];
+    await withValidationRetry(fake).generateStructured({ prompt: "p", schema, schemaName: "Demo", attachments });
+    expect(fake.calls[1].attachments).toBe(attachments);
+  });
 });
