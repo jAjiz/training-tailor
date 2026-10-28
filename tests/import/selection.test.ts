@@ -60,7 +60,7 @@ describe("import selection", () => {
     ]);
   });
 
-  it("maps PDF week 2 Monday opened on week 3 to day 35", () => {
+  it("maps PDF week 2 Monday opened on week 5 (weekIndex 4) to day 35", () => {
     const items = selectedItems(allKeys(preview), preview, { weekIndex: 4, maxWeek: null });
     expect(items.find((i) => i.block.title === "Test D")?.dayIndex).toBe(35);
   });

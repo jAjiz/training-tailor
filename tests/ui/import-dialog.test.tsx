@@ -116,6 +116,19 @@ describe("ImportDialog", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  it("blocks Cancel, the close control and the checkboxes while importing", async () => {
+    actions.importBlocksAction.mockReturnValue(new Promise(() => {}));
+    const { onClose } = await open(preview());
+    await screen.findByText("4 blocks selected");
+    fireEvent.click(confirmButton());
+    expect(screen.getByRole("button", { name: en.common.cancel })).toBeDisabled();
+    expect(screen.getByRole("button", { name: en.common.close })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: en.import.selectWeek })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Test A" })).toBeDisabled();
+    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("disables the confirm when every block is unchecked", async () => {
     await open(preview());
     await screen.findByText("4 blocks selected");

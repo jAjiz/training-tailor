@@ -118,6 +118,7 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
     }
   }
 
+  const importing = phase === "importing";
   const errorLine = error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>;
 
   if (!preview) {
@@ -157,11 +158,11 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
     : t("planner.dayNumber", { day: day + 1 });
 
   return (
-    <Modal title={t("import.tooltip")} closeLabel={t("common.close")} onClose={onClose} size="lg"
+    <Modal title={t("import.tooltip")} closeLabel={t("common.close")} onClose={onClose} size="xl" busy={importing}
       footer={<>
         <span className="mr-auto text-sm text-muted">{t("import.selected", { count })}</span>
-        <Button type="button" onClick={onClose}>{t("common.cancel")}</Button>
-        <Button type="button" variant="primary" onClick={() => void confirm()} disabled={count === 0 || phase === "importing"}>
+        <Button type="button" onClick={onClose} disabled={importing}>{t("common.cancel")}</Button>
+        <Button type="button" variant="primary" onClick={() => void confirm()} disabled={count === 0 || importing}>
           {t("import.confirm")}
         </Button>
       </>}>
@@ -186,7 +187,7 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
           </div>
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input type="checkbox" className="h-4 w-4 accent-primary" aria-label={t("import.selectWeek")}
-              checked={weekChecked} disabled={!importable || keys.length === 0}
+              checked={weekChecked} disabled={!importable || keys.length === 0 || importing}
               onChange={() => setSelection(toggleWeek(selection, preview, week))} />
             <span>{t("import.weekTarget", { week: week + 1, target: targetLabel })}</span>
           </label>
@@ -214,7 +215,7 @@ export function ImportDialog({ ctx, publishedWeeks, onClose }: Props) {
                         className={cx("flex cursor-pointer flex-col gap-1.5 rounded-xl bg-(--block-fill) p-2.5 transition-opacity",
                           (!on || !importable) && "opacity-50", !importable && "cursor-not-allowed")}>
                         <span className="flex items-start gap-1.5">
-                          <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-primary" aria-label={heading} checked={on} disabled={!importable}
+                          <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-primary" aria-label={heading} checked={on} disabled={!importable || importing}
                             onChange={() => setSelection(toggleBlock(selection, key))} />
                           <span className="min-w-0 text-sm font-bold leading-snug">{heading}</span>
                         </span>
