@@ -34,7 +34,7 @@
     "@prisma/client": "^7.8.0",
     "better-auth": "^1.7.7",
     "lucide-react": "^1.52.0",
-    "next": "16.2.9",
+    "next": "16.4.1",
     "next-intl": "^4.14.9",
     "pg": "^8.21.0",
     "pg-connection-string": "2.13.0",
