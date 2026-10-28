@@ -222,5 +222,5 @@ describe("geminiContents", () => {
 ### Task 6: End-to-end check with real PDFs
 
 - [ ] **Step 1:** `pnpm test` and `pnpm build` — all pass.
-- [ ] **Step 2:** With `GEMINI_API_KEY` set and the dev server running, sign in as an approved coach, open a continuous program, import the owner's two sample PDFs (provided by the owner, kept outside the repo). Check: the Strivee week gives one week with Monday–Sunday blocks, coaching tips separated, Bench Press / Back Squat / Deadlift as barbell where their sets fit; the "Ciclo 1" PDF gives 4 weeks; deselecting and importing creates exactly the selected blocks; loads and percentages match the PDF.
+- [ ] **Step 2:** With `GEMINI_API_KEY` set and the dev server running, sign in as an approved coach, open a continuous program, import the owner's two sample PDFs (provided by the owner, kept outside the repo). Check: the calendar week gives one week with Monday–Sunday blocks, coaching tips separated, Bench Press / Back Squat / Deadlift as barbell where their sets fit; the "Ciclo 1" PDF gives 4 weeks; deselecting and importing creates exactly the selected blocks; loads and percentages match the PDF.
 - [ ] **Step 3:** Report any prompt changes made during the check in the PR description.

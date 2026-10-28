@@ -1,8 +1,8 @@
-# UI Restyle (Strivee look, light and dark) Implementation Plan
+# UI Restyle (light and dark) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restyle every existing screen so the app looks like Strivee, in light and dark following the OS, without changing behavior.
+**Goal:** Restyle every existing screen to match the reference screenshots, in light and dark following the OS, without changing behavior.
 
 **Architecture:** Semantic CSS variables in `globals.css` (light on `:root`, dark under `prefers-color-scheme`) exposed to Tailwind 4 through `@theme inline`; block colors resolved from a `data-color` attribute. A small set of our own primitives in `src/components/ui/` (no domain state, no next-intl), then each screen rebuilt on top of them. Server actions, services, data fetching and drag and drop stay as they are.
 
@@ -490,7 +490,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
   secondary: "bg-surface-2 text-foreground hover:brightness-95 dark:hover:brightness-125",
   ghost: "text-foreground hover:bg-surface-2",
   danger: "text-danger ring-1 ring-inset ring-danger/40 hover:bg-danger/10",
-  // Inside an element with data-color: the block's ink on its fill (Strivee's "Coaching Tips" / "Log Result").
+  // Inside an element with data-color: the block's ink on its fill (e.g. "Coaching Tips" / "Log Result").
   tinted: "bg-(--block-fill) text-(--block-ink) hover:brightness-95 dark:hover:brightness-125",
 };
 const SIZES: Record<ButtonSize, string> = { sm: "h-9 px-3 text-sm", md: "h-12 px-5 text-[15px]" };
@@ -588,7 +588,7 @@ export function Pill({ tone = "neutral", className, children }: { tone?: PillTon
   );
 }
 
-/** Navigation pill: the active one inverted, like Strivee's top navigation. */
+/** Navigation pill: the active one inverted. */
 export const navPillClasses = (active: boolean): string =>
   cx("rounded-full px-4 py-1.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-foreground",
     active ? "bg-primary text-on-primary" : "text-muted hover:bg-surface-2 hover:text-foreground");
@@ -604,7 +604,7 @@ export const chipClasses = (on: boolean): string =>
 ```tsx
 import { cx } from "./cx";
 
-/** Filled control (Strivee's Workout Log): no visible border until focus. No width: Field stretches it. */
+/** Filled control: no visible border until focus. No width: Field stretches it. */
 export function controlClasses(compact = false): string {
   return cx(
     "rounded-xl bg-surface-2 text-foreground outline-none ring-1 ring-transparent transition placeholder:text-muted focus:ring-foreground disabled:opacity-50",
@@ -835,7 +835,7 @@ type Props<T extends string> = {
   className?: string;
 };
 
-/** Segmented control (Strivee's Rx / Scaled) as an accessible radio group: one tab stop, arrows move and select. */
+/** Segmented control (e.g. Rx / Scaled) as an accessible radio group: one tab stop, arrows move and select. */
 export function Segmented<T extends string>({ options, value, onChange, label, size = "md", className }: Props<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const disabled = options.map((o) => Boolean(o.disabled));
@@ -1334,7 +1334,7 @@ const ITEMS = [
   { href: "/me", key: "me", Icon: UserRound, keepProgram: false },
 ] as const;
 
-/** Bottom tab bar (Strivee's WOD / PRs / Profile row), limited to the pages that exist. */
+/** Bottom tab bar (WOD / PRs / Profile), limited to the pages that exist. */
 export function AthleteTabBar() {
   const t = useTranslations("nav");
   const pathname = usePathname();
@@ -1596,7 +1596,7 @@ export function ProgramTitle({ programs, selected, basePath }: { programs: Progr
 ```tsx
 import { ProgramTitle, type ProgramOption } from "./ProgramTitle";
 
-/** The black band on top of athlete pages (black in both themes, like Strivee): program, then e.g. the week strip. */
+/** The black band on top of athlete pages (black in both themes): program, then e.g. the week strip. */
 export function AthleteHeader({ programs, selected, basePath, children }: {
   programs: ProgramOption[]; selected: string; basePath: "/" | "/calendar"; children?: React.ReactNode;
 }) {
@@ -1795,7 +1795,7 @@ Browser at 375 px, light and dark:
 - Block cards have a colored stripe; coaching tips open as a tinted button.
 - Switch to a day with nothing published → empty-state card.
 - `/calendar`: arrows work, today is framed, dots show on days with blocks.
-- Compare against `C:\Dev\strivee images\athlete_view01.jpg` and the light screenshot the user shared.
+- Compare against the reference athlete view screenshot (outside the repo) and the light screenshot the user shared.
 
 - [ ] **Step 9: Commit**
 
@@ -2114,7 +2114,7 @@ export function SettingsForm({ initial, timeZones }: { initial: Settings; timeZo
 Run: `pnpm exec tsc --noEmit`, `pnpm lint` → clean.
 Browser, light and dark, 375 px:
 - `/me`: change the language with the segmented control and save. The UI switches language; switch it back to Spanish.
-- Open `/join/<code of Strivee-like program>` while enrolled → redirects. Signed out (private tab not needed: just read the page markup through `get_page_text` while signed in) and check that the card renders.
+- Open `/join/<code of a program>` while enrolled → redirects. Signed out (private tab not needed: just read the page markup through `get_page_text` while signed in) and check that the card renders.
 - `/signin` shows the brand, the card and the Google button with the logo. Read it with `read_page`: never click through Google sign-in.
 
 - [ ] **Step 6: Commit**
@@ -3678,13 +3678,13 @@ Expected: all green; the test count is the previous 390 plus the new `tests/ui/*
 6. Coach: roster remove → athlete sees the "removed" state on `/join/<code>` → restore.
 7. Sign-in pages (`/signin`, `/coach/signin`) read with `read_page` only.
 
-- [ ] **Step 3: Screenshots for the user.** Capture the athlete day view, calendar, `/me`, the coach program list, the planner, the editor and the roster, each in light and dark. Send them with `SendUserFile` next to the matching file from `C:\Dev\strivee images`.
+- [ ] **Step 3: Screenshots for the user.** Capture the athlete day view, calendar, `/me`, the coach program list, the planner, the editor and the roster, each in light and dark. Send them with `SendUserFile` next to the matching reference screenshot.
 
 - [ ] **Step 4: Push and open the PR**
 
 ```bash
 git push -u origin feat/ui-restyle
-gh pr create --base main --title "UI restyle: Strivee look in light and dark" --body "$(cat <<'EOF'
+gh pr create --base main --title "UI restyle in light and dark" --body "$(cat <<'EOF'
 ## Summary
 - Light and dark themes that follow the OS, on semantic CSS tokens; block colors as tokens resolved from `data-color`.
 - Own primitives in `src/components/ui` (Button, Card, Field/controls, Segmented, ColorSwatches, Modal on `<dialog>`, Menu, Pill, Avatar), `lucide-react` icons and Inter.
