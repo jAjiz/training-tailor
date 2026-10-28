@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server";
-import { getProvider } from "@/lib/ai";
+import { getProvider, IMPORT_GEMINI_MODEL } from "@/lib/ai";
 import type { LlmProvider } from "@/lib/ai/provider";
 import { prisma } from "@/lib/db";
-import { getDomainData } from "@/lib/domain/repository";
 import { jsonError } from "@/lib/http";
 import { ImportEmptyError, translatePdf } from "@/lib/import/translate";
 import { consumeQuota, dailyLimit } from "@/lib/quota";
 import { prismaQuotaStore } from "@/lib/quota-store";
 import { getSessionContext } from "@/lib/session";
-import { liftCatalog } from "@/lib/training/barbell";
 import { TrainingError } from "@/lib/training/errors";
 import { getCoachByUserId } from "@/lib/training/services/accounts";
 import { assertWritable, getOwnedProgram } from "@/lib/training/services/programs";
 
-export const maxDuration = 120;
+// A full week PDF takes the import model a few minutes to write out.
+export const maxDuration = 300;
 
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
@@ -53,7 +52,7 @@ export async function POST(req: Request): Promise<Response> {
 
   let provider: LlmProvider;
   try {
-    provider = getProvider();
+    provider = getProvider(process.env.GEMINI_IMPORT_MODEL || IMPORT_GEMINI_MODEL);
   } catch (e) {
     console.error("import unavailable", e);
     return jsonError("import_unavailable", 503);
@@ -62,9 +61,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!quota.allowed) return jsonError("import_quota", 429);
 
   try {
-    const { movements } = await getDomainData();
-    const liftNames = liftCatalog(movements).flatMap((group) => group.movements);
-    return NextResponse.json(await translatePdf(provider, pdf, liftNames));
+    return NextResponse.json(await translatePdf(provider, pdf));
   } catch (e) {
     if (e instanceof ImportEmptyError) return jsonError("import_empty", 422);
     console.error("import failed", e);

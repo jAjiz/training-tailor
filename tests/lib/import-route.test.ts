@@ -3,7 +3,6 @@ import { FakeProvider } from "@/lib/ai/fake-provider";
 import type { LlmProvider } from "@/lib/ai/provider";
 import { createTestDb, type TestDb } from "../helpers/db";
 import { makeClosed, makeCoach, makeUser } from "../helpers/factories";
-import { testDomain, testMovement } from "../helpers/library-builders";
 
 let tdb: TestDb;
 const getSessionContext = vi.fn();
@@ -12,27 +11,19 @@ const countSince = vi.fn();
 const record = vi.fn();
 vi.mock("@/lib/db", () => ({ get prisma() { return tdb.prisma; } }));
 vi.mock("@/lib/session", () => ({ getSessionContext: () => getSessionContext() }));
-vi.mock("@/lib/ai", () => ({ getProvider: () => getProvider() }));
+vi.mock("@/lib/ai", () => ({ IMPORT_GEMINI_MODEL: "test-import-model", getProvider: (model?: string) => getProvider(model) }));
 vi.mock("@/lib/quota-store", () => ({
   prismaQuotaStore: {
     countSince: (...a: unknown[]) => countSince(...a),
     record: (...a: unknown[]) => record(...a),
   },
 }));
-vi.mock("@/lib/domain/repository", () => ({
-  getDomainData: async () => testDomain({
-    movements: [testMovement("Test Back Squat", { equipment: ["barbell"] }), testMovement("Test Burpee")],
-  }),
-}));
 
 import { POST } from "@/app/api/coach/import/route";
 
 const PDF_BYTES = new TextEncoder().encode("%PDF-1.7 test");
 const OVER_LIMIT = 4 * 1024 * 1024 + 1;
-const block = {
-  kind: "custom", title: "Test Block", color: "neutral", coachingTips: null, description: "Test work",
-  scoring: "none", timeCapSeconds: null, movement: null, sets: null, instructions: null, sourceText: "Test work",
-};
+const block = { title: "Test Block", description: "Test work" };
 const response = (blocks: unknown[] = [block]) => ({
   weeksFound: 1, daysNamed: true, weeks: [{ label: "Week 1", days: [{ day: 1, blocks }] }],
 });
@@ -57,7 +48,7 @@ beforeEach(async () => {
   record.mockReset().mockResolvedValue(undefined);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 function call(over: { programId?: string | null; pdf?: Blob | string | null } = {}) {
   const form = new FormData();
@@ -194,10 +185,10 @@ describe("POST /api/coach/import", () => {
     expect(record).toHaveBeenCalledTimes(1);
   });
 
-  it("gives the model the barbell movements and the PDF bytes", async () => {
+  it("uses the import model and sends the PDF bytes", async () => {
+    vi.stubEnv("GEMINI_IMPORT_MODEL", "");
     await call();
-    expect(fake.calls[0].systemPrompt).toContain("Test Back Squat");
-    expect(fake.calls[0].systemPrompt).not.toContain("Test Burpee");
+    expect(getProvider).toHaveBeenCalledWith("test-import-model");
     expect(Array.from(fake.calls[0].attachments![0].data)).toEqual(Array.from(PDF_BYTES));
   });
 });

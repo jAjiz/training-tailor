@@ -1,29 +1,15 @@
-import { BLOCK_COLORS } from "@/lib/training/schemas";
 import { MAX_IMPORT_WEEKS } from "./schema";
 
-export function importSystemPrompt(liftNames: string[]): string {
-  const lifts = liftNames.length > 0 ? liftNames.map((n) => `- ${n}`).join("\n") : "(none)";
-  return `You translate a coach's training programme from a PDF into structured weekly blocks.
+// Kept short on purpose: the PDF is the bulk of the input, and every rule here is one the samples needed.
+export const IMPORT_SYSTEM_PROMPT = `Convert a coach's training programme PDF into weekly blocks.
 
-Weeks and days
-- Read every week in the PDF, in order. If there are more than ${MAX_IMPORT_WEEKS} weeks, return only the first ${MAX_IMPORT_WEEKS} but set "weeksFound" to the total number of weeks in the document.
-- "day" is 1 for Monday through 7 for Sunday when the document names weekdays. Otherwise "day" is the position of the training day within its week (1 for the first training day, 2 for the second, ...). Set "daysNamed" to true only when weekdays are named.
+- Read every week in order, at most ${MAX_IMPORT_WEEKS}; "weeksFound" is the total in the document.
+- "day": 1 = Monday … 7 = Sunday when weekdays are named ("daysNamed": true); otherwise the training day's position in its week.
+- If weekdays are columns, columns continue onto later pages without headers: a block's day is its column's horizontal position. A block cut at a page bottom continues at the top of the same column on the next page.
+- One block per section the document separates. Include every block; skip none.
+- "description": the block's full text in the document's language. Fix only line breaks and obvious typos; never change movements, reps, loads, percentages, times, levels or notes.
+- "coachingTips": text marked as coaching tips, objectives or coach notes for the block.
+- "scoring" only when obvious (for_time, amrap, ...); "timeCapSeconds" only for for_time.
+- Omit fields that do not apply.`;
 
-Blocks
-- Write one block per section the document separates (warm-up, strength, conditioning, accessory, week objectives, ...).
-- Keep the document's language. Tidy line breaks, lists and obvious typos, but never change movements, reps, loads, percentages, times, levels (Rx+/Rx/Int/Esc) or notes.
-- Put coaching tips, objectives and coach notes in "coachingTips".
-- Use kind "barbell" only for a single lift from the list below whose sets are reps plus either a percentage or kilograms. Use the lift's name exactly as listed. Every other block is kind "custom".
-- For a custom block, "description" holds the block's full workout text, tidied.
-- For a barbell block, everything "sets" cannot express (rest, tempo, notes, level variants) goes in "instructions".
-- If loads or percentages differ by level (Rx+/Rx/Int/Esc), the block must be custom, not barbell.
-- Set "scoring" only when it is obvious from the text, otherwise "none". Set "timeCapSeconds" only when scoring is "for_time", in seconds (a 20 minute cap is 1200).
-- Map the document's colours to the nearest of: ${BLOCK_COLORS.join(", ")}. Use "neutral" when there is no clear match.
-- "sourceText" is the block's full text exactly as written in the document.
-- Use null for any field that does not apply to the block.
-
-Lifts
-${lifts}`;
-}
-
-export const IMPORT_USER_PROMPT = "Translate the attached PDF into weekly training blocks.";
+export const IMPORT_USER_PROMPT = "Convert the attached PDF.";

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
 import { parseStructured, StructuredOutputError, type GenerateStructuredArgs, type LlmProvider } from "./provider";
 
@@ -8,6 +8,16 @@ export function geminiContents(args: GenerateStructuredArgs<unknown>) {
     inlineData: { mimeType: a.mimeType, data: Buffer.from(a.data).toString("base64") },
   }));
   return [{ role: "user", parts: [...files, { text: args.prompt }] }];
+}
+
+/** The generateContent config: JSON output against the schema, and low thinking when asked. */
+export function geminiConfig(args: GenerateStructuredArgs<unknown>) {
+  return {
+    systemInstruction: args.systemPrompt,
+    responseMimeType: "application/json",
+    responseJsonSchema: z.toJSONSchema(args.schema),
+    ...(args.lowThinking ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
+  };
 }
 
 // The only file that imports the Gemini SDK.
@@ -27,11 +37,7 @@ export class GeminiProvider implements LlmProvider {
     const response = await this.client.models.generateContent({
       model: this.model,
       contents: geminiContents(args),
-      config: {
-        systemInstruction: args.systemPrompt,
-        responseMimeType: "application/json",
-        responseJsonSchema: z.toJSONSchema(args.schema),
-      },
+      config: geminiConfig(args),
     });
     const text = response.text;
     if (!text) throw new StructuredOutputError("GeminiProvider: empty response", "The response was empty.");

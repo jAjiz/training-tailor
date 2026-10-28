@@ -1,29 +1,20 @@
 import { z } from "zod";
-import { BlockColor, Scoring } from "@/lib/training/schemas";
+import { Scoring } from "@/lib/training/schemas";
 
 /** The most weeks one import keeps; the model is told to stop there too. */
 export const MAX_IMPORT_WEEKS = 4;
 
 /**
- * One block as the model writes it. Flat (no unions) because Gemini's JSON schema support is simpler
- * that way; string limits match `BlockInput`, everything else is judged by `BlockInput` afterwards.
+ * One block as the model writes it. Every block imports as custom, so the model only copies text. Fields
+ * that rarely apply are optional so the model leaves them out instead of writing nulls: output length is
+ * what makes a long PDF slow.
  */
 const ModelBlock = z.object({
-  kind: z.enum(["custom", "barbell"]),
-  title: z.string().max(120).nullable(),
-  color: BlockColor,
-  coachingTips: z.string().max(2000).nullable(),
-  description: z.string().max(5000).nullable(),
-  scoring: Scoring.nullable(),
-  timeCapSeconds: z.number().int().nullable(),
-  movement: z.string().max(80).nullable(),
-  sets: z.array(z.object({
-    reps: z.number().int(),
-    percent: z.number().nullable(),
-    kg: z.number().nullable(),
-  })).nullable(),
-  instructions: z.string().max(2000).nullable(),
-  sourceText: z.string().max(5000),
+  title: z.string().max(120).optional(),
+  description: z.string().max(5000),
+  coachingTips: z.string().max(2000).optional(),
+  scoring: Scoring.optional(),
+  timeCapSeconds: z.number().int().optional(),
 });
 export type ModelBlock = z.infer<typeof ModelBlock>;
 

@@ -1,6 +1,6 @@
 import type { LlmProvider } from "@/lib/ai/provider";
 import { BlockInput, type BlockInputValue } from "@/lib/training/schemas";
-import { IMPORT_USER_PROMPT, importSystemPrompt } from "./prompt";
+import { IMPORT_SYSTEM_PROMPT, IMPORT_USER_PROMPT } from "./prompt";
 import { ImportModelResponse, MAX_IMPORT_WEEKS, type ModelBlock } from "./schema";
 
 export type PreviewWeek = {
@@ -17,62 +17,33 @@ export class ImportEmptyError extends Error {
   }
 }
 
-function asCustom(b: ModelBlock) {
-  return {
+/** Every block imports as custom. A bad scoring or time cap falls back to none rather than losing the block. */
+function toBlock(b: ModelBlock): BlockInputValue | null {
+  const scoring = b.scoring ?? "none";
+  const block = {
     kind: "custom" as const,
-    title: b.title,
-    color: b.color,
-    coachingTips: b.coachingTips,
+    title: b.title ?? null,
+    color: "neutral" as const,
+    coachingTips: b.coachingTips ?? null,
     videoUrl: null,
-    description: b.sourceText,
-    scoring: "none" as const,
-    timeCapSeconds: null,
+    description: b.description,
+    scoring,
+    timeCapSeconds: scoring === "for_time" ? b.timeCapSeconds ?? null : null,
   };
+  const parsed = BlockInput.safeParse(block);
+  if (parsed.success) return parsed.data;
+  const unscored = BlockInput.safeParse({ ...block, scoring: "none", timeCapSeconds: null });
+  return unscored.success ? unscored.data : null;
 }
 
-function toBlock(b: ModelBlock, liftNames: string[]): BlockInputValue | null {
-  if (b.kind === "barbell") {
-    if (b.movement !== null && liftNames.includes(b.movement)) {
-      const barbell = BlockInput.safeParse({
-        kind: "barbell",
-        title: b.title,
-        color: b.color,
-        coachingTips: b.coachingTips,
-        videoUrl: null,
-        movement: b.movement,
-        sets: b.sets ?? [],
-        instructions: b.instructions,
-      });
-      if (barbell.success) return barbell.data;
-    }
-  } else {
-    const scoring = b.scoring ?? "none";
-    const custom = {
-      kind: "custom" as const,
-      title: b.title,
-      color: b.color,
-      coachingTips: b.coachingTips,
-      videoUrl: null,
-      description: b.description ?? "",
-      scoring,
-      timeCapSeconds: scoring === "for_time" ? b.timeCapSeconds : null,
-    };
-    const parsed = BlockInput.safeParse(custom);
-    if (parsed.success) return parsed.data;
-    const retried = BlockInput.safeParse({ ...custom, description: b.sourceText });
-    if (retried.success) return retried.data;
-  }
-  const fallback = BlockInput.safeParse(asCustom(b));
-  return fallback.success ? fallback.data : null;
-}
-
-export async function translatePdf(provider: LlmProvider, pdf: Uint8Array, liftNames: string[]): Promise<ImportPreview> {
+export async function translatePdf(provider: LlmProvider, pdf: Uint8Array): Promise<ImportPreview> {
   const response = await provider.generateStructured({
-    systemPrompt: importSystemPrompt(liftNames),
+    systemPrompt: IMPORT_SYSTEM_PROMPT,
     prompt: IMPORT_USER_PROMPT,
     schema: ImportModelResponse,
     schemaName: "WeekImport",
     attachments: [{ mimeType: "application/pdf", data: pdf }],
+    lowThinking: true,
   });
 
   let dropped = 0;
@@ -83,7 +54,7 @@ export async function translatePdf(provider: LlmProvider, pdf: Uint8Array, liftN
     const byDay = new Map<number, BlockInputValue[]>();
     for (const day of week.days) {
       for (const raw of day.blocks) {
-        const block = toBlock(raw, liftNames);
+        const block = toBlock(raw);
         if (!block) {
           dropped++;
           continue;
