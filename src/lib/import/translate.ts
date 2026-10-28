@@ -47,8 +47,8 @@ function toBlock(b: ModelBlock, liftNames: string[]): BlockInputValue | null {
     }
   } else {
     const scoring = b.scoring ?? "none";
-    const custom = BlockInput.safeParse({
-      kind: "custom",
+    const custom = {
+      kind: "custom" as const,
       title: b.title,
       color: b.color,
       coachingTips: b.coachingTips,
@@ -56,8 +56,11 @@ function toBlock(b: ModelBlock, liftNames: string[]): BlockInputValue | null {
       description: b.description ?? "",
       scoring,
       timeCapSeconds: scoring === "for_time" ? b.timeCapSeconds : null,
-    });
-    if (custom.success) return custom.data;
+    };
+    const parsed = BlockInput.safeParse(custom);
+    if (parsed.success) return parsed.data;
+    const retried = BlockInput.safeParse({ ...custom, description: b.sourceText });
+    if (retried.success) return retried.data;
   }
   const fallback = BlockInput.safeParse(asCustom(b));
   return fallback.success ? fallback.data : null;
@@ -73,20 +76,29 @@ export async function translatePdf(provider: LlmProvider, pdf: Uint8Array, liftN
   });
 
   let dropped = 0;
+  let kept = 0;
   const weeks: PreviewWeek[] = [];
   for (const week of response.weeks.slice(0, MAX_IMPORT_WEEKS)) {
-    const days: PreviewWeek["days"] = [];
+    // Duplicate days merge in document order. Empty weeks stay: callers map PDF week n by position.
+    const byDay = new Map<number, BlockInputValue[]>();
     for (const day of week.days) {
-      const blocks: BlockInputValue[] = [];
       for (const raw of day.blocks) {
         const block = toBlock(raw, liftNames);
-        if (block) blocks.push(block);
-        else dropped++;
+        if (!block) {
+          dropped++;
+          continue;
+        }
+        kept++;
+        byDay.set(day.day - 1, [...(byDay.get(day.day - 1) ?? []), block]);
       }
-      if (blocks.length > 0) days.push({ day: day.day - 1, blocks });
     }
-    if (days.length > 0) weeks.push({ label: week.label, days });
+    weeks.push({ label: week.label, days: [...byDay].map(([day, blocks]) => ({ day, blocks })) });
   }
-  if (weeks.length === 0) throw new ImportEmptyError();
-  return { weeksFound: response.weeksFound, daysNamed: response.daysNamed, dropped, weeks };
+  if (kept === 0) throw new ImportEmptyError();
+  return {
+    weeksFound: Math.max(response.weeksFound, response.weeks.length),
+    daysNamed: response.daysNamed,
+    dropped,
+    weeks,
+  };
 }

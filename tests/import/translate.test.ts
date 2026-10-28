@@ -102,4 +102,48 @@ describe("translatePdf", () => {
     expect(fake.calls[0].attachments?.[0].data).toBe(PDF);
     expect(fake.calls[0].systemPrompt).toContain("Test Back Squat");
   });
+
+  it("keeps a week whose blocks all failed, in position", async () => {
+    const bad = custom({ description: "", sourceText: "" });
+    const week = (label: string, b: ModelBlock) => ({ label, days: [{ day: 1, blocks: [b] }] });
+    const preview = await run({
+      weeksFound: 3, daysNamed: true,
+      weeks: [week("Week 1", custom()), week("Week 2", bad), week("Week 3", custom())],
+    }).result;
+    expect(preview.weeks.map((w) => w.label)).toEqual(["Week 1", "Week 2", "Week 3"]);
+    expect(preview.weeks[1].days).toEqual([]);
+    expect(preview.dropped).toBe(1);
+  });
+
+  it("falls back to the source text for a custom block without description, keeping its scoring", async () => {
+    const preview = await run(script([custom({
+      description: null, sourceText: "Test 12 min AMRAP", scoring: "amrap",
+    })])).result;
+    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({
+      kind: "custom", description: "Test 12 min AMRAP", scoring: "amrap",
+    });
+  });
+
+  it("keeps a for_time block with a valid time cap", async () => {
+    const preview = await run(script([custom({ scoring: "for_time", timeCapSeconds: 1200 })])).result;
+    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({ scoring: "for_time", timeCapSeconds: 1200 });
+  });
+
+  it("merges duplicate days in document order", async () => {
+    const preview = await run({
+      weeksFound: 1, daysNamed: true,
+      weeks: [{ label: "Week 1", days: [
+        { day: 2, blocks: [custom({ title: "Test A" })] },
+        { day: 3, blocks: [custom({ title: "Test C" })] },
+        { day: 2, blocks: [custom({ title: "Test B" })] },
+      ] }],
+    }).result;
+    expect(preview.weeks[0].days.map((d) => d.day)).toEqual([1, 2]);
+    expect(preview.weeks[0].days[0].blocks.map((b) => b.title)).toEqual(["Test A", "Test B"]);
+  });
+
+  it("never reports fewer weeks found than it returns", async () => {
+    const preview = await run(script([custom()], { weeksFound: 0 })).result;
+    expect(preview.weeksFound).toBe(1);
+  });
 });

@@ -14,7 +14,10 @@ Blocks
 - Keep the document's language. Tidy line breaks, lists and obvious typos, but never change movements, reps, loads, percentages, times, levels (Rx+/Rx/Int/Esc) or notes.
 - Put coaching tips, objectives and coach notes in "coachingTips".
 - Use kind "barbell" only for a single lift from the list below whose sets are reps plus either a percentage or kilograms. Use the lift's name exactly as listed. Every other block is kind "custom".
-- Set "scoring" only when it is obvious from the text, otherwise "none". Set "timeCapSeconds" only when scoring is "for_time".
+- For a custom block, "description" holds the block's full workout text, tidied.
+- For a barbell block, everything "sets" cannot express (rest, tempo, notes, level variants) goes in "instructions".
+- If loads or percentages differ by level (Rx+/Rx/Int/Esc), the block must be custom, not barbell.
+- Set "scoring" only when it is obvious from the text, otherwise "none". Set "timeCapSeconds" only when scoring is "for_time", in seconds (a 20 minute cap is 1200).
 - Map the document's colours to the nearest of: ${BLOCK_COLORS.join(", ")}. Use "neutral" when there is no clear match.
 - "sourceText" is the block's full text exactly as written in the document.
 - Use null for any field that does not apply to the block.
