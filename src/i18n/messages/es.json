@@ -58,7 +58,13 @@
     "library_conflict": "El borrador cambió desde que lo abriste. Recarga e inténtalo de nuevo.",
     "library_draft_exists": "Ya hay un borrador abierto. Publícalo o descártalo primero.",
     "library_no_draft": "No hay ningún borrador abierto.",
-    "library_invalid": "Los datos de la biblioteca no son válidos."
+    "library_invalid": "Los datos de la biblioteca no son válidos.",
+    "import_pdf_invalid": "Elige un archivo PDF.",
+    "import_pdf_too_large": "El PDF pesa más de 4 MB.",
+    "import_unavailable": "La importación no está disponible ahora.",
+    "import_quota": "Has alcanzado el límite de importaciones de hoy. Inténtalo mañana.",
+    "import_empty": "No se encontró ningún bloque de entrenamiento en el PDF.",
+    "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo."
   },
   "onboarding": {
     "preparing": "Preparando tu cuenta…",

@@ -1,4 +1,4 @@
-export type UsageKind = "analyze" | "tailor" | "refine";
+export type UsageKind = "analyze" | "tailor" | "refine" | "import";
 
 export interface QuotaStore {
   countSince(userId: string, kind: UsageKind, since: Date): Promise<number>;

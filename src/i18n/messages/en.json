@@ -58,7 +58,13 @@
     "library_conflict": "The draft changed since you opened it. Reload and try again.",
     "library_draft_exists": "A draft is already open. Publish or discard it first.",
     "library_no_draft": "There is no open draft.",
-    "library_invalid": "The library data is not valid."
+    "library_invalid": "The library data is not valid.",
+    "import_pdf_invalid": "Choose a PDF file.",
+    "import_pdf_too_large": "The PDF is larger than 4 MB.",
+    "import_unavailable": "Import is not available right now.",
+    "import_quota": "You reached today's import limit. Try again tomorrow.",
+    "import_empty": "No training blocks were found in the PDF.",
+    "import_failed": "The PDF could not be read. Try again."
   },
   "onboarding": {
     "preparing": "Setting up your account…",
