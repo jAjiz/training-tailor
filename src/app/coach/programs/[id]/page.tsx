@@ -66,6 +66,10 @@ export default async function PlannerPage({ params, searchParams }: Params) {
     ? formatDayRange(addDays(startDate, weekIndex * 7), addDays(startDate, weekIndex * 7 + 6), locale)
     : t("planner.week", { week: weekIndex + 1 });
   const published = continuous ? weeks.has(weekIndex) : program.publishedAt !== null;
+  // Publishing a closed program publishes all its weeks at once.
+  const allPublished = continuous
+    ? [...weeks]
+    : program.publishedAt !== null ? Array.from({ length: (maxWeek as number) + 1 }, (_, w) => w) : [];
 
   return (
     <section className="flex flex-col gap-6">
@@ -81,7 +85,8 @@ export default async function PlannerPage({ params, searchParams }: Params) {
           </h2>
           <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
         </div>
-        <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} empty={blocks.length === 0} />
+        <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} empty={blocks.length === 0}
+          publishedWeeks={allPublished} />
       </div>
       <WeekBoard
         days={Array.from({ length: 7 }, (_, d) => weekIndex * 7 + d).map((dayIndex) => ({ dayIndex, label: dayLabel(dayIndex) }))}

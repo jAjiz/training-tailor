@@ -742,5 +742,25 @@
     "copyLink": "Copy link",
     "copied": "Link copied",
     "signInAgain": "After installing, sign in with Google again."
+  },
+  "import": {
+    "button": "Import",
+    "tooltip": "Import week from PDF",
+    "file": "PDF file",
+    "dataNotice": "The PDF is processed with Google Gemini, and Google may use its content to improve its products.",
+    "read": "Read PDF",
+    "reading": "Reading the PDF… this can take a minute.",
+    "weekOf": "Week {week} of {total}",
+    "weekTarget": "PDF week {week} → {target}",
+    "datedWeek": "Week {week} ({dates})",
+    "selectWeek": "Select the whole week",
+    "published": "This week is already published: athletes will see the blocks straight away",
+    "pastEnd": "This week falls after the end of the program and won't be imported",
+    "weekEmpty": "No block could be read from this week.",
+    "tooManyWeeks": "The PDF has {found} weeks: only the first {max} are shown and the rest were ignored.",
+    "daysUnnamed": "The PDF's days don't name a weekday, so they've been placed from Monday",
+    "dropped": "{count, plural, one {# block couldn't be read} other {# blocks couldn't be read}}",
+    "selected": "{count, plural, one {# block selected} other {# blocks selected}}",
+    "confirm": "Import selection"
   }
 }
