@@ -51,8 +51,12 @@ export const BarbellSetSchema = z.object({
 }).refine((s) => (s.percent === null) !== (s.kg === null), "exactly one of percent or kg");
 export type BarbellSet = z.output<typeof BarbellSetSchema>;
 
+const BLOCK_TITLE_MAX = 120;
+const BLOCK_DESCRIPTION_MAX = 5000;
+const BLOCK_INSTRUCTIONS_MAX = 2000;
+
 const blockCommon = {
-  title: optionalText(120),
+  title: optionalText(BLOCK_TITLE_MAX),
   color: BlockColor,
   coachingTips: optionalText(2000),
   videoUrl: VideoUrl,
@@ -62,7 +66,7 @@ export const BlockInput = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("custom"),
     ...blockCommon,
-    description: z.string().trim().min(1).max(5000),
+    description: z.string().trim().min(1).max(BLOCK_DESCRIPTION_MAX),
     scoring: Scoring,
     timeCapSeconds: z.number().int().min(1).max(7200).nullable(),
   }),
@@ -71,7 +75,7 @@ export const BlockInput = z.discriminatedUnion("kind", [
     ...blockCommon,
     movement: z.string().trim().min(1).max(80),
     sets: z.array(BarbellSetSchema).min(1).max(20),
-    instructions: optionalText(2000),
+    instructions: optionalText(BLOCK_INSTRUCTIONS_MAX),
   }),
 ]).superRefine((b, ctx) => {
   if (b.kind === "custom" && b.scoring !== "for_time" && b.timeCapSeconds !== null) {
@@ -108,6 +112,9 @@ export function parseAnnouncementBody(raw: unknown): string {
 }
 
 export const NOTE_MAX = 2000;
+
+/** The longest text an imported box gives as a note (title, line break, body); `importBlocks` checks it against NOTE_MAX. */
+export const IMPORTED_NOTE_MAX = BLOCK_TITLE_MAX + 1 + Math.max(BLOCK_DESCRIPTION_MAX, BLOCK_INSTRUCTIONS_MAX);
 
 /** A coach note: trimmed, inner line breaks kept, blank means "no note" (null). */
 export const NoteBody = z.string().trim().max(NOTE_MAX).transform((v) => v || null);

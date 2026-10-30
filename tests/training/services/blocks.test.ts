@@ -344,6 +344,15 @@ describe("importBlocks with notes", () => {
     expect(await weekNote(program.id, 0)).toBeNull();
   });
 
+  it("refuses a single imported note over 2000 chars and writes nothing", async () => {
+    const { coach, program } = await setup();
+    await expect(importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [{ dayIndex: 5, block: custom("A") }], notes: [{ scope: "day", index: 5, text: "x".repeat(2001) }],
+    })).rejects.toMatchObject({ code: "note_too_long", issues: ["day:5"] });
+    expect(await tdb.prisma.block.count({ where: { programId: program.id } })).toBe(0);
+    expect(await tdb.prisma.dayNote.count()).toBe(0);
+  });
+
   it("names the week when a week note would be too long", async () => {
     const { coach, program } = await setup();
     await expect(importBlocks(tdb.prisma, coach.id, program.id, {

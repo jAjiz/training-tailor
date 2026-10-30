@@ -6,7 +6,7 @@ import { requireCoach } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import type { ActionResult } from "@/lib/training/errors";
-import { BlockInput, NOTE_MAX, parse } from "@/lib/training/schemas";
+import { BlockInput, IMPORTED_NOTE_MAX, parse } from "@/lib/training/schemas";
 import {
   createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, moveBlock, updateBlock,
 } from "@/lib/training/services/blocks";
@@ -36,7 +36,7 @@ export async function importBlocksAction(raw: unknown) {
       programId: Id,
       items: z.array(z.object({ dayIndex: Day, block: BlockInput })).max(200),
       notes: z.array(z.object({
-        scope: z.enum(["day", "week"]), index: Day, text: z.string().trim().min(1).max(NOTE_MAX),
+        scope: z.enum(["day", "week"]), index: Day, text: z.string().trim().min(1).max(IMPORTED_NOTE_MAX),
       })).max(200).default([]),
       mode: z.enum(["append", "replace"]).default("append"),
     }).refine((v) => v.items.length + v.notes.length >= 1), raw);
