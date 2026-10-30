@@ -15,11 +15,13 @@ import { hasLeaderboard } from "@/lib/training/access";
 import { addDays, isIsoDate, mondayOf, todayIn, weekIndexOf } from "@/lib/training/dates";
 import type { BarbellSet } from "@/lib/training/schemas";
 import { formatScore, scoreTarget } from "@/lib/training/scoring";
-import { getAthleteDay, getVisibleDays } from "@/lib/training/services/athlete-view";
+import { getAthleteDay, getAthleteWeekNote, getVisibleDays } from "@/lib/training/services/athlete-view";
 import { getEnrollmentStatus, listAthletePrograms } from "@/lib/training/services/enrollments";
 import { oneRmMap } from "@/lib/training/services/prs";
 import { getDayResults } from "@/lib/training/services/results";
+import { AnnouncementText } from "@/components/notifications/AnnouncementText";
 import { AthleteHeader } from "./AthleteHeader";
+import { WeekNoteButton } from "./WeekNoteButton";
 import { WeekStrip } from "./WeekStrip";
 
 // The page opens with the black AthleteHeader: the browser bar matches it in both themes.
@@ -54,6 +56,10 @@ export default async function TodayPage({ searchParams }: Props) {
     getVisibleDays(prisma, athlete.id, programId, monday, addDays(monday, 6)),
   ]);
   const movements = day.blocks.flatMap((b) => (b.movement ? [b.movement] : []));
+  // The selected day decides the week: in a closed program the strip can span two program weeks.
+  const weekNote = day.status === "ok" && day.dayIndex !== null
+    ? await getAthleteWeekNote(prisma, athlete.id, programId, day.dayIndex)
+    : null;
   const [dayResults, oneRms] = await Promise.all([
     getDayResults(prisma, athlete.id, programId, day.blocks.map((b) => b.id)),
     oneRmMap(prisma, athlete.id, movements),
@@ -61,7 +67,8 @@ export default async function TodayPage({ searchParams }: Props) {
 
   return (
     <>
-      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={programId} basePath="/">
+      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={programId} basePath="/"
+        start={weekNote && day.dayIndex !== null ? <WeekNoteButton note={weekNote} title={t("weekNotesTitle", { week: weekIndexOf(day.dayIndex) + 1 })} /> : undefined}>
         <WeekStrip programId={programId} selected={date} today={today} withBlocks={withBlocks} locale={locale}
           labels={{ prev: t("prevWeek"), next: t("nextWeek") }} />
       </AthleteHeader>
@@ -78,9 +85,15 @@ export default async function TodayPage({ searchParams }: Props) {
         {day.program.coachId === null && (
           <p data-color="neutral" className="rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">{t("noNewSessions")}</p>
         )}
+        {day.note && (
+          <div data-color="neutral" className="rounded-xl bg-(--block-fill) px-4 py-3 text-(--block-ink)">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-70">{t("dayGoal")}</p>
+            <AnnouncementText body={day.note} />
+          </div>
+        )}
         {day.status === "before_start" && <EmptyState>{t("startsOn", { date: formatDay(day.timeline.startDate, locale) })}</EmptyState>}
         {day.status === "finished" && <EmptyState>{t("finished")}</EmptyState>}
-        {(day.status === "unpublished" || (day.status === "ok" && day.blocks.length === 0)) && <EmptyState>{t("nothing")}</EmptyState>}
+        {(day.status === "unpublished" || (day.status === "ok" && day.blocks.length === 0 && !day.note)) && <EmptyState>{t("nothing")}</EmptyState>}
         {day.blocks.map((b) => {
           const mine = dayResults.mine.get(b.id);
           const scored = b.kind === "barbell" || (b.scoring !== null && b.scoring !== "none");
