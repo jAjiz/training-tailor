@@ -1,5 +1,6 @@
-import type { ImportItem } from "@/lib/training/services/blocks";
-import type { ImportPreview } from "./translate";
+import type { ImportItem, ImportNote } from "@/lib/training/services/blocks";
+import type { ImportRole } from "./schema";
+import { noteText, type ImportPreview } from "./translate";
 
 /** One translated block: `"w:d:i"`, PDF week position, weekday (0 = Monday) and position in that day. */
 export type BlockKey = string;
@@ -45,8 +46,28 @@ export function toggleWeek(sel: Set<BlockKey>, preview: ImportPreview, w: number
   return next;
 }
 
-/** The selected blocks of importable weeks with their planner day, in document order. */
-export function selectedItems(sel: Set<BlockKey>, preview: ImportPreview, ctx: WeekTarget): ImportItem[] {
-  return preview.weeks.flatMap((week, w) => !isWeekImportable(ctx, w) ? [] : week.days.flatMap(({ day, items }) =>
-    items.flatMap(({ block }, i) => sel.has(blockKey(w, day, i)) ? [{ dayIndex: targetWeek(ctx, w) * 7 + day, block }] : [])));
+/**
+ * The selected items of importable weeks, in document order: blocks with their planner day, day notes with
+ * their planner day and week notes with their planner week. A key's role in `roles` overrides the model's.
+ */
+export function selectedImport(
+  sel: Set<BlockKey>, roles: Map<BlockKey, ImportRole>, preview: ImportPreview, ctx: WeekTarget,
+): { items: ImportItem[]; notes: ImportNote[] } {
+  const items: ImportItem[] = [];
+  const notes: ImportNote[] = [];
+  preview.weeks.forEach((week, w) => {
+    if (!isWeekImportable(ctx, w)) return;
+    const weekIndex = targetWeek(ctx, w);
+    for (const { day, items: dayItems } of week.days) {
+      dayItems.forEach((item, i) => {
+        const key = blockKey(w, day, i);
+        if (!sel.has(key)) return;
+        const role = roles.get(key) ?? item.role;
+        if (role === "block") items.push({ dayIndex: weekIndex * 7 + day, block: item.block });
+        else if (role === "day_note") notes.push({ scope: "day", index: weekIndex * 7 + day, text: noteText(item.block) });
+        else notes.push({ scope: "week", index: weekIndex, text: noteText(item.block) });
+      });
+    }
+  });
+  return { items, notes };
 }

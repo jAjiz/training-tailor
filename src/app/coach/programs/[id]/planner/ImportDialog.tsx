@@ -6,17 +6,18 @@ import { useLocale, useTranslations } from "next-intl";
 import { ChevronLeft, ChevronRight, FileUp, Info, LoaderCircle } from "lucide-react";
 import { blockColor } from "@/components/training/colors";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/controls";
 import { cx } from "@/components/ui/cx";
 import { Field } from "@/components/ui/Field";
 import { IconButton } from "@/components/ui/IconButton";
 import { Modal } from "@/components/ui/Modal";
 import { Pill } from "@/components/ui/Pill";
 import { formatDay, formatDayRange } from "@/lib/format";
-import { MAX_IMPORT_WEEKS } from "@/lib/import/schema";
+import { ImportRole, MAX_IMPORT_WEEKS } from "@/lib/import/schema";
 import {
-  allKeys, blockKey, isWeekImportable, selectedItems, targetWeek, toggleBlock, toggleWeek, weekKeys, type BlockKey,
+  allKeys, blockKey, isWeekImportable, selectedImport, targetWeek, toggleBlock, toggleWeek, weekKeys, type BlockKey,
 } from "@/lib/import/selection";
-import type { ImportPreview } from "@/lib/import/translate";
+import { noteText, type ImportPreview } from "@/lib/import/translate";
 import { describeSets } from "@/lib/training/barbell";
 import { addDays } from "@/lib/training/dates";
 import { ERROR_CODES, type ActionResult, type ErrorCode } from "@/lib/training/errors";
@@ -26,6 +27,8 @@ import { importBlocksAction } from "../../../block-actions";
 import type { PlannerContext } from "./types";
 
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
+
+const ROLE_LABELS = { block: "import.roleBlock", day_note: "import.roleDayNote", week_note: "import.roleWeekNote" } as const;
 
 type Props = {
   ctx: PlannerContext;
@@ -93,9 +96,11 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
   const [phase, setPhase] = useState<"pick" | "translating" | "review" | "importing">("pick");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selection, setSelection] = useState<Set<BlockKey>>(new Set());
+  /** Roles the coach changed; every other tile keeps the model's. */
+  const [roles, setRoles] = useState<Map<BlockKey, ImportRole>>(new Map());
   const [week, setWeek] = useState(0);
   const [asking, setAsking] = useState(false);
-  const [error, setError] = useState<ErrorCode | null>(null);
+  const [error, setError] = useState<{ code: ErrorCode; issues?: string[] } | null>(null);
   const request = useRef<AbortController | null>(null);
 
   // Closing while the PDF is read drops the request; the result would have nowhere to go.
@@ -103,8 +108,8 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
 
   async function translate(e: React.FormEvent) {
     e.preventDefault();
-    if (!file || file.type !== "application/pdf") return setError("import_pdf_invalid");
-    if (file.size > MAX_PDF_BYTES) return setError("import_pdf_too_large");
+    if (!file || file.type !== "application/pdf") return setError({ code: "import_pdf_invalid" });
+    if (file.size > MAX_PDF_BYTES) return setError({ code: "import_pdf_too_large" });
     const body = new FormData();
     body.set("programId", ctx.programId);
     body.set("pdf", file);
@@ -119,18 +124,19 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
       json = await res.json().catch(() => null);
     } catch {
       if (controller.signal.aborted) return;
-      setError("internal");
+      setError({ code: "internal" });
       setPhase("pick");
       return;
     }
     if (!res.ok) {
-      setError(toErrorCode((json as { error?: unknown } | null)?.error));
+      setError({ code: toErrorCode((json as { error?: unknown } | null)?.error) });
       setPhase("pick");
       return;
     }
     const result = json as ImportPreview;
     setPreview(result);
     setSelection(allKeys(result));
+    setRoles(new Map());
     setWeek(0);
     setPhase("review");
   }
@@ -142,7 +148,7 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
     setError(null);
     let r: ActionResult;
     try {
-      r = await importBlocksAction({ programId: ctx.programId, items: selectedItems(selection, preview, ctx), mode });
+      r = await importBlocksAction({ programId: ctx.programId, ...selectedImport(selection, roles, preview, ctx), mode });
     } catch {
       r = { ok: false, code: "internal" };
     }
@@ -150,13 +156,37 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
       onClose();
       router.refresh();
     } else {
-      setError(r.code);
+      setError({ code: r.code, issues: r.issues });
       setPhase("review");
     }
   }
 
+  const weekLabel = (w: number) => ctx.startDate
+    ? t("import.datedWeek", {
+      week: w + 1,
+      dates: formatDayRange(addDays(ctx.startDate, w * 7), addDays(ctx.startDate, w * 7 + 6), locale),
+    })
+    : t("planner.week", { week: w + 1 });
+  const dayLabel = (dayIndex: number) => ctx.startDate
+    ? formatDay(addDays(ctx.startDate, dayIndex), locale)
+    : t("planner.dayNumber", { day: (dayIndex % 7) + 1 });
+  /** The day or week a refused note was meant for, from the server's `"day:<dayIndex>"` or `"week:<weekIndex>"`. */
+  function noteTarget(issue = ""): string {
+    const [scope, raw] = issue.split(":");
+    const index = Number(raw);
+    if (scope === "week") return weekLabel(index);
+    if (ctx.startDate) return dayLabel(index);
+    return t("import.weekDay", { week: weekLabel(Math.floor(index / 7)), day: dayLabel(index) });
+  }
+
   const importing = phase === "importing";
-  const errorLine = error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>;
+  const errorLine = error && (
+    <p role="alert" className="text-sm text-danger">
+      {error.code === "note_too_long"
+        ? t("errors.note_too_long", { target: noteTarget(error.issues?.[0]) })
+        : t(`errors.${error.code}`)}
+    </p>
+  );
 
   if (phase === "translating") {
     return (
@@ -208,21 +238,13 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
   const importable = isWeekImportable(ctx, week);
   const keys = weekKeys(preview, week);
   const weekChecked = keys.length > 0 && keys.every((k) => selection.has(k));
-  const items = selectedItems(selection, preview, ctx);
-  const count = items.length;
-  const weekLabel = (w: number) => ctx.startDate
-    ? t("import.datedWeek", {
-      week: w + 1,
-      dates: formatDayRange(addDays(ctx.startDate, w * 7), addDays(ctx.startDate, w * 7 + 6), locale),
-    })
-    : t("planner.week", { week: w + 1 });
+  const { items, notes } = selectedImport(selection, roles, preview, ctx);
+  const count = items.length + notes.length;
   // Program weeks that would receive blocks and already have some: only then is there a choice to make.
+  // Notes never make a week clash: they are appended, or replaced along with the week's blocks.
   const clashing = [...new Set(items.map((i) => Math.floor(i.dayIndex / 7)))]
     .filter((w) => filledWeeks.includes(w)).sort((a, b) => a - b);
   const clashLabel = clashing.map(weekLabel).join(", ");
-  const dayLabel = (day: number) => ctx.startDate
-    ? formatDay(addDays(ctx.startDate, target * 7 + day), locale)
-    : t("planner.dayNumber", { day: day + 1 });
 
   return (
     <Modal title={t("import.title")} closeLabel={t("common.close")} onClose={onClose} size="xl"
@@ -276,22 +298,34 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
               const items = current.days.find((d) => d.day === day)?.items ?? [];
               return (
                 <div key={day} className="flex min-w-0 flex-col gap-2">
-                  <h3 className="truncate px-1 text-xs font-bold first-letter:uppercase">{dayLabel(day)}</h3>
-                  {items.map(({ block }, i) => {
+                  <h3 className="truncate px-1 text-xs font-bold first-letter:uppercase">{dayLabel(target * 7 + day)}</h3>
+                  {items.map((item, i) => {
+                    const { block } = item;
                     const key = blockKey(week, day, i);
                     const on = selection.has(key);
+                    const role = roles.get(key) ?? item.role;
+                    const note = role !== "block";
                     const heading = block.title ?? (block.kind === "barbell" ? block.movement : null) ?? t(`editor.kinds.${block.kind}`);
                     return (
-                      <label key={key} data-color={blockColor(block.color)}
+                      <label key={key} data-color={note ? "neutral" : blockColor(block.color)}
                         className={cx("flex cursor-pointer flex-col gap-1.5 rounded-xl bg-(--block-fill) p-2.5 transition-opacity",
+                          note && "border border-dashed",
                           (!on || !importable) && "opacity-50", !importable && "cursor-not-allowed")}>
                         <span className="flex items-start gap-1.5">
                           <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-primary" aria-label={heading} checked={on} disabled={!importable}
                             onChange={() => setSelection(toggleBlock(selection, key))} />
-                          <span className="min-w-0 text-sm font-bold leading-snug">{heading}</span>
+                          {note
+                            ? <span className="line-clamp-4 min-w-0 whitespace-pre-line text-xs leading-snug">{noteText(block)}</span>
+                            : <span className="min-w-0 text-sm font-bold leading-snug">{heading}</span>}
                         </span>
-                        <span className="truncate text-xs text-foreground/80">{summary(block)}</span>
-                        <Pill className="w-fit">{t(`editor.kinds.${block.kind}`)}</Pill>
+                        {!note && <span className="truncate text-xs text-foreground/80">{summary(block)}</span>}
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          {!note && <Pill className="w-fit">{t(`editor.kinds.${block.kind}`)}</Pill>}
+                          <Select compact className="w-full" aria-label={t("import.roleFor", { heading })} value={role} disabled={!importable}
+                            onChange={(e) => setRoles(new Map(roles).set(key, ImportRole.parse(e.target.value)))}>
+                            {ImportRole.options.map((r) => <option key={r} value={r}>{t(ROLE_LABELS[r])}</option>)}
+                          </Select>
+                        </span>
                       </label>
                     );
                   })}

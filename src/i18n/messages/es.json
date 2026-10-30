@@ -64,7 +64,8 @@
     "import_unavailable": "La importación no está disponible ahora.",
     "import_quota": "Has alcanzado el límite de importaciones de hoy. Inténtalo mañana.",
     "import_empty": "No se encontró ningún bloque de entrenamiento en el PDF.",
-    "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo."
+    "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo.",
+    "note_too_long": "El texto de {target} superaría los 2000 caracteres."
   },
   "onboarding": {
     "preparing": "Preparando tu cuenta…",
@@ -779,6 +780,11 @@
     "clash": "{count, plural, one {{weeks} ya tiene bloques.} other {Estas semanas ya tienen bloques: {weeks}.}} ¿Qué hacemos con ellos?",
     "modeAppend": "Añadir a los existentes",
     "modeReplace": "Reemplazarlos",
-    "replaceWarning": "Reemplazarlos borra los bloques actuales {count, plural, one {de esa semana} other {de esas semanas}}, junto con los resultados que hayan registrado los atletas."
+    "replaceWarning": "Reemplazarlos borra los bloques actuales {count, plural, one {de esa semana, sus objetivos del día y su texto de la semana} other {de esas semanas, sus objetivos del día y sus textos de la semana}}, junto con los resultados que hayan registrado los atletas.",
+    "roleFor": "Importar «{heading}» como",
+    "roleBlock": "Bloque",
+    "roleDayNote": "Objetivo del día",
+    "roleWeekNote": "Texto de la semana",
+    "weekDay": "{week}, {day}"
   }
 }

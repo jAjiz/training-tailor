@@ -8,6 +8,7 @@ import {
 import { enroll } from "../../helpers/factories";
 import { archiveProgram } from "@/lib/training/services/programs";
 import type { BlockInputValue } from "@/lib/training/schemas";
+import type { ImportItem, ImportMode } from "@/lib/training/services/blocks";
 
 let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
@@ -24,6 +25,9 @@ const barbell = (movement = "Test Back Squat"): BlockInputValue => ({
 });
 const titles = async (programId: string, dayIndex: number) =>
   (await tdb.prisma.block.findMany({ where: { programId, dayIndex }, orderBy: { position: "asc" } })).map((b) => `${b.position}:${b.title ?? b.movement}`);
+
+const importItems = (coachId: string, programId: string, items: ImportItem[], mode?: ImportMode) =>
+  importBlocks(tdb.prisma, coachId, programId, { items, notes: [] }, mode);
 
 async function setup() {
   const coach = await makeCoach(tdb.prisma);
@@ -202,7 +206,7 @@ describe("importBlocks", () => {
   it("imports blocks after the existing ones, in order, across days", async () => {
     const { coach, program } = await setup();
     await createBlock(tdb.prisma, coach.id, program.id, 2, custom("A"));
-    const count = await importBlocks(tdb.prisma, coach.id, program.id, [
+    const count = await importItems(coach.id, program.id, [
       { dayIndex: 2, block: custom("B") }, { dayIndex: 2, block: custom("C") }, { dayIndex: 9, block: custom("D") },
     ]);
     expect(count).toBe(3);
@@ -213,7 +217,7 @@ describe("importBlocks", () => {
   it("creates nothing when any item is invalid", async () => {
     const coach = await makeCoach(tdb.prisma);
     const closed = await makeClosed(tdb.prisma, coach.id, 2);
-    await expect(importBlocks(tdb.prisma, coach.id, closed.id, [
+    await expect(importItems(coach.id, closed.id, [
       { dayIndex: 0, block: custom("A") }, { dayIndex: 14, block: custom("B") },
     ])).rejects.toMatchObject({ code: "day_out_of_range" });
     expect(await tdb.prisma.block.count({ where: { programId: closed.id } })).toBe(0);
@@ -221,7 +225,7 @@ describe("importBlocks", () => {
 
   it("creates nothing when a barbell movement is not a lift", async () => {
     const { coach, program } = await setup();
-    await expect(importBlocks(tdb.prisma, coach.id, program.id, [
+    await expect(importItems(coach.id, program.id, [
       { dayIndex: 0, block: custom("A") }, { dayIndex: 1, block: barbell("Test Air Squat") },
     ])).rejects.toMatchObject({ code: "invalid_request" });
     expect(await tdb.prisma.block.count({ where: { programId: program.id } })).toBe(0);
@@ -238,7 +242,7 @@ describe("importBlocks", () => {
     await tdb.prisma.notification.create({
       data: { userId: ana.userId, audience: "athlete", kind: "fist_bump", entityId: result.id, groupKey: `fist_bump:${result.id}`, data: {} },
     });
-    await importBlocks(tdb.prisma, coach.id, program.id, [{ dayIndex: 1, block: custom("A") }, { dayIndex: 1, block: custom("B") }], "replace");
+    await importItems(coach.id, program.id, [{ dayIndex: 1, block: custom("A") }, { dayIndex: 1, block: custom("B") }], "replace");
     expect(await titles(program.id, 1)).toEqual(["0:A", "1:B"]);
     expect(await tdb.prisma.block.count({ where: { programId: program.id, dayIndex: 6 } })).toBe(0);
     expect(await titles(program.id, 7)).toEqual(["0:Kept"]);
@@ -249,7 +253,7 @@ describe("importBlocks", () => {
   it("deletes nothing when a replace fails", async () => {
     const { coach, program } = await setup();
     await createBlock(tdb.prisma, coach.id, program.id, 0, custom("Old"));
-    await expect(importBlocks(tdb.prisma, coach.id, program.id, [
+    await expect(importItems(coach.id, program.id, [
       { dayIndex: 0, block: custom("A") }, { dayIndex: 1, block: barbell("Test Air Squat") },
     ], "replace")).rejects.toMatchObject({ code: "invalid_request" });
     expect(await titles(program.id, 0)).toEqual(["0:Old"]);
@@ -259,9 +263,107 @@ describe("importBlocks", () => {
     const { coach, program } = await setup();
     const other = await makeCoach(tdb.prisma);
     const items = [{ dayIndex: 0, block: custom("A") }];
-    await expect(importBlocks(tdb.prisma, other.id, program.id, items)).rejects.toMatchObject({ code: "not_found" });
+    await expect(importItems(other.id, program.id, items)).rejects.toMatchObject({ code: "not_found" });
     await archiveProgram(tdb.prisma, coach.id, program.id);
-    await expect(importBlocks(tdb.prisma, coach.id, program.id, items)).rejects.toMatchObject({ code: "program_archived" });
+    await expect(importItems(coach.id, program.id, items)).rejects.toMatchObject({ code: "program_archived" });
+  });
+});
+
+describe("importBlocks with notes", () => {
+  const dayNote = async (programId: string, dayIndex: number) =>
+    (await tdb.prisma.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex } } }))?.body ?? null;
+  const weekNote = async (programId: string, weekIndex: number) =>
+    (await tdb.prisma.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex } } }))?.body ?? null;
+
+  it("appends imported notes after existing ones", async () => {
+    const { coach, program } = await setup();
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 2, body: "Test old" } });
+    await tdb.prisma.weekNote.create({ data: { programId: program.id, weekIndex: 0, body: "Test old week" } });
+    const count = await importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [{ dayIndex: 2, block: custom("A") }],
+      notes: [{ scope: "day", index: 2, text: "Test new" }, { scope: "week", index: 0, text: "Test new week" }],
+    });
+    expect(count).toBe(3);
+    expect(await dayNote(program.id, 2)).toBe("Test old\n\nTest new");
+    expect(await weekNote(program.id, 0)).toBe("Test old week\n\nTest new week");
+    expect(await titles(program.id, 2)).toEqual(["0:A"]);
+  });
+
+  it("joins several imported notes for one day in order", async () => {
+    const { coach, program } = await setup();
+    await importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [],
+      notes: [
+        { scope: "day", index: 9, text: "Test one" }, { scope: "week", index: 1, text: "Test week" },
+        { scope: "day", index: 9, text: "Test two" },
+      ],
+    });
+    expect(await dayNote(program.id, 9)).toBe("Test one\n\nTest two");
+    expect(await weekNote(program.id, 1)).toBe("Test week");
+  });
+
+  it("replace deletes the replaced weeks' notes", async () => {
+    const { coach, program } = await setup();
+    await createBlock(tdb.prisma, coach.id, program.id, 0, custom("Old"));
+    await tdb.prisma.weekNote.createMany({ data: [{ programId: program.id, weekIndex: 0, body: "Test old week" }, { programId: program.id, weekIndex: 1, body: "Test kept week" }] });
+    await tdb.prisma.dayNote.createMany({ data: [{ programId: program.id, dayIndex: 3, body: "Test old day" }, { programId: program.id, dayIndex: 8, body: "Test kept day" }] });
+    await importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [{ dayIndex: 0, block: custom("A") }],
+      notes: [{ scope: "day", index: 1, text: "Test new" }],
+    }, "replace");
+    expect(await titles(program.id, 0)).toEqual(["0:A"]);
+    expect(await weekNote(program.id, 0)).toBeNull();
+    expect(await dayNote(program.id, 3)).toBeNull();
+    expect(await dayNote(program.id, 1)).toBe("Test new");
+    expect(await weekNote(program.id, 1)).toBe("Test kept week");
+    expect(await dayNote(program.id, 8)).toBe("Test kept day");
+  });
+
+  it("a week that receives only notes keeps its blocks in replace mode", async () => {
+    const { coach, program } = await setup();
+    await createBlock(tdb.prisma, coach.id, program.id, 7, custom("Kept"));
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 8, body: "Test old" } });
+    await importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [{ dayIndex: 0, block: custom("A") }],
+      notes: [{ scope: "day", index: 8, text: "Test new" }],
+    }, "replace");
+    expect(await titles(program.id, 7)).toEqual(["0:Kept"]);
+    expect(await dayNote(program.id, 8)).toBe("Test old\n\nTest new");
+  });
+
+  it("refuses joined notes over 2000 chars and writes nothing", async () => {
+    const { coach, program } = await setup();
+    await createBlock(tdb.prisma, coach.id, program.id, 0, custom("Old"));
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 2, body: "x".repeat(1500) } });
+    await expect(importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [{ dayIndex: 1, block: custom("A") }],
+      notes: [{ scope: "week", index: 0, text: "Test week" }, { scope: "day", index: 2, text: "y".repeat(499) }],
+    })).rejects.toMatchObject({ code: "note_too_long", issues: ["day:2"] });
+    expect(await tdb.prisma.block.count({ where: { programId: program.id } })).toBe(1);
+    expect(await dayNote(program.id, 2)).toBe("x".repeat(1500));
+    expect(await weekNote(program.id, 0)).toBeNull();
+  });
+
+  it("names the week when a week note would be too long", async () => {
+    const { coach, program } = await setup();
+    await expect(importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [],
+      notes: [{ scope: "week", index: 4, text: "x".repeat(1000) }, { scope: "week", index: 4, text: "y".repeat(1000) }],
+    })).rejects.toMatchObject({ code: "note_too_long", issues: ["week:4"] });
+    expect(await tdb.prisma.weekNote.count()).toBe(0);
+  });
+
+  it("refuses notes outside a closed program", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const closed = await makeClosed(tdb.prisma, coach.id, 2);
+    await expect(importBlocks(tdb.prisma, coach.id, closed.id, {
+      items: [{ dayIndex: 0, block: custom("A") }], notes: [{ scope: "day", index: 14, text: "Test day" }],
+    })).rejects.toMatchObject({ code: "day_out_of_range" });
+    await expect(importBlocks(tdb.prisma, coach.id, closed.id, {
+      items: [], notes: [{ scope: "week", index: 2, text: "Test week" }],
+    })).rejects.toMatchObject({ code: "day_out_of_range" });
+    expect(await tdb.prisma.block.count({ where: { programId: closed.id } })).toBe(0);
+    expect(await tdb.prisma.weekNote.count()).toBe(0);
   });
 });
 

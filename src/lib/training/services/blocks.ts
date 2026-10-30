@@ -1,7 +1,7 @@
 import { Prisma, type Block } from "@/generated/prisma/client";
 import { toJson } from "@/lib/json";
 import { TrainingError } from "../errors";
-import type { BlockInputValue } from "../schemas";
+import { NOTE_MAX, type BlockInputValue } from "../schemas";
 import { assertLiftMovement } from "./catalog";
 import { assertWritable, getOwnedProgram } from "./programs";
 import type { Db, DbOrTx } from "./types";
@@ -152,29 +152,57 @@ const appendCopies = (db: DbOrTx, programId: string, blocks: Block[], toDay: (b:
   appendAll(db, programId, blocks.map((b) => ({ dayIndex: toDay(b), columns: copyOf(b) })));
 
 export type ImportItem = { dayIndex: number; block: BlockInputValue };
+/** An imported day goal (`index` = dayIndex) or week note (`index` = weekIndex). */
+export type ImportNote = { scope: "day" | "week"; index: number; text: string };
 export type ImportMode = "append" | "replace";
 
 /**
- * Creates the selected translated blocks in one transaction; returns how many. "append" puts them after
- * what is already in their days. "replace" first deletes every block of each week that receives one
- * (results go with them, as with deleteBlock); weeks receiving nothing are not touched.
+ * Writes the selected translated blocks and notes in one transaction; returns how many. "append" puts blocks
+ * after what is already in their days and appends notes to existing ones after a blank line. "replace" first
+ * deletes every block (results go with them, as with deleteBlock), the week note and the day notes of each week
+ * that receives a block; weeks receiving only notes, or nothing, are not touched. Several imported notes for one
+ * day or week are joined in order; a joined note over NOTE_MAX refuses the whole import.
  */
-export async function importBlocks(db: Db, coachId: string, programId: string, items: ImportItem[], mode: ImportMode = "append") {
+export async function importBlocks(
+  db: Db, coachId: string, programId: string, { items, notes }: { items: ImportItem[]; notes: ImportNote[] },
+  mode: ImportMode = "append",
+) {
   const program = await writableProgram(db, coachId, programId);
   for (const { dayIndex } of items) assertDay(program, dayIndex);
+  for (const { scope, index } of notes) assertDay(program, scope === "day" ? index : index * 7);
   const lifts = new Set(items.flatMap(({ block }) => (block.kind === "barbell" ? [block.movement] : [])));
   for (const movement of lifts) await assertLiftMovement(db, movement);
+  // Imported texts per target, in document order; the key doubles as the error's issue.
+  const texts = new Map<string, { scope: ImportNote["scope"]; index: number; texts: string[] }>();
+  for (const { scope, index, text } of notes) {
+    const key = `${scope}:${index}`;
+    const group = texts.get(key) ?? { scope, index, texts: [] };
+    group.texts.push(text);
+    texts.set(key, group);
+  }
   await db.$transaction(async (tx) => {
-    if (mode === "replace") {
-      const weeks = [...new Set(items.map(({ dayIndex }) => Math.floor(dayIndex / 7)))];
-      const where = { programId, OR: weeks.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } })) };
+    const weeks = [...new Set(items.map(({ dayIndex }) => Math.floor(dayIndex / 7)))];
+    if (mode === "replace" && weeks.length > 0) {
+      const days = weeks.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } }));
+      const where = { programId, OR: days };
       const results = await tx.result.findMany({ where: { block: where }, select: { id: true } });
       await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: results.map((r) => r.id) } } });
       await tx.block.deleteMany({ where });
+      await tx.weekNote.deleteMany({ where: { programId, weekIndex: { in: weeks } } });
+      await tx.dayNote.deleteMany({ where: { programId, OR: days } });
     }
     await appendAll(tx, programId, items.map(({ dayIndex, block }) => ({ dayIndex, columns: columns(block) })));
+    for (const [key, { scope, index, texts: imported }] of texts) {
+      const existing = scope === "day"
+        ? await tx.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex: index } } })
+        : await tx.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex: index } } });
+      const body = [...(existing ? [existing.body] : []), ...imported].join("\n\n");
+      if (body.length > NOTE_MAX) throw new TrainingError("note_too_long", [key]);
+      if (scope === "day") await putDayNote(tx, programId, index, body);
+      else await putWeekNote(tx, programId, index, body);
+    }
   });
-  return items.length;
+  return items.length + notes.length;
 }
 
 /** Week indexes that hold at least one block. */
@@ -210,15 +238,13 @@ export async function duplicateWeek(db: Db, coachId: string, programId: string, 
   ]);
   await db.$transaction(async (tx) => {
     await appendCopies(tx, programId, blocks, (b) => toWeek * 7 + (b.dayIndex - fromWeek * 7));
-    if (weekNote) {
-      await tx.weekNote.upsert({
-        where: { programId_weekIndex: { programId, weekIndex: toWeek } },
-        create: { programId, weekIndex: toWeek, body: weekNote.body }, update: { body: weekNote.body },
-      });
-    }
+    if (weekNote) await putWeekNote(tx, programId, toWeek, weekNote.body);
     for (const n of dayNotes) await putDayNote(tx, programId, toWeek * 7 + (n.dayIndex - fromWeek * 7), n.body);
   });
 }
 
 const putDayNote = (tx: DbOrTx, programId: string, dayIndex: number, body: string) =>
   tx.dayNote.upsert({ where: { programId_dayIndex: { programId, dayIndex } }, create: { programId, dayIndex, body }, update: { body } });
+
+const putWeekNote = (tx: DbOrTx, programId: string, weekIndex: number, body: string) =>
+  tx.weekNote.upsert({ where: { programId_weekIndex: { programId, weekIndex } }, create: { programId, weekIndex, body }, update: { body } });

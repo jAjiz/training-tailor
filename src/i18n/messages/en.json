@@ -64,7 +64,8 @@
     "import_unavailable": "Import is not available right now.",
     "import_quota": "You reached today's import limit. Try again tomorrow.",
     "import_empty": "No training blocks were found in the PDF.",
-    "import_failed": "The PDF could not be read. Try again."
+    "import_failed": "The PDF could not be read. Try again.",
+    "note_too_long": "The text for {target} would exceed 2000 characters."
   },
   "onboarding": {
     "preparing": "Setting up your account…",
@@ -779,6 +780,11 @@
     "clash": "{count, plural, one {{weeks} already has blocks.} other {These weeks already have blocks: {weeks}.}} What should happen to them?",
     "modeAppend": "Add to them",
     "modeReplace": "Replace them",
-    "replaceWarning": "Replacing deletes the current blocks of {count, plural, one {that week} other {those weeks}}, along with any results athletes logged."
+    "replaceWarning": "Replacing deletes the current blocks of {count, plural, one {that week, its day goals and week notes} other {those weeks, their day goals and week notes}}, along with any results athletes logged.",
+    "roleFor": "Import “{heading}” as",
+    "roleBlock": "Block",
+    "roleDayNote": "Day goal",
+    "roleWeekNote": "Week notes",
+    "weekDay": "{week}, {day}"
   }
 }
