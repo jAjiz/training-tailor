@@ -107,6 +107,11 @@ export function parseAnnouncementBody(raw: unknown): string {
   return body;
 }
 
+export const NOTE_MAX = 2000;
+
+/** A coach note: trimmed, inner line breaks kept, blank means "no note" (null). */
+export const NoteBody = z.string().trim().max(NOTE_MAX).transform((v) => v || null);
+
 export const ResultInput = z.object({
   blockId: z.string().min(1).max(64),
   division: Division,

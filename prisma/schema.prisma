@@ -181,6 +181,8 @@ model Program {
   blocks           Block[]
   enrollments      Enrollment[]
   announcements    Announcement[]
+  dayNotes         DayNote[]
+  weekNotes        WeekNote[]
 
   @@index([coachId])
 }
@@ -190,6 +192,26 @@ model ProgramWeek {
   program     Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
   weekIndex   Int
   publishedAt DateTime @default(now())
+
+  @@id([programId, weekIndex])
+}
+
+model DayNote {
+  programId String
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  dayIndex  Int
+  body      String
+  updatedAt DateTime @updatedAt
+
+  @@id([programId, dayIndex])
+}
+
+model WeekNote {
+  programId String
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  weekIndex Int
+  body      String
+  updatedAt DateTime @updatedAt
 
   @@id([programId, weekIndex])
 }

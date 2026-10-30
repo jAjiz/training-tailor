@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ERROR_CODES, TrainingError } from "@/lib/training/errors";
 import {
-  AthleteSettingsInput, BlockInput, ProgramCreateInput, ProgramUpdateInput, parse, parseAnnouncementBody,
+  AthleteSettingsInput, BlockInput, NoteBody, ProgramCreateInput, ProgramUpdateInput, parse, parseAnnouncementBody,
 } from "@/lib/training/schemas";
 
 describe("ProgramCreateInput", () => {
@@ -91,5 +91,17 @@ describe("parseAnnouncementBody", () => {
   });
   it("accepts 2000 characters, trimmed", () => {
     expect(parseAnnouncementBody(`  ${"a".repeat(2000)}  `)).toBe("a".repeat(2000));
+  });
+});
+
+describe("NoteBody", () => {
+  it("trims, keeps inner line breaks and turns blank into null", () => {
+    expect(NoteBody.parse("  \n ")).toBeNull();
+    expect(NoteBody.parse(" a\nb ")).toBe("a\nb");
+  });
+
+  it("rejects more than 2000 characters", () => {
+    expect(NoteBody.safeParse("x".repeat(2001)).success).toBe(false);
+    expect(NoteBody.safeParse("x".repeat(2000)).success).toBe(true);
   });
 });

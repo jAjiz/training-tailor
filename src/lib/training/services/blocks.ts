@@ -8,7 +8,7 @@ import type { Db, DbOrTx } from "./types";
 
 type ProgramRange = { kind: string; weeks: number | null };
 
-function assertDay(program: ProgramRange, dayIndex: number) {
+export function assertDay(program: ProgramRange, dayIndex: number) {
   if (!Number.isInteger(dayIndex) || dayIndex < 0) throw new TrainingError("day_out_of_range");
   if (program.kind === "closed" && dayIndex >= (program.weeks ?? 0) * 7) throw new TrainingError("day_out_of_range");
 }
@@ -47,7 +47,7 @@ async function getOwnedBlock(db: Db, coachId: string, blockId: string) {
   return block;
 }
 
-async function writableProgram(db: Db, coachId: string, programId: string) {
+export async function writableProgram(db: Db, coachId: string, programId: string) {
   const program = await getOwnedProgram(db, coachId, programId);
   assertWritable(program);
   return program;
