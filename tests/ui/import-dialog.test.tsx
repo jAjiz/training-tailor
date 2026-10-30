@@ -122,7 +122,7 @@ describe("ImportDialog", () => {
     const form = fetch.mock.calls[0][1].body as FormData;
     expect(form.get("programId")).toBe("p1");
 
-    expect(await screen.findByText("4 blocks selected")).toBeInTheDocument();
+    expect(await screen.findByText("4 items selected")).toBeInTheDocument();
     expect(confirmButton()).toBeEnabled();
     fireEvent.click(confirmButton());
     expect(screen.getByRole("status")).toHaveTextContent(en.import.importing);
@@ -138,7 +138,7 @@ describe("ImportDialog", () => {
   it("cannot be closed while importing", async () => {
     actions.importBlocksAction.mockReturnValue(new Promise(() => {}));
     const { onClose } = await open(preview());
-    await screen.findByText("4 blocks selected");
+    await screen.findByText("4 items selected");
     fireEvent.click(confirmButton());
     expect(screen.getByRole("button", { name: en.common.close })).toBeDisabled();
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
@@ -147,12 +147,12 @@ describe("ImportDialog", () => {
 
   it("disables the confirm when every block is unchecked", async () => {
     await open(preview());
-    await screen.findByText("4 blocks selected");
+    await screen.findByText("4 items selected");
     fireEvent.click(screen.getByRole("checkbox", { name: en.import.selectWeek }));
-    expect(screen.getByText("1 block selected")).toBeInTheDocument();
+    expect(screen.getByText("1 item selected")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: en.planner.nextWeek }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Test D" }));
-    expect(screen.getByText("0 blocks selected")).toBeInTheDocument();
+    expect(screen.getByText("0 items selected")).toBeInTheDocument();
     expect(confirmButton()).toBeDisabled();
   });
 
@@ -167,7 +167,7 @@ describe("ImportDialog", () => {
   it("asks after confirming whether to add to or replace a target week that already has blocks", async () => {
     actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
     await open(preview(), 200, [3, 9]);
-    await screen.findByText("4 blocks selected");
+    await screen.findByText("4 items selected");
     expect(screen.queryByText(/already has blocks/)).not.toBeInTheDocument();
     fireEvent.click(confirmButton());
     const ask = screen.getByRole("dialog", { name: en.import.clashTitle });
@@ -181,7 +181,7 @@ describe("ImportDialog", () => {
   it("does not ask when the selection leaves the filled week out", async () => {
     actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
     await open(preview(), 200, [3]);
-    await screen.findByText("4 blocks selected");
+    await screen.findByText("4 items selected");
     fireEvent.click(screen.getByRole("button", { name: en.planner.nextWeek }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Test D" }));
     fireEvent.click(confirmButton());
@@ -198,7 +198,7 @@ describe("ImportDialog", () => {
   it("presets each tile's role and imports a note changed to a block as a block", async () => {
     actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
     await open(notesPreview());
-    await screen.findByText("2 blocks selected");
+    await screen.findByText("2 items selected");
     expect(roleOf("Test goal")).toHaveDisplayValue(en.import.roleDayNote);
     expect(roleOf("Test A")).toHaveDisplayValue(en.import.roleBlock);
     fireEvent.change(roleOf("Test goal"), { target: { value: "block" } });
@@ -212,9 +212,9 @@ describe("ImportDialog", () => {
   it("imports a selection that only holds notes", async () => {
     actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
     await open(notesPreview());
-    await screen.findByText("2 blocks selected");
+    await screen.findByText("2 items selected");
     fireEvent.click(screen.getByRole("checkbox", { name: "Test A" }));
-    expect(screen.getByText("1 block selected")).toBeInTheDocument();
+    expect(screen.getByText("1 item selected")).toBeInTheDocument();
     expect(confirmButton()).toBeEnabled();
     fireEvent.click(confirmButton());
     await waitFor(() => expect(actions.importBlocksAction).toHaveBeenCalledWith({
@@ -225,7 +225,7 @@ describe("ImportDialog", () => {
   it("does not ask about a filled week that only receives notes", async () => {
     actions.importBlocksAction.mockResolvedValue({ ok: true, value: undefined });
     await open(notesPreview(), 200, [2]);
-    await screen.findByText("2 blocks selected");
+    await screen.findByText("2 items selected");
     fireEvent.click(screen.getByRole("checkbox", { name: "Test A" }));
     fireEvent.click(confirmButton());
     expect(screen.queryByRole("dialog", { name: en.import.clashTitle })).not.toBeInTheDocument();
@@ -235,7 +235,7 @@ describe("ImportDialog", () => {
   it("names the day whose note would be too long", async () => {
     actions.importBlocksAction.mockResolvedValue({ ok: false, code: "note_too_long", issues: ["day:15"] });
     await open(notesPreview());
-    await screen.findByText("2 blocks selected");
+    await screen.findByText("2 items selected");
     fireEvent.click(confirmButton());
     expect(await screen.findByRole("alert")).toHaveTextContent("The text for Week 3, Day 2 would exceed 2000 characters.");
   });

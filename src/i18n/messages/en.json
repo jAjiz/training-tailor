@@ -774,7 +774,7 @@
     "tooManyWeeks": "The PDF has {found} weeks: only the first {max} are shown and the rest were ignored.",
     "daysUnnamed": "The PDF's days don't name a weekday, so they've been placed from Monday.",
     "dropped": "{count, plural, one {# block couldn't be read} other {# blocks couldn't be read}}",
-    "selected": "{count, plural, one {# block selected} other {# blocks selected}}",
+    "selected": "{count, plural, one {# item selected} other {# items selected}}",
     "confirm": "Import selection",
     "clashTitle": "Weeks with blocks",
     "clash": "{count, plural, one {{weeks} already has blocks.} other {These weeks already have blocks: {weeks}.}} What should happen to them?",
