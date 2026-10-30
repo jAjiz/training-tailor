@@ -10,9 +10,9 @@ import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { getSessionContext } from "@/lib/session";
-import { formatDay } from "@/lib/format";
+import { formatDay, formatDayRange } from "@/lib/format";
 import { hasLeaderboard } from "@/lib/training/access";
-import { addDays, isIsoDate, mondayOf, todayIn, weekIndexOf } from "@/lib/training/dates";
+import { addDays, dateOfDay, isIsoDate, mondayOf, todayIn, weekIndexOf } from "@/lib/training/dates";
 import type { BarbellSet } from "@/lib/training/schemas";
 import { formatScore, scoreTarget } from "@/lib/training/scoring";
 import { getAthleteDay, getAthleteWeekNote, getVisibleDays } from "@/lib/training/services/athlete-view";
@@ -60,7 +60,12 @@ export default async function TodayPage({ searchParams }: Props) {
   let weekNote: { body: string; title: string } | null = null;
   if (day.status === "ok" && day.dayIndex !== null) {
     const body = await getAthleteWeekNote(prisma, athlete.id, programId, day.dayIndex);
-    if (body) weekNote = { body, title: t("weekNotesTitle", { week: weekIndexOf(day.dayIndex) + 1 }) };
+    // Continuous weeks count from the program's start, so they are named by their dates, as in the planner.
+    const week = weekIndexOf(day.dayIndex);
+    const title = day.timeline.kind === "continuous"
+      ? formatDayRange(dateOfDay(day.timeline, week * 7), dateOfDay(day.timeline, week * 7 + 6), locale)
+      : t("weekNotesTitle", { week: week + 1 });
+    if (body) weekNote = { body, title };
   }
   const [dayResults, oneRms] = await Promise.all([
     getDayResults(prisma, athlete.id, programId, day.blocks.map((b) => b.id)),
