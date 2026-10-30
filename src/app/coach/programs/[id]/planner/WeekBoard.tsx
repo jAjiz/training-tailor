@@ -14,7 +14,9 @@ import { cx } from "@/components/ui/cx";
 import { dayDropId, isDayDropId, locate, moveOver, type Board } from "@/lib/training/board";
 import type { ErrorCode } from "@/lib/training/errors";
 import { moveBlockAction } from "../../../block-actions";
+import { setDayNoteAction } from "../../../note-actions";
 import { AddBlock, DayMenu } from "./DayTools";
+import { NoteDialog } from "./NoteDialog";
 import { PlannerBlock } from "./PlannerBlock";
 import type { PlannerBlockData, PlannerContext } from "./types";
 
@@ -71,10 +73,12 @@ function boardOf(days: Day[], blocks: PlannerBlockData[]): Board {
   ]));
 }
 
-function DayColumn({ day, ids, byId, ctx, receiving }: {
-  day: Day; ids: string[]; byId: Map<string, PlannerBlockData>; ctx: PlannerContext; receiving: boolean;
+function DayColumn({ day, ids, byId, ctx, receiving, note }: {
+  day: Day; ids: string[]; byId: Map<string, PlannerBlockData>; ctx: PlannerContext; receiving: boolean; note: string | null;
 }) {
   const t = useTranslations("planner");
+  const router = useRouter();
+  const [noting, setNoting] = useState(false);
   const { setNodeRef } = useDroppable({ id: dayDropId(day.dayIndex), disabled: ctx.readOnly });
   return (
     <div ref={setNodeRef} className={cx("flex min-h-40 min-w-0 flex-col gap-2 rounded-2xl p-1.5 transition-colors", receiving && "bg-surface-2")}>
@@ -84,18 +88,33 @@ function DayColumn({ day, ids, byId, ctx, receiving }: {
           <span aria-hidden>{ids.length}</span>
           <span className="sr-only">{t("blockCount", { count: ids.length })}</span>
         </span>
-        <DayMenu dayIndex={day.dayIndex} ctx={ctx} />
+        <DayMenu dayIndex={day.dayIndex} ctx={ctx} onNote={() => setNoting(true)} />
       </div>
+      {note !== null && (ctx.readOnly
+        ? <p data-color="neutral" className="line-clamp-4 whitespace-pre-wrap rounded-xl bg-(--block-fill) px-3 py-2 text-sm text-(--block-ink)">{note}</p>
+        : <button type="button" data-color="neutral" onClick={() => setNoting(true)}
+            className="line-clamp-4 cursor-pointer whitespace-pre-wrap rounded-xl bg-(--block-fill) px-3 py-2 text-left text-sm text-(--block-ink) focus-visible:outline-2 focus-visible:outline-foreground">{note}</button>)}
       <SortableContext id={columnId(day.dayIndex)} items={ids} strategy={inPlace}>
         {ids.map((id) => <PlannerBlock key={id} block={byId.get(id) as PlannerBlockData} ctx={ctx} />)}
       </SortableContext>
       {/* The column holding the dragged block hides it: on the highlighted background its dashed border vanished. */}
       {!receiving && <AddBlock dayIndex={day.dayIndex} ctx={ctx} />}
+      {noting && (
+        <NoteDialog title={t("noteDialogDay")} initial={note}
+          onSave={async (body) => {
+            const r = await setDayNoteAction({ programId: ctx.programId, dayIndex: day.dayIndex, body });
+            if (r.ok) router.refresh();
+            return r;
+          }}
+          onClose={() => setNoting(false)} />
+      )}
     </div>
   );
 }
 
-export function WeekBoard({ days, blocks, ctx }: { days: Day[]; blocks: PlannerBlockData[]; ctx: PlannerContext }) {
+export function WeekBoard({ days, blocks, ctx, dayNotes }: {
+  days: Day[]; blocks: PlannerBlockData[]; ctx: PlannerContext; dayNotes: Record<number, string>;
+}) {
   const te = useTranslations("errors");
   const router = useRouter();
   const [source, setSource] = useState(blocks);
@@ -177,7 +196,7 @@ export function WeekBoard({ days, blocks, ctx }: { days: Day[]; blocks: PlannerB
       {error && <p role="alert" className="text-sm text-danger">{te(error)}</p>}
       <div className="-mx-6 overflow-x-auto px-6 pb-2 lg:-mx-8 lg:px-8">
         <div className="grid min-w-[1050px] grid-cols-7 gap-2">
-          {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx}
+          {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx} note={dayNotes[d.dayIndex] ?? null}
             receiving={activeId !== null && (board[d.dayIndex] ?? []).includes(activeId)} />)}
         </div>
       </div>
