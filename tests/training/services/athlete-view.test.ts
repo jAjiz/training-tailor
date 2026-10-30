@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { enroll, makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, publishWeek } from "../../helpers/factories";
-import { getAthleteDay, getVisibleDays, loadAthleteTimeline } from "@/lib/training/services/athlete-view";
+import { setDayNote, setWeekNote } from "@/lib/training/services/notes";
+import { getAthleteDay, getAthleteWeekNote, getVisibleDays, loadAthleteTimeline } from "@/lib/training/services/athlete-view";
 
 let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
@@ -65,5 +66,45 @@ describe("athlete view", () => {
     await publishWeek(tdb.prisma, program.id, 0);
     const days = await getVisibleDays(tdb.prisma, athlete.id, program.id, "2026-10-01", "2026-10-18");
     expect([...days].sort()).toEqual(["2026-10-05", "2026-10-07"]);
+  });
+
+  it("shows the day note of a published day only", async () => {
+    const { coach, athlete, program } = await continuousSetup();
+    await setDayNote(tdb.prisma, coach.id, program.id, 1, "Test goal");
+    await setDayNote(tdb.prisma, coach.id, program.id, 8, "Test goal");
+    await publishWeek(tdb.prisma, program.id, 0);
+    const shown = await getAthleteDay(tdb.prisma, athlete.id, program.id, "2026-10-06", "2026-10-06");
+    expect(shown).toMatchObject({ status: "ok", dayIndex: 1, note: "Test goal" });
+    const hidden = await getAthleteDay(tdb.prisma, athlete.id, program.id, "2026-10-13", "2026-10-13");
+    expect(hidden).toMatchObject({ status: "unpublished", note: null });
+  });
+
+  it("returns the week note of the selected day's program week", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const program = await makeClosed(tdb.prisma, coach.id, 2, true);
+    await enroll(tdb.prisma, program.id, athlete.id, "2026-10-07"); // a Wednesday
+    await setWeekNote(tdb.prisma, coach.id, program.id, 0, "Test week 1");
+    await setWeekNote(tdb.prisma, coach.id, program.id, 1, "Test week 2");
+    expect(await getAthleteWeekNote(tdb.prisma, athlete.id, program.id, 6)).toBe("Test week 1");
+    expect(await getAthleteWeekNote(tdb.prisma, athlete.id, program.id, 7)).toBe("Test week 2");
+  });
+
+  it("hides the week note of an unpublished week", async () => {
+    const { coach, athlete, program } = await continuousSetup();
+    await setWeekNote(tdb.prisma, coach.id, program.id, 0, "Test week 1");
+    await setWeekNote(tdb.prisma, coach.id, program.id, 1, "Test week 2");
+    await publishWeek(tdb.prisma, program.id, 0);
+    expect(await getAthleteWeekNote(tdb.prisma, athlete.id, program.id, 2)).toBe("Test week 1");
+    expect(await getAthleteWeekNote(tdb.prisma, athlete.id, program.id, 9)).toBeNull();
+  });
+
+  it("marks days that only have a note", async () => {
+    const { coach, athlete, program } = await continuousSetup();
+    await setDayNote(tdb.prisma, coach.id, program.id, 4, "Test rest day");
+    await setWeekNote(tdb.prisma, coach.id, program.id, 0, "Test week 1");
+    await publishWeek(tdb.prisma, program.id, 0);
+    const days = await getVisibleDays(tdb.prisma, athlete.id, program.id, "2026-10-01", "2026-10-18");
+    expect([...days]).toEqual(["2026-10-09"]);
   });
 });
