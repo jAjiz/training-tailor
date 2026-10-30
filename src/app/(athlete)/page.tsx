@@ -57,9 +57,11 @@ export default async function TodayPage({ searchParams }: Props) {
   ]);
   const movements = day.blocks.flatMap((b) => (b.movement ? [b.movement] : []));
   // The selected day decides the week: in a closed program the strip can span two program weeks.
-  const weekNote = day.status === "ok" && day.dayIndex !== null
-    ? await getAthleteWeekNote(prisma, athlete.id, programId, day.dayIndex)
-    : null;
+  let weekNote: { body: string; title: string } | null = null;
+  if (day.status === "ok" && day.dayIndex !== null) {
+    const body = await getAthleteWeekNote(prisma, athlete.id, programId, day.dayIndex);
+    if (body) weekNote = { body, title: t("weekNotesTitle", { week: weekIndexOf(day.dayIndex) + 1 }) };
+  }
   const [dayResults, oneRms] = await Promise.all([
     getDayResults(prisma, athlete.id, programId, day.blocks.map((b) => b.id)),
     oneRmMap(prisma, athlete.id, movements),
@@ -68,7 +70,7 @@ export default async function TodayPage({ searchParams }: Props) {
   return (
     <>
       <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={programId} basePath="/"
-        start={weekNote && day.dayIndex !== null ? <WeekNoteButton note={weekNote} title={t("weekNotesTitle", { week: weekIndexOf(day.dayIndex) + 1 })} /> : undefined}>
+        start={weekNote !== null ? <WeekNoteButton note={weekNote.body} title={weekNote.title} /> : undefined}>
         <WeekStrip programId={programId} selected={date} today={today} withBlocks={withBlocks} locale={locale}
           labels={{ prev: t("prevWeek"), next: t("nextWeek") }} />
       </AthleteHeader>

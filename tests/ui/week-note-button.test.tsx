@@ -23,6 +23,7 @@ describe("WeekNoteButton", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
     const dialog = screen.getByRole("dialog", { name: "Week 3" });
+    expect(dialog).toHaveAttribute("data-placement", "bottom");
     const text = dialog.querySelector("p.whitespace-pre-wrap");
     expect(text?.textContent).toBe("Test line one\nTest line two");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));

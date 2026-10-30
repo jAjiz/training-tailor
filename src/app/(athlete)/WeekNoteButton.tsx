@@ -18,7 +18,7 @@ export function WeekNoteButton({ note, title }: { note: string; title: string })
         {t("today.week")}
       </button>
       {open && (
-        <Modal title={title} closeLabel={t("common.close")} onClose={() => setOpen(false)} size="md">
+        <Modal title={title} closeLabel={t("common.close")} onClose={() => setOpen(false)} size="md" placement="bottom">
           <AnnouncementText body={note} />
         </Modal>
       )}
