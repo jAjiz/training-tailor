@@ -54,7 +54,7 @@
     "not_enrolled": "No sigues este programa.",
     "internal": "Algo ha fallado. Inténtalo de nuevo.",
     "push_unavailable": "Las notificaciones no están disponibles en este dispositivo.",
-    "week_empty": "Añade al menos un bloque antes de publicar la semana.",
+    "week_empty": "Añade al menos un bloque o una nota antes de publicar la semana.",
     "library_conflict": "El borrador cambió desde que lo abriste. Recarga e inténtalo de nuevo.",
     "library_draft_exists": "Ya hay un borrador abierto. Publícalo o descártalo primero.",
     "library_no_draft": "No hay ningún borrador abierto.",

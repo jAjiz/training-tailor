@@ -54,7 +54,7 @@
     "not_enrolled": "You are not in this program.",
     "internal": "Something went wrong. Try again.",
     "push_unavailable": "Notifications are not available on this device.",
-    "week_empty": "Add at least one block before publishing the week.",
+    "week_empty": "Add at least one block or note before publishing the week.",
     "library_conflict": "The draft changed since you opened it. Reload and try again.",
     "library_draft_exists": "A draft is already open. Publish or discard it first.",
     "library_no_draft": "There is no open draft.",

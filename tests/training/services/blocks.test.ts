@@ -146,6 +146,38 @@ describe("blocks", () => {
   });
 });
 
+describe("duplicating notes", () => {
+  const dayNote = async (programId: string, dayIndex: number) =>
+    (await tdb.prisma.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex } } }))?.body ?? null;
+  const weekNote = async (programId: string, weekIndex: number) =>
+    (await tdb.prisma.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex } } }))?.body ?? null;
+
+  it("duplicating a day copies its note over the destination's", async () => {
+    const { coach, program } = await setup();
+    await tdb.prisma.dayNote.createMany({ data: [{ programId: program.id, dayIndex: 0, body: "Test A" }, { programId: program.id, dayIndex: 7, body: "Test B" }] });
+    await duplicateDay(tdb.prisma, coach.id, program.id, 0, 7);
+    expect(await dayNote(program.id, 7)).toBe("Test A");
+    expect(await dayNote(program.id, 0)).toBe("Test A");
+  });
+
+  it("duplicating a day without a note keeps the destination's", async () => {
+    const { coach, program } = await setup();
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 7, body: "Test B" } });
+    await duplicateDay(tdb.prisma, coach.id, program.id, 0, 7);
+    expect(await dayNote(program.id, 7)).toBe("Test B");
+  });
+
+  it("duplicating a week copies the week note and each day note", async () => {
+    const { coach, program } = await setup();
+    await tdb.prisma.weekNote.create({ data: { programId: program.id, weekIndex: 0, body: "Test week" } });
+    await tdb.prisma.dayNote.createMany({ data: [{ programId: program.id, dayIndex: 2, body: "Test day" }, { programId: program.id, dayIndex: 24, body: "Test kept" }] });
+    await duplicateWeek(tdb.prisma, coach.id, program.id, 0, 3);
+    expect(await weekNote(program.id, 3)).toBe("Test week");
+    expect(await dayNote(program.id, 23)).toBe("Test day");
+    expect(await dayNote(program.id, 24)).toBe("Test kept");
+  });
+});
+
 describe("deleteBlock fist-bump cleanup", () => {
   it("removes the fist-bump entries of the block's results and keeps others", async () => {
     const coach = await makeCoach(tdb.prisma);

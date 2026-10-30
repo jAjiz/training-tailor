@@ -140,6 +140,19 @@ describe("setWeekPublished notifications", () => {
     expect(intents[0].recipients.map((r) => r.userId)).toEqual([athlete.userId]);
   });
 
+  it("publishes a week that only has notes", async () => {
+    const { coach, p } = await setup();
+    await tdb.prisma.weekNote.create({ data: { programId: p.id, weekIndex: 3, body: "Test week note" } });
+    await expect(publish(coach.id, p.id, 3)).resolves.toHaveLength(1);
+    expect([...await publishedWeeks(tdb.prisma, p.id)]).toEqual([3]);
+  });
+
+  it("publishes a week that only has a day note", async () => {
+    const { coach, p } = await setup();
+    await tdb.prisma.dayNote.create({ data: { programId: p.id, dayIndex: 22, body: "Test day note" } });
+    await expect(publish(coach.id, p.id, 3)).resolves.toHaveLength(1);
+  });
+
   it("does not notify again after unpublishing and publishing", async () => {
     const { coach, p } = await setup();
     await makeCustomBlock(tdb.prisma, p.id, 21);

@@ -148,7 +148,7 @@ async function appendAll(db: DbOrTx, programId: string, entries: { dayIndex: num
   if (data.length) await db.block.createMany({ data });
 }
 
-const appendCopies = (db: Db, programId: string, blocks: Block[], toDay: (b: Block) => number) =>
+const appendCopies = (db: DbOrTx, programId: string, blocks: Block[], toDay: (b: Block) => number) =>
   appendAll(db, programId, blocks.map((b) => ({ dayIndex: toDay(b), columns: copyOf(b) })));
 
 export type ImportItem = { dayIndex: number; block: BlockInputValue };
@@ -188,16 +188,37 @@ export async function duplicateDay(db: Db, coachId: string, programId: string, f
   assertDay(program, fromDay);
   assertDay(program, toDay);
   const blocks = await db.block.findMany({ where: { programId, dayIndex: fromDay }, orderBy: { position: "asc" } });
-  await appendCopies(db, programId, blocks, () => toDay);
+  const note = await db.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex: fromDay } } });
+  await db.$transaction(async (tx) => {
+    await appendCopies(tx, programId, blocks, () => toDay);
+    if (note) await putDayNote(tx, programId, toDay, note.body);
+  });
 }
 
 export async function duplicateWeek(db: Db, coachId: string, programId: string, fromWeek: number, toWeek: number) {
   const program = await writableProgram(db, coachId, programId);
   assertDay(program, fromWeek * 7);
   assertDay(program, toWeek * 7 + 6);
+  const range = { gte: fromWeek * 7, lt: fromWeek * 7 + 7 };
   const blocks = await db.block.findMany({
-    where: { programId, dayIndex: { gte: fromWeek * 7, lt: fromWeek * 7 + 7 } },
+    where: { programId, dayIndex: range },
     orderBy: [{ dayIndex: "asc" }, { position: "asc" }],
   });
-  await appendCopies(db, programId, blocks, (b) => toWeek * 7 + (b.dayIndex - fromWeek * 7));
+  const [weekNote, dayNotes] = await Promise.all([
+    db.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex: fromWeek } } }),
+    db.dayNote.findMany({ where: { programId, dayIndex: range } }),
+  ]);
+  await db.$transaction(async (tx) => {
+    await appendCopies(tx, programId, blocks, (b) => toWeek * 7 + (b.dayIndex - fromWeek * 7));
+    if (weekNote) {
+      await tx.weekNote.upsert({
+        where: { programId_weekIndex: { programId, weekIndex: toWeek } },
+        create: { programId, weekIndex: toWeek, body: weekNote.body }, update: { body: weekNote.body },
+      });
+    }
+    for (const n of dayNotes) await putDayNote(tx, programId, toWeek * 7 + (n.dayIndex - fromWeek * 7), n.body);
+  });
 }
+
+const putDayNote = (tx: DbOrTx, programId: string, dayIndex: number, body: string) =>
+  tx.dayNote.upsert({ where: { programId_dayIndex: { programId, dayIndex } }, create: { programId, dayIndex, body }, update: { body } });

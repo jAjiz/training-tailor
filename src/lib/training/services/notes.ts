@@ -24,3 +24,14 @@ export async function listWeekNotes(db: Db | DbOrTx, programId: string, weekInde
   ]);
   return { week: week?.body ?? null, days: new Map(days.map((d) => [d.dayIndex, d.body])) };
 }
+
+/** Whether the week has any block, day note or week note. */
+export async function weekHasContent(db: DbOrTx, programId: string, weekIndex: number): Promise<boolean> {
+  const days = { gte: weekIndex * 7, lt: weekIndex * 7 + 7 };
+  const [blocks, dayNotes, weekNotes] = await Promise.all([
+    db.block.count({ where: { programId, dayIndex: days } }),
+    db.dayNote.count({ where: { programId, dayIndex: days } }),
+    db.weekNote.count({ where: { programId, weekIndex } }),
+  ]);
+  return blocks + dayNotes + weekNotes > 0;
+}
