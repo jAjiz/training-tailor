@@ -10,7 +10,7 @@ export const blockKey = (w: number, day: number, i: number): BlockKey => `${w}:$
 
 /** The keys of PDF week `w`'s blocks. */
 export function weekKeys(preview: ImportPreview, w: number): BlockKey[] {
-  return preview.weeks[w].days.flatMap(({ day, blocks }) => blocks.map((_, i) => blockKey(w, day, i)));
+  return preview.weeks[w].days.flatMap(({ day, items }) => items.map((_, i) => blockKey(w, day, i)));
 }
 
 export function allKeys(preview: ImportPreview): Set<BlockKey> {
@@ -47,6 +47,6 @@ export function toggleWeek(sel: Set<BlockKey>, preview: ImportPreview, w: number
 
 /** The selected blocks of importable weeks with their planner day, in document order. */
 export function selectedItems(sel: Set<BlockKey>, preview: ImportPreview, ctx: WeekTarget): ImportItem[] {
-  return preview.weeks.flatMap((week, w) => !isWeekImportable(ctx, w) ? [] : week.days.flatMap(({ day, blocks }) =>
-    blocks.flatMap((block, i) => sel.has(blockKey(w, day, i)) ? [{ dayIndex: targetWeek(ctx, w) * 7 + day, block }] : [])));
+  return preview.weeks.flatMap((week, w) => !isWeekImportable(ctx, w) ? [] : week.days.flatMap(({ day, items }) =>
+    items.flatMap(({ block }, i) => sel.has(blockKey(w, day, i)) ? [{ dayIndex: targetWeek(ctx, w) * 7 + day, block }] : [])));
 }

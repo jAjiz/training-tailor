@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FakeProvider } from "@/lib/ai/fake-provider";
-import { ImportEmptyError, translatePdf } from "@/lib/import/translate";
+import { ImportEmptyError, noteText, translatePdf } from "@/lib/import/translate";
 import type { TextItem } from "@/lib/import/layout";
 import type { ModelBlock } from "@/lib/import/schema";
 
@@ -29,7 +29,12 @@ describe("translatePdf", () => {
     });
     const preview = await result;
     expect(preview.weeks[0].days.map((d) => d.day)).toEqual([4, 0, 6]);
-    expect(preview.weeks[0].days.map((d) => d.blocks[0].title)).toEqual(["Test B", "Test A", "Test C"]);
+    expect(preview.weeks[0].days.map((d) => d.items[0].block.title)).toEqual(["Test B", "Test A", "Test C"]);
+  });
+
+  it("gives each item the model's role, block by default", async () => {
+    const preview = await run(script([block({ role: "week_note" }), block()])).result;
+    expect(preview.weeks[0].days[0].items.map((i) => i.role)).toEqual(["week_note", "block"]);
   });
 
   it("keeps the first 4 weeks and reports weeksFound", async () => {
@@ -41,7 +46,7 @@ describe("translatePdf", () => {
 
   it("imports every block as a neutral custom block, filling omitted fields", async () => {
     const preview = await run(script([{ description: "Test work" }])).result;
-    expect(preview.weeks[0].days[0].blocks[0]).toEqual({
+    expect(preview.weeks[0].days[0].items[0].block).toEqual({
       kind: "custom", title: null, color: "neutral", coachingTips: null, videoUrl: null,
       description: "Test work", scoring: "none", timeCapSeconds: null,
     });
@@ -49,29 +54,29 @@ describe("translatePdf", () => {
 
   it("keeps coaching tips and scoring", async () => {
     const preview = await run(script([block({ coachingTips: "Test tip", scoring: "amrap" })])).result;
-    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({ coachingTips: "Test tip", scoring: "amrap" });
+    expect(preview.weeks[0].days[0].items[0].block).toMatchObject({ coachingTips: "Test tip", scoring: "amrap" });
   });
 
   it("keeps a for_time block with a valid time cap", async () => {
     const preview = await run(script([block({ scoring: "for_time", timeCapSeconds: 1200 })])).result;
-    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({ scoring: "for_time", timeCapSeconds: 1200 });
+    expect(preview.weeks[0].days[0].items[0].block).toMatchObject({ scoring: "for_time", timeCapSeconds: 1200 });
   });
 
   it("clears a time cap on a non for_time block", async () => {
     const preview = await run(script([block({ scoring: "amrap", timeCapSeconds: 600 })])).result;
-    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({ scoring: "amrap", timeCapSeconds: null });
+    expect(preview.weeks[0].days[0].items[0].block).toMatchObject({ scoring: "amrap", timeCapSeconds: null });
   });
 
   it("keeps a block with an invalid time cap, unscored", async () => {
     const preview = await run(script([block({ scoring: "for_time", timeCapSeconds: -5 })])).result;
     expect(preview.dropped).toBe(0);
-    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({ description: "Test work", scoring: "none", timeCapSeconds: null });
+    expect(preview.weeks[0].days[0].items[0].block).toMatchObject({ description: "Test work", scoring: "none", timeCapSeconds: null });
   });
 
   it("drops blocks that cannot be made valid and counts them", async () => {
     const preview = await run(script([block(), block({ description: "" })])).result;
     expect(preview.dropped).toBe(1);
-    expect(preview.weeks[0].days[0].blocks).toHaveLength(1);
+    expect(preview.weeks[0].days[0].items).toHaveLength(1);
   });
 
   it("passes daysNamed through", async () => {
@@ -113,7 +118,7 @@ describe("translatePdf", () => {
       ] }],
     }).result;
     expect(preview.weeks[0].days.map((d) => d.day)).toEqual([1, 2]);
-    expect(preview.weeks[0].days[0].blocks.map((b) => b.title)).toEqual(["Test A", "Test B"]);
+    expect(preview.weeks[0].days[0].items.map((i) => i.block.title)).toEqual(["Test A", "Test B"]);
   });
 
   it("never reports fewer weeks found than it returns", async () => {
@@ -148,19 +153,47 @@ describe("translatePdf with a calendar PDF", () => {
     expect(fake.calls[0].attachments).toBeUndefined();
     expect(fake.calls[0].prompt).toContain("[4] Test Engine");
     expect(preview).toMatchObject({ weeksFound: 1, daysNamed: true, dropped: 0 });
-    expect(preview.weeks[0].days.map((d) => [d.day, d.blocks.map((b) => b.title)])).toEqual([
+    expect(preview.weeks[0].days.map((d) => [d.day, d.items.map((i) => i.block.title)])).toEqual([
       [0, ["Test Warm-up", "Test Strength"]],
       [2, [null, "Test Engine"]],
     ]);
-    expect(preview.weeks[0].days[0].blocks[0]).toMatchObject({ description: "Test row 2 min\nTest bike 2 min" });
-    expect(preview.weeks[0].days[0].blocks[1]).toMatchObject({ kind: "custom", description: "Test 5 x 5", scoring: "load", color: "red" });
-    expect(preview.weeks[0].days[1].blocks[0]).toMatchObject({ description: "Test Day Summary", color: "purple" });
-    expect(preview.weeks[0].days[1].blocks[1]).toMatchObject({ coachingTips: "Test pace", color: "yellow" });
+    expect(preview.weeks[0].days[0].items[0].block).toMatchObject({ description: "Test row 2 min\nTest bike 2 min" });
+    expect(preview.weeks[0].days[0].items[1].block).toMatchObject({ kind: "custom", description: "Test 5 x 5", scoring: "load", color: "red" });
+    expect(preview.weeks[0].days[1].items[0].block).toMatchObject({ description: "Test Day Summary", color: "purple" });
+    expect(preview.weeks[0].days[1].items[1].block).toMatchObject({ coachingTips: "Test pace", color: "yellow" });
   });
 
   it("keeps the document text for a block the model skipped", async () => {
     const preview = await translatePdf(tidy([{ id: 1, description: "Test tidy", color: "blue" }]), PDF, readText);
-    expect(preview.weeks[0].days[0].blocks.map((b) => [b.kind === "custom" && b.description, b.color]))
+    expect(preview.weeks[0].days[0].items.map(({ block: b }) => [b.kind === "custom" && b.description, b.color]))
       .toEqual([["Test tidy", "blue"], ["Test 5 x 5", "neutral"]]);
+  });
+
+  it("takes the model's role by id, also for a heading-only box", async () => {
+    const preview = await translatePdf(tidy([
+      { id: 1, description: "Test tidy", color: "blue" },
+      { id: 2, description: "Test 5 x 5", color: "red" },
+      { id: 3, description: "", color: "purple", role: "day_note" },
+      { id: 4, description: "Test 20 min", color: "yellow", role: "week_note" },
+    ]), PDF, readText);
+    const day2 = preview.weeks[0].days[1].items;
+    expect(day2[0]).toMatchObject({ role: "day_note", block: { description: "Test Day Summary" } });
+    expect(day2[1].role).toBe("week_note");
+    expect(preview.weeks[0].days[0].items.map((i) => i.role)).toEqual(["block", "block"]);
+  });
+});
+
+describe("noteText", () => {
+  const custom = (title: string | null, description: string) => ({
+    kind: "custom" as const, title, color: "neutral" as const, coachingTips: null, videoUrl: null,
+    description, scoring: "none" as const, timeCapSeconds: null,
+  });
+
+  it("joins the title and the description", () => {
+    expect(noteText(custom("Test Title", "Test body"))).toBe("Test Title\nTest body");
+  });
+
+  it("is the description alone without a title", () => {
+    expect(noteText(custom(null, "Test body"))).toBe("Test body");
   });
 });

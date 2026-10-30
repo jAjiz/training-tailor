@@ -273,11 +273,11 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
         <div className={cx("-mx-6 overflow-x-auto px-6 pb-2", !importable && "opacity-50")}>
           <div className="grid min-w-[840px] grid-cols-7 gap-2">
             {Array.from({ length: 7 }, (_, day) => {
-              const blocks = current.days.find((d) => d.day === day)?.blocks ?? [];
+              const items = current.days.find((d) => d.day === day)?.items ?? [];
               return (
                 <div key={day} className="flex min-w-0 flex-col gap-2">
                   <h3 className="truncate px-1 text-xs font-bold first-letter:uppercase">{dayLabel(day)}</h3>
-                  {blocks.map((block, i) => {
+                  {items.map(({ block }, i) => {
                     const key = blockKey(week, day, i);
                     const on = selection.has(key);
                     const heading = block.title ?? (block.kind === "barbell" ? block.movement : null) ?? t(`editor.kinds.${block.kind}`);

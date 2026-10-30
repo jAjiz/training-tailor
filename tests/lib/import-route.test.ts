@@ -181,7 +181,7 @@ describe("POST /api/coach/import", () => {
     const preview = await res.json();
     expect(preview.weeksFound).toBe(1);
     expect(preview.weeks).toHaveLength(1);
-    expect(preview.weeks[0].days[0].blocks[0].title).toBe("Test Block");
+    expect(preview.weeks[0].days[0].items[0].block.title).toBe("Test Block");
     expect(record).toHaveBeenCalledTimes(1);
   });
 

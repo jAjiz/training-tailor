@@ -2,12 +2,14 @@ import type { LlmProvider } from "@/lib/ai/provider";
 import { BlockInput, type BlockInputValue } from "@/lib/training/schemas";
 import { calendarBlocks, readPdfText, type SourceBlock, type TextItem } from "./layout";
 import { IMPORT_SYSTEM_PROMPT, IMPORT_USER_PROMPT, TIDY_SYSTEM_PROMPT } from "./prompt";
-import { ImportModelResponse, MAX_IMPORT_WEEKS, TidyResponse, type ModelBlock } from "./schema";
+import { ImportModelResponse, MAX_IMPORT_WEEKS, TidyResponse, type ImportRole, type ModelBlock } from "./schema";
 
+/** A translated box and what the model took it for. */
+export type PreviewItem = { role: ImportRole; block: BlockInputValue };
 export type PreviewWeek = {
   label: string;
   /** `day` is 0 = Monday … 6 = Sunday. */
-  days: { day: number; blocks: BlockInputValue[] }[];
+  days: { day: number; items: PreviewItem[] }[];
 };
 export type ImportPreview = { weeksFound: number; daysNamed: boolean; dropped: number; weeks: PreviewWeek[] };
 
@@ -35,6 +37,11 @@ function toBlock(b: ModelBlock): BlockInputValue | null {
   if (parsed.success) return parsed.data;
   const unscored = BlockInput.safeParse({ ...block, scoring: "none", timeCapSeconds: null });
   return unscored.success ? unscored.data : null;
+}
+
+/** The text of a box written as a note: its title, then its description. */
+export function noteText(block: BlockInputValue): string {
+  return [block.title, block.kind === "custom" ? block.description : block.instructions].filter(Boolean).join("\n");
 }
 
 /**
@@ -66,10 +73,11 @@ async function tidyCalendar(provider: LlmProvider, source: SourceBlock[]): Promi
     return first.trim().toLowerCase() === title.trim().toLowerCase() ? rest.join("\n").trimStart() : text;
   };
   let dropped = 0;
-  const byDay = new Map<number, BlockInputValue[]>();
+  const byDay = new Map<number, PreviewItem[]>();
   source.forEach((s, i) => {
     const t = tidied.get(i + 1);
     const color = t?.color;
+    const role = t?.role ?? "block";
     // A box with only a heading (a day or week summary) imports with the heading as its text. A block the
     // model skipped or broke keeps the document's own text.
     const block = s.text.trim() === ""
@@ -80,10 +88,10 @@ async function tidyCalendar(provider: LlmProvider, source: SourceBlock[]): Promi
       dropped++;
       return;
     }
-    byDay.set(s.day, [...(byDay.get(s.day) ?? []), block]);
+    byDay.set(s.day, [...(byDay.get(s.day) ?? []), { role, block }]);
   });
   if (byDay.size === 0) throw new ImportEmptyError();
-  return { weeksFound: 1, daysNamed: true, dropped, weeks: [{ label: "", days: [...byDay].map(([day, blocks]) => ({ day, blocks })) }] };
+  return { weeksFound: 1, daysNamed: true, dropped, weeks: [{ label: "", days: [...byDay].map(([day, items]) => ({ day, items })) }] };
 }
 
 async function readWholePdf(provider: LlmProvider, pdf: Uint8Array): Promise<ImportPreview> {
@@ -100,7 +108,7 @@ async function readWholePdf(provider: LlmProvider, pdf: Uint8Array): Promise<Imp
   const weeks: PreviewWeek[] = [];
   for (const week of response.weeks.slice(0, MAX_IMPORT_WEEKS)) {
     // Duplicate days merge in document order. Empty weeks stay: callers map PDF week n by position.
-    const byDay = new Map<number, BlockInputValue[]>();
+    const byDay = new Map<number, PreviewItem[]>();
     for (const day of week.days) {
       for (const raw of day.blocks) {
         const block = toBlock(raw);
@@ -109,10 +117,10 @@ async function readWholePdf(provider: LlmProvider, pdf: Uint8Array): Promise<Imp
           continue;
         }
         kept++;
-        byDay.set(day.day - 1, [...(byDay.get(day.day - 1) ?? []), block]);
+        byDay.set(day.day - 1, [...(byDay.get(day.day - 1) ?? []), { role: raw.role ?? "block", block }]);
       }
     }
-    weeks.push({ label: week.label, days: [...byDay].map(([day, blocks]) => ({ day, blocks })) });
+    weeks.push({ label: week.label, days: [...byDay].map(([day, items]) => ({ day, items })) });
   }
   if (kept === 0) throw new ImportEmptyError();
   return {

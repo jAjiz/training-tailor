@@ -4,6 +4,10 @@ import { BlockColor, Scoring } from "@/lib/training/schemas";
 /** The most weeks one import keeps; the model is told to stop there too. */
 export const MAX_IMPORT_WEEKS = 4;
 
+/** What an imported box becomes: a block, or text for the day or the week. */
+export const ImportRole = z.enum(["block", "day_note", "week_note"]);
+export type ImportRole = z.infer<typeof ImportRole>;
+
 /**
  * One block as the model writes it. Every block imports as custom, so the model only copies text. Fields
  * that rarely apply are optional so the model leaves them out instead of writing nulls: output length is
@@ -16,6 +20,7 @@ const ModelBlock = z.object({
   scoring: Scoring.optional(),
   timeCapSeconds: z.number().int().optional(),
   color: BlockColor.optional(),
+  role: ImportRole.optional(),
 });
 export type ModelBlock = z.infer<typeof ModelBlock>;
 
@@ -41,6 +46,7 @@ export const TidyResponse = z.object({
     scoring: Scoring.optional(),
     timeCapSeconds: z.number().int().optional(),
     color: BlockColor,
+    role: ImportRole.optional(),
   })),
 });
 export type TidyResponse = z.infer<typeof TidyResponse>;

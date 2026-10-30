@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
-import type { ImportPreview } from "@/lib/import/translate";
+import type { ImportPreview, PreviewItem } from "@/lib/import/translate";
 import { allKeys, isWeekImportable, selectedItems, targetWeek, toggleBlock, toggleWeek } from "@/lib/import/selection";
 import type { BlockInputValue } from "@/lib/training/schemas";
 
-function block(title: string): BlockInputValue {
-  return {
+function item(title: string): PreviewItem {
+  const block: BlockInputValue = {
     kind: "custom", title, color: "neutral", coachingTips: null, videoUrl: null,
     description: "Test work", scoring: "none", timeCapSeconds: null,
   };
+  return { role: "block", block };
 }
 
 // Week 1: Wednesday before Monday (first-seen order); week 2: Monday only; week 3: nothing survived.
@@ -16,8 +17,8 @@ const preview: ImportPreview = {
   daysNamed: true,
   dropped: 0,
   weeks: [
-    { label: "Test W1", days: [{ day: 2, blocks: [block("Test A"), block("Test B")] }, { day: 0, blocks: [block("Test C")] }] },
-    { label: "Test W2", days: [{ day: 0, blocks: [block("Test D")] }] },
+    { label: "Test W1", days: [{ day: 2, items: [item("Test A"), item("Test B")] }, { day: 0, items: [item("Test C")] }] },
+    { label: "Test W2", days: [{ day: 0, items: [item("Test D")] }] },
     { label: "Test W3", days: [] },
   ],
 };

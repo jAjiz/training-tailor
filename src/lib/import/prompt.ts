@@ -2,7 +2,7 @@ import { BLOCK_COLORS } from "@/lib/training/schemas";
 import { MAX_IMPORT_WEEKS } from "./schema";
 
 // A fixed colour per kind of block, so every imported week looks the same.
-const COLOR_RULE = `"color", one of ${BLOCK_COLORS.join(", ")}, by the kind of block: warm-up or mobility blue, weightlifting orange, strength red, conditioning or WOD yellow, endurance or running green, accessories or gymnastics skills purple, day or week notes and anything else neutral.`;
+const COLOR_RULE = `"color", one of ${BLOCK_COLORS.join(", ")}, by the kind of block: warm-up or mobility blue, weightlifting orange, strength red, conditioning or WOD yellow, endurance or running green, accessories or gymnastics skills purple, anything else neutral.`;
 
 // Kept short on purpose: the PDF is the bulk of the input, and every rule here is one the samples needed.
 export const IMPORT_SYSTEM_PROMPT = `Convert a coach's training programme PDF into weekly blocks.
@@ -14,6 +14,7 @@ export const IMPORT_SYSTEM_PROMPT = `Convert a coach's training programme PDF in
 - "description": the block's full text in the document's language. Fix only line breaks and obvious typos; never change movements, reps, loads, percentages, times, levels or notes.
 - "coachingTips": text marked as coaching tips, objectives or coach notes for the block.
 - "scoring" only when obvious (for_time, amrap, ...); "timeCapSeconds" only for for_time.
+- "role": "day_note" for a box that summarises the day or states its goal, "week_note" for the week's objectives or principles; omit it for workouts.
 - ${COLOR_RULE} Prefer the document's own colours when it has them.
 - Omit fields that do not apply.`;
 
@@ -24,5 +25,6 @@ export const TIDY_SYSTEM_PROMPT = `Tidy the blocks of a coach's training week. E
 - "description": the block's text with the wrapping undone: keep one line per item (exercise, set, level, note) and join a line to the previous one only when it continues the same sentence or item. Keep every blank line. Fix obvious typos; never change movements, reps, loads, percentages, times, levels or notes. Do not repeat the heading. A block with no text (a day or week summary) gets an empty description.
 - "coachingTips": only the text after a "Coaching tips" label, wrapped the same way; drop the label. Everything else, including notes and objectives, stays in "description".
 - "scoring" only when obvious; "timeCapSeconds" only for for_time.
+- "role": "day_note" for a box that summarises the day or states its goal, "week_note" for the week's objectives or principles; omit it for workouts.
 - ${COLOR_RULE}
 - Omit optional fields that do not apply.`;

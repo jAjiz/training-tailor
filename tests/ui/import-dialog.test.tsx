@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeAll, describe, it, expect, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
-import type { ImportPreview } from "@/lib/import/translate";
+import type { ImportPreview, PreviewItem } from "@/lib/import/translate";
 import { allKeys, selectedItems } from "@/lib/import/selection";
 import type { BlockInputValue } from "@/lib/training/schemas";
 import type { PlannerContext } from "@/app/coach/programs/[id]/planner/types";
@@ -29,11 +29,12 @@ afterEach(() => {
 
 const ctx: PlannerContext = { programId: "p1", lifts: [], readOnly: false, maxWeek: null, weekIndex: 2, startDate: null };
 
-function block(title: string): BlockInputValue {
-  return {
+function block(title: string): PreviewItem {
+  const value: BlockInputValue = {
     kind: "custom", title, color: "neutral", coachingTips: null, videoUrl: null,
     description: "Test work", scoring: "none", timeCapSeconds: null,
   };
+  return { role: "block", block: value };
 }
 
 function preview(over: Partial<ImportPreview> = {}): ImportPreview {
@@ -42,8 +43,8 @@ function preview(over: Partial<ImportPreview> = {}): ImportPreview {
     daysNamed: true,
     dropped: 0,
     weeks: [
-      { label: "Test W1", days: [{ day: 2, blocks: [block("Test A"), block("Test B")] }, { day: 0, blocks: [block("Test C")] }] },
-      { label: "Test W2", days: [{ day: 0, blocks: [block("Test D")] }] },
+      { label: "Test W1", days: [{ day: 2, items: [block("Test A"), block("Test B")] }, { day: 0, items: [block("Test C")] }] },
+      { label: "Test W2", days: [{ day: 0, items: [block("Test D")] }] },
     ],
     ...over,
   };
