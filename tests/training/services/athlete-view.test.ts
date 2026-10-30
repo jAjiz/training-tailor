@@ -102,6 +102,7 @@ describe("athlete view", () => {
   it("marks days that only have a note", async () => {
     const { coach, athlete, program } = await continuousSetup();
     await setDayNote(tdb.prisma, coach.id, program.id, 4, "Test rest day");
+    await setDayNote(tdb.prisma, coach.id, program.id, 11, "Test hidden day"); // week 1, unpublished
     await setWeekNote(tdb.prisma, coach.id, program.id, 0, "Test week 1");
     await publishWeek(tdb.prisma, program.id, 0);
     const days = await getVisibleDays(tdb.prisma, athlete.id, program.id, "2026-10-01", "2026-10-18");
