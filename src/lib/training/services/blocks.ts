@@ -160,7 +160,7 @@ export type ImportMode = "append" | "replace";
  * Writes the selected translated blocks and notes in one transaction; returns how many. "append" puts blocks
  * after what is already in their days and appends notes to existing ones after a blank line. "replace" first
  * deletes every block (results go with them, as with deleteBlock), the week note and the day notes of each week
- * that receives a block; weeks receiving only notes, or nothing, are not touched. Several imported notes for one
+ * that receives a block and already holds one; every other week is handled as in "append". Several imported notes for one
  * day or week are joined in order; a joined note over NOTE_MAX refuses the whole import.
  */
 export async function importBlocks(
@@ -181,8 +181,16 @@ export async function importBlocks(
     texts.set(key, group);
   }
   await db.$transaction(async (tx) => {
-    const weeks = [...new Set(items.map(({ dayIndex }) => Math.floor(dayIndex / 7)))];
-    if (mode === "replace" && weeks.length > 0) {
+    const receiving = [...new Set(items.map(({ dayIndex }) => Math.floor(dayIndex / 7)))];
+    // Only weeks that already hold a block are replaced: the same weeks the coach was asked about.
+    const filled = mode === "replace" && receiving.length > 0
+      ? await tx.block.findMany({
+        where: { programId, OR: receiving.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } })) },
+        distinct: ["dayIndex"], select: { dayIndex: true },
+      })
+      : [];
+    const weeks = [...new Set(filled.map((b) => Math.floor(b.dayIndex / 7)))];
+    if (weeks.length > 0) {
       const days = weeks.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } }));
       const where = { programId, OR: days };
       const results = await tx.result.findMany({ where: { block: where }, select: { id: true } });

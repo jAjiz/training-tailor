@@ -331,6 +331,21 @@ describe("importBlocks with notes", () => {
     expect(await dayNote(program.id, 8)).toBe("Test old\n\nTest new");
   });
 
+  it("replace keeps the notes of a week that receives blocks but had none, and appends to them", async () => {
+    const { coach, program } = await setup();
+    await createBlock(tdb.prisma, coach.id, program.id, 0, custom("Old"));
+    await tdb.prisma.weekNote.create({ data: { programId: program.id, weekIndex: 1, body: "Test kept week" } });
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 8, body: "Test kept day" } });
+    await importBlocks(tdb.prisma, coach.id, program.id, {
+      items: [{ dayIndex: 0, block: custom("A") }, { dayIndex: 8, block: custom("B") }],
+      notes: [{ scope: "week", index: 1, text: "Test new week" }, { scope: "day", index: 8, text: "Test new day" }],
+    }, "replace");
+    expect(await titles(program.id, 0)).toEqual(["0:A"]);
+    expect(await titles(program.id, 8)).toEqual(["0:B"]);
+    expect(await weekNote(program.id, 1)).toBe("Test kept week\n\nTest new week");
+    expect(await dayNote(program.id, 8)).toBe("Test kept day\n\nTest new day");
+  });
+
   it("refuses joined notes over 2000 chars and writes nothing", async () => {
     const { coach, program } = await setup();
     await createBlock(tdb.prisma, coach.id, program.id, 0, custom("Old"));
