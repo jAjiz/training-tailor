@@ -11,16 +11,20 @@ import { CopyDialog } from "./CopyDialog";
 import type { PlannerContext } from "./types";
 
 type Props = { dayIndex: number; ctx: PlannerContext };
+type MenuProps = Props & { onNote: () => void };
 
-/** "⋯" on a day column's header: duplicate the whole day. */
-export function DayMenu({ dayIndex, ctx }: Props) {
+/** "⋯" on a day column's header: write the day's note, duplicate the whole day. */
+export function DayMenu({ dayIndex, ctx, onNote }: MenuProps) {
   const t = useTranslations("planner");
   const router = useRouter();
   const [copying, setCopying] = useState(false);
   if (ctx.readOnly) return null;
   return (
     <>
-      <Menu className="ml-auto" label={t("dayActions")} items={[{ label: t("duplicateDay"), onSelect: () => setCopying(true) }]} />
+      <Menu className="ml-auto" label={t("dayActions")} items={[
+        { label: t("dayNote"), onSelect: onNote },
+        { label: t("duplicateDay"), onSelect: () => setCopying(true) },
+      ]} />
       {copying && (
         <CopyDialog title={t("duplicateDay")} target="day" startDate={ctx.startDate} defaultIndex={dayIndex + 7} maxWeek={ctx.maxWeek}
           onCopy={(toDay) => duplicateDayAction({ programId: ctx.programId, fromDay: dayIndex, toDay })}

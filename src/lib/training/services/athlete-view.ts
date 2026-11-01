@@ -17,20 +17,32 @@ export async function loadAthleteTimeline(db: Db, athleteId: string, programId: 
 export async function getAthleteDay(db: Db, athleteId: string, programId: string, date: IsoDate, today: IsoDate) {
   const { program, timeline } = await loadAthleteTimeline(db, athleteId, programId);
   const dayIndex = dayIndexOf(timeline, date);
-  const empty = { program, timeline, dayIndex, loggable: false, blocks: [] };
+  const empty = { program, timeline, dayIndex, loggable: false, blocks: [], note: null };
   if (dayIndex === null) return { ...empty, status: date < timeline.startDate ? "before_start" as const : "finished" as const };
   if (!isDayVisible(timeline, dayIndex)) return { ...empty, status: "unpublished" as const };
   const blocks = await db.block.findMany({ where: { programId, dayIndex }, orderBy: { position: "asc" } });
-  return { program, timeline, dayIndex, status: "ok" as const, loggable: canLogDay(timeline, dayIndex, today), blocks };
+  const note = await db.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex } } });
+  return { program, timeline, dayIndex, status: "ok" as const, loggable: canLogDay(timeline, dayIndex, today), blocks, note: note?.body ?? null };
+}
+
+/** The note of the program week containing dayIndex, once that week is visible. */
+export async function getAthleteWeekNote(db: Db, athleteId: string, programId: string, dayIndex: number): Promise<string | null> {
+  const { timeline } = await loadAthleteTimeline(db, athleteId, programId);
+  const weekIndex = Math.floor(dayIndex / 7);
+  if (!isDayVisible(timeline, weekIndex * 7)) return null;
+  const note = await db.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex } } });
+  return note?.body ?? null;
 }
 
 export type AthleteDay = Awaited<ReturnType<typeof getAthleteDay>>;
 
 export async function getVisibleDays(db: Db, athleteId: string, programId: string, from: IsoDate, to: IsoDate) {
   const { timeline } = await loadAthleteTimeline(db, athleteId, programId);
-  const groups = await db.block.groupBy({
-    by: ["dayIndex"],
-    where: { programId, dayIndex: { gte: Math.max(0, daysBetween(timeline.startDate, from)), lte: daysBetween(timeline.startDate, to) } },
-  });
-  return new Set(groups.filter((g) => isDayVisible(timeline, g.dayIndex)).map((g) => dateOfDay(timeline, g.dayIndex)));
+  const range = { gte: Math.max(0, daysBetween(timeline.startDate, from)), lte: daysBetween(timeline.startDate, to) };
+  const [groups, notes] = await Promise.all([
+    db.block.groupBy({ by: ["dayIndex"], where: { programId, dayIndex: range } }),
+    db.dayNote.findMany({ where: { programId, dayIndex: range }, select: { dayIndex: true } }),
+  ]);
+  const indexes = new Set([...groups, ...notes].map((g) => g.dayIndex));
+  return new Set([...indexes].filter((i) => isDayVisible(timeline, i)).map((i) => dateOfDay(timeline, i)));
 }

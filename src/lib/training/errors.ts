@@ -32,6 +32,7 @@ export const ERROR_CODES = [
   "import_quota",
   "import_empty",
   "import_failed",
+  "note_too_long",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

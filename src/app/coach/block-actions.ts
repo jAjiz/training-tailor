@@ -6,7 +6,7 @@ import { requireCoach } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import type { ActionResult } from "@/lib/training/errors";
-import { BlockInput, parse } from "@/lib/training/schemas";
+import { BlockInput, IMPORTED_NOTE_MAX, parse } from "@/lib/training/schemas";
 import {
   createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, moveBlock, updateBlock,
 } from "@/lib/training/services/blocks";
@@ -32,12 +32,15 @@ export async function createBlockAction(raw: unknown) {
 
 export async function importBlocksAction(raw: unknown) {
   return coachAction("importBlocksAction", async (coachId) => {
-    const { programId, items, mode } = parse(z.object({
+    const { programId, items, notes, mode } = parse(z.object({
       programId: Id,
-      items: z.array(z.object({ dayIndex: Day, block: BlockInput })).min(1).max(200),
+      items: z.array(z.object({ dayIndex: Day, block: BlockInput })).max(200),
+      notes: z.array(z.object({
+        scope: z.enum(["day", "week"]), index: Day, text: z.string().trim().min(1).max(IMPORTED_NOTE_MAX),
+      })).max(200).default([]),
       mode: z.enum(["append", "replace"]).default("append"),
-    }), raw);
-    await importBlocks(prisma, coachId, programId, items, mode);
+    }).refine((v) => v.items.length + v.notes.length >= 1), raw);
+    await importBlocks(prisma, coachId, programId, { items, notes }, mode);
   });
 }
 

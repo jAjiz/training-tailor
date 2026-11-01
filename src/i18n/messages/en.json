@@ -54,7 +54,7 @@
     "not_enrolled": "You are not in this program.",
     "internal": "Something went wrong. Try again.",
     "push_unavailable": "Notifications are not available on this device.",
-    "week_empty": "Add at least one block before publishing the week.",
+    "week_empty": "Add at least one block or note before publishing the week.",
     "library_conflict": "The draft changed since you opened it. Reload and try again.",
     "library_draft_exists": "A draft is already open. Publish or discard it first.",
     "library_no_draft": "There is no open draft.",
@@ -64,7 +64,8 @@
     "import_unavailable": "Import is not available right now.",
     "import_quota": "You reached today's import limit. Try again tomorrow.",
     "import_empty": "No training blocks were found in the PDF.",
-    "import_failed": "The PDF could not be read. Try again."
+    "import_failed": "The PDF could not be read. Try again.",
+    "note_too_long": "The text for {target} would exceed 2000 characters."
   },
   "onboarding": {
     "preparing": "Setting up your account…",
@@ -187,6 +188,11 @@
     "addBlock": "Add block",
     "blockActions": "Block actions",
     "dayActions": "Day actions",
+    "dayNote": "Day goal…",
+    "weekNote": "Week notes…",
+    "noteDialogDay": "Day goal",
+    "noteDialogWeek": "Week notes",
+    "noteHint": "Leave it empty to remove it.",
     "weekActions": "Week actions",
     "blockCount": "{count, plural, one {# block} other {# blocks}}",
     "dragHandle": "Drag to move",
@@ -288,6 +294,9 @@
     "finished": "Program finished. Your history is still available.",
     "nothing": "Nothing published for this day.",
     "dayOfProgram": "Week {week} · Day {day}",
+    "week": "Week",
+    "dayGoal": "Day goal",
+    "weekNotesTitle": "Week {week}",
     "prevWeek": "Previous week",
     "nextWeek": "Next week",
     "logResult": "Log result",
@@ -765,12 +774,17 @@
     "tooManyWeeks": "The PDF has {found} weeks: only the first {max} are shown and the rest were ignored.",
     "daysUnnamed": "The PDF's days don't name a weekday, so they've been placed from Monday.",
     "dropped": "{count, plural, one {# block couldn't be read} other {# blocks couldn't be read}}",
-    "selected": "{count, plural, one {# block selected} other {# blocks selected}}",
+    "selected": "{count, plural, one {# item selected} other {# items selected}}",
     "confirm": "Import selection",
     "clashTitle": "Weeks with blocks",
     "clash": "{count, plural, one {{weeks} already has blocks.} other {These weeks already have blocks: {weeks}.}} What should happen to them?",
     "modeAppend": "Add to them",
     "modeReplace": "Replace them",
-    "replaceWarning": "Replacing deletes the current blocks of {count, plural, one {that week} other {those weeks}}, along with any results athletes logged."
+    "replaceWarning": "Replacing deletes the current blocks of {count, plural, one {that week, its day goals and week notes} other {those weeks, their day goals and week notes}}, along with any results athletes logged.",
+    "roleFor": "Import “{heading}” as",
+    "roleBlock": "Block",
+    "roleDayNote": "Day goal",
+    "roleWeekNote": "Week notes",
+    "weekDay": "{week}, {day}"
   }
 }

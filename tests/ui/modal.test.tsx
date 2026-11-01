@@ -15,6 +15,20 @@ beforeAll(() => {
 const open = (onClose = vi.fn()) =>
   render(<Modal title="Edit block" closeLabel="Close" onClose={onClose} footer={<button type="button">Save</button>}><p>Body</p></Modal>);
 
+describe("Modal placement", () => {
+  it("is centred by default and a bottom sheet below sm: when asked", () => {
+    const { unmount } = open();
+    const centred = screen.getByRole("dialog");
+    expect(centred).toHaveAttribute("data-placement", "center");
+    expect(centred).not.toHaveClass("max-sm:mb-0");
+    unmount();
+    render(<Modal title="Sheet" closeLabel="Close" onClose={vi.fn()} placement="bottom"><p>Body</p></Modal>);
+    const sheet = screen.getByRole("dialog", { name: "Sheet" });
+    expect(sheet).toHaveAttribute("data-placement", "bottom");
+    expect(sheet).toHaveClass("max-sm:mb-0", "max-sm:w-full", "max-sm:rounded-b-none");
+  });
+});
+
 describe("Modal", () => {
   it("opens as a labelled dialog in document.body", () => {
     open();

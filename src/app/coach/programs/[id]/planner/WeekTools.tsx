@@ -9,8 +9,10 @@ import { Pill } from "@/components/ui/Pill";
 import type { ActionResult, ErrorCode } from "@/lib/training/errors";
 import { duplicateWeekAction } from "../../../block-actions";
 import { setProgramPublishedAction, setWeekPublishedAction } from "../../../program-actions";
+import { setWeekNoteAction } from "../../../note-actions";
 import { CopyDialog } from "./CopyDialog";
 import { ImportDialog } from "./ImportDialog";
+import { NoteDialog } from "./NoteDialog";
 import type { PlannerContext } from "./types";
 
 type Props = {
@@ -22,9 +24,11 @@ type Props = {
   publishedWeeks: number[];
   /** Week indexes that already hold blocks: importing there asks whether to add or replace. */
   filledWeeks: number[];
+  /** The coach's note for the week, shown as a strip under the toolbar. */
+  weekNote: string | null;
 };
 
-export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledWeeks }: Props) {
+export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledWeeks, weekNote }: Props) {
   const t = useTranslations("planner");
   const ti = useTranslations("import");
   const te = useTranslations("errors");
@@ -32,12 +36,18 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledW
   const [error, setError] = useState<ErrorCode | null>(null);
   const [copying, setCopying] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [noting, setNoting] = useState(false);
 
   async function run(action: Promise<ActionResult>) {
     const r = await action;
     if (r.ok) router.refresh();
     else setError(r.code);
   }
+
+  const refreshed = (r: ActionResult) => {
+    if (r.ok) router.refresh();
+    return r;
+  };
 
   const toggle = () => run(kind === "continuous"
     ? setWeekPublishedAction({ programId: ctx.programId, weekIndex: ctx.weekIndex, published: !published })
@@ -54,13 +64,17 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledW
     : (published ? t("unpublishProgram") : t("publishProgram"));
 
   return (
+    <>
     <div className="flex flex-wrap items-center gap-3">
       <Pill tone={published ? "success" : "neutral"}>{status}</Pill>
       {!ctx.readOnly && (
         <>
           <Button type="button" size="sm" variant={published ? "secondary" : "primary"} onClick={toggle} disabled={blockedEmpty}>{action}</Button>
           <Button type="button" size="sm" title={ti("tooltip")} onClick={() => setImporting(true)}>{ti("button")}</Button>
-          <Menu label={t("weekActions")} items={[{ label: t("duplicateWeek"), onSelect: () => setCopying(true) }]} />
+          <Menu label={t("weekActions")} items={[
+            { label: t("weekNote"), onSelect: () => setNoting(true) },
+            { label: t("duplicateWeek"), onSelect: () => setCopying(true) },
+          ]} />
         </>
       )}
       {error && <span role="alert" className="text-sm text-danger">{te(error)}</span>}
@@ -71,5 +85,15 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledW
       )}
       {importing && <ImportDialog ctx={ctx} publishedWeeks={publishedWeeks} filledWeeks={filledWeeks} onClose={() => setImporting(false)} />}
     </div>
+    {weekNote !== null && (ctx.readOnly
+      ? <p data-color="neutral" className="line-clamp-2 w-full whitespace-pre-wrap rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">{weekNote}</p>
+      : <button type="button" data-color="neutral" onClick={() => setNoting(true)}
+          className="line-clamp-2 w-full cursor-pointer whitespace-pre-wrap rounded-xl bg-(--block-fill) px-4 py-3 text-left text-sm text-(--block-ink) focus-visible:outline-2 focus-visible:outline-foreground">{weekNote}</button>)}
+    {noting && (
+      <NoteDialog title={t("noteDialogWeek")} initial={weekNote}
+        onSave={(body) => setWeekNoteAction({ programId: ctx.programId, weekIndex: ctx.weekIndex, body }).then(refreshed)}
+        onClose={() => setNoting(false)} />
+    )}
+    </>
   );
 }

@@ -1,14 +1,14 @@
 import { Prisma, type Block } from "@/generated/prisma/client";
 import { toJson } from "@/lib/json";
 import { TrainingError } from "../errors";
-import type { BlockInputValue } from "../schemas";
+import { NOTE_MAX, type BlockInputValue } from "../schemas";
 import { assertLiftMovement } from "./catalog";
 import { assertWritable, getOwnedProgram } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
 type ProgramRange = { kind: string; weeks: number | null };
 
-function assertDay(program: ProgramRange, dayIndex: number) {
+export function assertDay(program: ProgramRange, dayIndex: number) {
   if (!Number.isInteger(dayIndex) || dayIndex < 0) throw new TrainingError("day_out_of_range");
   if (program.kind === "closed" && dayIndex >= (program.weeks ?? 0) * 7) throw new TrainingError("day_out_of_range");
 }
@@ -47,7 +47,7 @@ async function getOwnedBlock(db: Db, coachId: string, blockId: string) {
   return block;
 }
 
-async function writableProgram(db: Db, coachId: string, programId: string) {
+export async function writableProgram(db: Db, coachId: string, programId: string) {
   const program = await getOwnedProgram(db, coachId, programId);
   assertWritable(program);
   return program;
@@ -148,33 +148,69 @@ async function appendAll(db: DbOrTx, programId: string, entries: { dayIndex: num
   if (data.length) await db.block.createMany({ data });
 }
 
-const appendCopies = (db: Db, programId: string, blocks: Block[], toDay: (b: Block) => number) =>
+const appendCopies = (db: DbOrTx, programId: string, blocks: Block[], toDay: (b: Block) => number) =>
   appendAll(db, programId, blocks.map((b) => ({ dayIndex: toDay(b), columns: copyOf(b) })));
 
 export type ImportItem = { dayIndex: number; block: BlockInputValue };
+/** An imported day goal (`index` = dayIndex) or week note (`index` = weekIndex). */
+export type ImportNote = { scope: "day" | "week"; index: number; text: string };
 export type ImportMode = "append" | "replace";
 
 /**
- * Creates the selected translated blocks in one transaction; returns how many. "append" puts them after
- * what is already in their days. "replace" first deletes every block of each week that receives one
- * (results go with them, as with deleteBlock); weeks receiving nothing are not touched.
+ * Writes the selected translated blocks and notes in one transaction; returns how many. "append" puts blocks
+ * after what is already in their days and appends notes to existing ones after a blank line. "replace" first
+ * deletes every block (results go with them, as with deleteBlock), the week note and the day notes of each week
+ * that receives a block and already holds one; every other week is handled as in "append". Several imported notes for one
+ * day or week are joined in order; a joined note over NOTE_MAX refuses the whole import.
  */
-export async function importBlocks(db: Db, coachId: string, programId: string, items: ImportItem[], mode: ImportMode = "append") {
+export async function importBlocks(
+  db: Db, coachId: string, programId: string, { items, notes }: { items: ImportItem[]; notes: ImportNote[] },
+  mode: ImportMode = "append",
+) {
   const program = await writableProgram(db, coachId, programId);
   for (const { dayIndex } of items) assertDay(program, dayIndex);
+  for (const { scope, index } of notes) assertDay(program, scope === "day" ? index : index * 7);
   const lifts = new Set(items.flatMap(({ block }) => (block.kind === "barbell" ? [block.movement] : [])));
   for (const movement of lifts) await assertLiftMovement(db, movement);
+  // Imported texts per target, in document order; the key doubles as the error's issue.
+  const texts = new Map<string, { scope: ImportNote["scope"]; index: number; texts: string[] }>();
+  for (const { scope, index, text } of notes) {
+    const key = `${scope}:${index}`;
+    const group = texts.get(key) ?? { scope, index, texts: [] };
+    group.texts.push(text);
+    texts.set(key, group);
+  }
   await db.$transaction(async (tx) => {
-    if (mode === "replace") {
-      const weeks = [...new Set(items.map(({ dayIndex }) => Math.floor(dayIndex / 7)))];
-      const where = { programId, OR: weeks.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } })) };
+    const receiving = [...new Set(items.map(({ dayIndex }) => Math.floor(dayIndex / 7)))];
+    // Only weeks that already hold a block are replaced: the same weeks the coach was asked about.
+    const filled = mode === "replace" && receiving.length > 0
+      ? await tx.block.findMany({
+        where: { programId, OR: receiving.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } })) },
+        distinct: ["dayIndex"], select: { dayIndex: true },
+      })
+      : [];
+    const weeks = [...new Set(filled.map((b) => Math.floor(b.dayIndex / 7)))];
+    if (weeks.length > 0) {
+      const days = weeks.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } }));
+      const where = { programId, OR: days };
       const results = await tx.result.findMany({ where: { block: where }, select: { id: true } });
       await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: results.map((r) => r.id) } } });
       await tx.block.deleteMany({ where });
+      await tx.weekNote.deleteMany({ where: { programId, weekIndex: { in: weeks } } });
+      await tx.dayNote.deleteMany({ where: { programId, OR: days } });
     }
     await appendAll(tx, programId, items.map(({ dayIndex, block }) => ({ dayIndex, columns: columns(block) })));
+    for (const [key, { scope, index, texts: imported }] of texts) {
+      const existing = scope === "day"
+        ? await tx.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex: index } } })
+        : await tx.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex: index } } });
+      const body = [...(existing ? [existing.body] : []), ...imported].join("\n\n");
+      if (body.length > NOTE_MAX) throw new TrainingError("note_too_long", [key]);
+      if (scope === "day") await putDayNote(tx, programId, index, body);
+      else await putWeekNote(tx, programId, index, body);
+    }
   });
-  return items.length;
+  return items.length + notes.length;
 }
 
 /** Week indexes that hold at least one block. */
@@ -188,16 +224,35 @@ export async function duplicateDay(db: Db, coachId: string, programId: string, f
   assertDay(program, fromDay);
   assertDay(program, toDay);
   const blocks = await db.block.findMany({ where: { programId, dayIndex: fromDay }, orderBy: { position: "asc" } });
-  await appendCopies(db, programId, blocks, () => toDay);
+  const note = await db.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex: fromDay } } });
+  await db.$transaction(async (tx) => {
+    await appendCopies(tx, programId, blocks, () => toDay);
+    if (note) await putDayNote(tx, programId, toDay, note.body);
+  });
 }
 
 export async function duplicateWeek(db: Db, coachId: string, programId: string, fromWeek: number, toWeek: number) {
   const program = await writableProgram(db, coachId, programId);
   assertDay(program, fromWeek * 7);
   assertDay(program, toWeek * 7 + 6);
+  const range = { gte: fromWeek * 7, lt: fromWeek * 7 + 7 };
   const blocks = await db.block.findMany({
-    where: { programId, dayIndex: { gte: fromWeek * 7, lt: fromWeek * 7 + 7 } },
+    where: { programId, dayIndex: range },
     orderBy: [{ dayIndex: "asc" }, { position: "asc" }],
   });
-  await appendCopies(db, programId, blocks, (b) => toWeek * 7 + (b.dayIndex - fromWeek * 7));
+  const [weekNote, dayNotes] = await Promise.all([
+    db.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex: fromWeek } } }),
+    db.dayNote.findMany({ where: { programId, dayIndex: range } }),
+  ]);
+  await db.$transaction(async (tx) => {
+    await appendCopies(tx, programId, blocks, (b) => toWeek * 7 + (b.dayIndex - fromWeek * 7));
+    if (weekNote) await putWeekNote(tx, programId, toWeek, weekNote.body);
+    for (const n of dayNotes) await putDayNote(tx, programId, toWeek * 7 + (n.dayIndex - fromWeek * 7), n.body);
+  });
 }
+
+const putDayNote = (tx: DbOrTx, programId: string, dayIndex: number, body: string) =>
+  tx.dayNote.upsert({ where: { programId_dayIndex: { programId, dayIndex } }, create: { programId, dayIndex, body }, update: { body } });
+
+const putWeekNote = (tx: DbOrTx, programId: string, weekIndex: number, body: string) =>
+  tx.weekNote.upsert({ where: { programId_weekIndex: { programId, weekIndex } }, create: { programId, weekIndex, body }, update: { body } });

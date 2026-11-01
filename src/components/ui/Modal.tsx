@@ -15,6 +15,8 @@ type Props = {
   size?: "sm" | "md" | "lg" | "xl";
   /** While true the modal cannot be dismissed (close control, Esc, backdrop), e.g. during a write. */
   busy?: boolean;
+  /** "bottom": a sheet anchored to the bottom edge below `sm:`; centred like the default from `sm:` up. */
+  placement?: "center" | "bottom";
 };
 
 /**
@@ -22,7 +24,7 @@ type Props = {
  * Mounted open; the parent unmounts it to close, and may decline (e.g. after a "discard changes?" confirm).
  * Portaled to document.body so transformed ancestors (dnd-kit sortables) cannot offset it.
  */
-export function Modal({ title, closeLabel, onClose, children, footer, size = "lg", busy = false }: Props) {
+export function Modal({ title, closeLabel, onClose, children, footer, size = "lg", busy = false, placement = "center" }: Props) {
   const dismiss = () => { if (!busy) onClose(); };
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -42,7 +44,7 @@ export function Modal({ title, closeLabel, onClose, children, footer, size = "lg
 
   if (typeof document === "undefined") return null;
   return createPortal(
-    <dialog ref={ref} aria-labelledby={titleId}
+    <dialog ref={ref} aria-labelledby={titleId} data-placement={placement}
       onCancel={(e) => { e.preventDefault(); dismiss(); }}
       // A close the browser forces (a repeated Esc without user activation skips "cancel") still reaches the
       // parent; if the parent keeps it mounted, it opens again. The event is async: the one queued by the effect
@@ -62,6 +64,7 @@ export function Modal({ title, closeLabel, onClose, children, footer, size = "lg
       }}
       className={cx(
         "m-auto max-h-[90vh] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-chrome/50 open:flex",
+        placement === "bottom" && "max-sm:mb-0 max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none",
         size === "xl" ? "max-w-5xl" : size === "lg" ? "max-w-2xl" : size === "md" ? "max-w-md" : "max-w-sm",
       )}>
       <header className="flex items-center justify-between gap-4 px-6 pb-2 pt-5">

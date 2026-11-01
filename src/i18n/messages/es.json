@@ -54,7 +54,7 @@
     "not_enrolled": "No sigues este programa.",
     "internal": "Algo ha fallado. Inténtalo de nuevo.",
     "push_unavailable": "Las notificaciones no están disponibles en este dispositivo.",
-    "week_empty": "Añade al menos un bloque antes de publicar la semana.",
+    "week_empty": "Añade al menos un bloque o una nota antes de publicar la semana.",
     "library_conflict": "El borrador cambió desde que lo abriste. Recarga e inténtalo de nuevo.",
     "library_draft_exists": "Ya hay un borrador abierto. Publícalo o descártalo primero.",
     "library_no_draft": "No hay ningún borrador abierto.",
@@ -64,7 +64,8 @@
     "import_unavailable": "La importación no está disponible ahora.",
     "import_quota": "Has alcanzado el límite de importaciones de hoy. Inténtalo mañana.",
     "import_empty": "No se encontró ningún bloque de entrenamiento en el PDF.",
-    "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo."
+    "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo.",
+    "note_too_long": "El texto de {target} superaría los 2000 caracteres."
   },
   "onboarding": {
     "preparing": "Preparando tu cuenta…",
@@ -187,6 +188,11 @@
     "addBlock": "Añadir bloque",
     "blockActions": "Acciones del bloque",
     "dayActions": "Acciones del día",
+    "dayNote": "Objetivo del día…",
+    "weekNote": "Texto de la semana…",
+    "noteDialogDay": "Objetivo del día",
+    "noteDialogWeek": "Texto de la semana",
+    "noteHint": "Déjalo vacío para quitarlo.",
     "weekActions": "Acciones de la semana",
     "blockCount": "{count, plural, one {# bloque} other {# bloques}}",
     "dragHandle": "Arrastrar para mover",
@@ -288,6 +294,9 @@
     "finished": "Programa terminado. Tu historial sigue disponible.",
     "nothing": "Nada publicado para este día.",
     "dayOfProgram": "Semana {week} · Día {day}",
+    "week": "Semana",
+    "dayGoal": "Objetivo del día",
+    "weekNotesTitle": "Semana {week}",
     "prevWeek": "Semana anterior",
     "nextWeek": "Semana siguiente",
     "logResult": "Registrar resultado",
@@ -765,12 +774,17 @@
     "tooManyWeeks": "El PDF tiene {found} semanas: solo se muestran las {max} primeras, el resto se ha ignorado.",
     "daysUnnamed": "Los días del PDF no indican el día de la semana: se han colocado desde el lunes.",
     "dropped": "{count, plural, one {# bloque no se pudo leer} other {# bloques no se pudieron leer}}",
-    "selected": "{count, plural, one {# bloque seleccionado} other {# bloques seleccionados}}",
+    "selected": "{count, plural, one {# elemento seleccionado} other {# elementos seleccionados}}",
     "confirm": "Importar selección",
     "clashTitle": "Semanas con bloques",
     "clash": "{count, plural, one {{weeks} ya tiene bloques.} other {Estas semanas ya tienen bloques: {weeks}.}} ¿Qué hacemos con ellos?",
     "modeAppend": "Añadir a los existentes",
     "modeReplace": "Reemplazarlos",
-    "replaceWarning": "Reemplazarlos borra los bloques actuales {count, plural, one {de esa semana} other {de esas semanas}}, junto con los resultados que hayan registrado los atletas."
+    "replaceWarning": "Reemplazarlos borra los bloques actuales {count, plural, one {de esa semana, sus objetivos del día y su texto de la semana} other {de esas semanas, sus objetivos del día y sus textos de la semana}}, junto con los resultados que hayan registrado los atletas.",
+    "roleFor": "Importar «{heading}» como",
+    "roleBlock": "Bloque",
+    "roleDayNote": "Objetivo del día",
+    "roleWeekNote": "Texto de la semana",
+    "weekDay": "{week}, {day}"
   }
 }

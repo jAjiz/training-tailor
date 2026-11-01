@@ -5,6 +5,7 @@ import { addDays, fromDbDate, toDbDate } from "../dates";
 import { TrainingError } from "../errors";
 import type { ProgramCreate, ProgramUpdate } from "../schemas";
 import { activeAthleteRecipients } from "./notifications";
+import { weekHasContent } from "./notes";
 import type { Db } from "./types";
 
 export function newInviteCode(): string {
@@ -83,7 +84,7 @@ export async function regenerateInvite(db: Db, coachId: string, programId: strin
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
 
-/** Publishes or unpublishes a week. An empty week cannot be published. The first publication returns a `week_published` intent (else `[]`). */
+/** Publishes or unpublishes a week. A week with no block or note cannot be published. The first publication returns a `week_published` intent (else `[]`). */
 export async function setWeekPublished(
   db: Db, coachId: string, programId: string, weekIndex: number, published: boolean,
 ): Promise<NotificationIntent[]> {
@@ -96,7 +97,7 @@ export async function setWeekPublished(
     await db.programWeek.deleteMany({ where: { programId, weekIndex } });
     return [];
   }
-  if ((await db.block.count({ where: { programId, dayIndex: { gte: weekIndex * 7, lt: weekIndex * 7 + 7 } } })) === 0) {
+  if (!(await weekHasContent(db, programId, weekIndex))) {
     throw new TrainingError("week_empty");
   }
   await db.programWeek.upsert({
