@@ -3,7 +3,7 @@ import en from "@/i18n/messages/en.json";
 import es from "@/i18n/messages/es.json";
 import type { Db } from "@/lib/training/services/types";
 import {
-  AUDIENCE, ON_EXISTING, notificationHref, notificationText, type NotificationData, type NotificationKind,
+  ALWAYS_ON, AUDIENCE, ON_EXISTING, notificationHref, notificationText, type NotificationData, type NotificationKind,
 } from "./kinds";
 import type { PushOutcome, PushSender } from "./push";
 
@@ -122,7 +122,7 @@ export async function deliver(db: Db, intents: NotificationIntent[], sender: Pus
   for (const it of intents) {
     const unique = [...new Map(it.recipients.map((r) => [r.userId, r])).values()];
     if (unique.length === 0) continue;
-    const off = await db.notificationPreference.findMany({
+    const off = ALWAYS_ON.has(it.kind) ? [] : await db.notificationPreference.findMany({
       where: { kind: it.kind, enabled: false, userId: { in: unique.map((r) => r.userId) } },
       select: { userId: true },
     });

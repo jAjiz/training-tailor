@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { Menu } from "@/components/ui/Menu";
 import { Pill } from "@/components/ui/Pill";
 import type { ActionResult, ErrorCode } from "@/lib/training/errors";
-import { duplicateWeekAction } from "../../../block-actions";
+import { clearWeekAction, duplicateWeekAction } from "../../../block-actions";
 import { setProgramPublishedAction, setWeekPublishedAction } from "../../../program-actions";
 import { setWeekNoteAction } from "../../../note-actions";
+import { ClearDialog } from "./ClearDialog";
 import { CopyDialog } from "./CopyDialog";
 import { ImportDialog } from "./ImportDialog";
 import { NoteDialog } from "./NoteDialog";
@@ -26,9 +27,11 @@ type Props = {
   filledWeeks: number[];
   /** The coach's note for the week, shown as a strip under the toolbar. */
   weekNote: string | null;
+  /** Results athletes logged on the week's blocks, which clearing it deletes. */
+  resultCount: number;
 };
 
-export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledWeeks, weekNote }: Props) {
+export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledWeeks, weekNote, resultCount }: Props) {
   const t = useTranslations("planner");
   const ti = useTranslations("import");
   const te = useTranslations("errors");
@@ -37,6 +40,7 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledW
   const [copying, setCopying] = useState(false);
   const [importing, setImporting] = useState(false);
   const [noting, setNoting] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   async function run(action: Promise<ActionResult>) {
     const r = await action;
@@ -74,6 +78,7 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledW
           <Menu label={t("weekActions")} items={[
             { label: t("weekNote"), onSelect: () => setNoting(true) },
             { label: t("duplicateWeek"), onSelect: () => setCopying(true) },
+            ...(empty ? [] : [{ label: t("clearWeek"), onSelect: () => setClearing(true), danger: true }]),
           ]} />
         </>
       )}
@@ -82,6 +87,10 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledW
         <CopyDialog title={t("duplicateWeek")} target="week" startDate={ctx.startDate} defaultIndex={ctx.weekIndex + 1} maxWeek={ctx.maxWeek}
           onCopy={(toWeek) => duplicateWeekAction({ programId: ctx.programId, fromWeek: ctx.weekIndex, toWeek })}
           onClose={() => setCopying(false)} onDone={() => router.refresh()} />
+      )}
+      {clearing && (
+        <ClearDialog title={t("clearWeek")} message={t("clearWeekConfirm")} resultCount={resultCount}
+          onClear={() => clearWeekAction({ programId: ctx.programId, weekIndex: ctx.weekIndex })} onClose={() => setClearing(false)} />
       )}
       {importing && <ImportDialog ctx={ctx} publishedWeeks={publishedWeeks} filledWeeks={filledWeeks} onClose={() => setImporting(false)} />}
     </div>

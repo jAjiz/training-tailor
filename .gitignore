@@ -50,3 +50,8 @@ next-env.d.ts
 
 # brainstorming companion and subagent workspaces
 /.superpowers/
+
+# local Claude Code state (shared settings, skills and agents in .claude/ stay committable)
+/.claude/launch.json
+/.claude/settings.local.json
+/.claude/worktrees/

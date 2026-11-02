@@ -81,14 +81,6 @@ export default async function TodayPage({ searchParams }: Props) {
       </AthleteHeader>
       <section className="flex flex-col gap-4">
         {!impersonating && <EnablePushCard />}
-        <div className="flex min-h-9 items-center justify-between gap-3">
-          <p className="inline-block text-sm font-medium text-muted first-letter:uppercase">
-            {formatDay(date, locale, { weekday: "long", day: "numeric", month: "long" })}
-            {day.timeline.kind === "closed" && day.dayIndex !== null &&
-              ` · ${t("dayOfProgram", { week: weekIndexOf(day.dayIndex) + 1, day: (day.dayIndex % 7) + 1 })}`}
-          </p>
-          {date !== today && <Button href={`/?program=${programId}`} variant="ghost" size="sm">{t("today")}</Button>}
-        </div>
         {day.program.coachId === null && (
           <p data-color="neutral" className="rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">{t("noNewSessions")}</p>
         )}

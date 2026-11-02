@@ -17,6 +17,9 @@ export const AUDIENCE: Record<NotificationKind, Audience> = {
   coach_approved: "coach",
 };
 
+/** Kinds a user cannot turn off: no switch, and a preference row saved before is ignored on delivery. */
+export const ALWAYS_ON: ReadonlySet<NotificationKind> = new Set(["coach_deleted"]);
+
 type LabelBlock = Parameters<typeof blockLabel>[0];
 
 export type NotificationData = {

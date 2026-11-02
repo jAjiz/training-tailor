@@ -1,5 +1,5 @@
 import type { Notification } from "@/generated/prisma/client";
-import { AUDIENCE, NOTIFICATION_KINDS, type Audience, type NotificationKind } from "@/lib/notifications/kinds";
+import { ALWAYS_ON, AUDIENCE, NOTIFICATION_KINDS, type Audience, type NotificationKind } from "@/lib/notifications/kinds";
 import type { Recipient } from "@/lib/notifications/notify";
 import type { PushTarget } from "@/lib/notifications/push";
 import { TrainingError } from "../errors";
@@ -62,14 +62,16 @@ export async function markProgramAnnouncementsRead(db: Db, userId: string, progr
   });
 }
 
+/** The audience's switchable kinds (ALWAYS_ON ones have no switch). */
 export async function getPreferences(db: Db, userId: string, audience: Audience): Promise<Record<NotificationKind, boolean>> {
-  const kinds = kindsOf(audience);
+  const kinds = kindsOf(audience).filter((k) => !ALWAYS_ON.has(k));
   const rows = await db.notificationPreference.findMany({ where: { userId, kind: { in: kinds } } });
   const off = new Set(rows.filter((r) => !r.enabled).map((r) => r.kind));
   return Object.fromEntries(kinds.map((k) => [k, !off.has(k)])) as Record<NotificationKind, boolean>;
 }
 
 export async function setPreference(db: Db, userId: string, kind: NotificationKind, enabled: boolean): Promise<void> {
+  if (ALWAYS_ON.has(kind)) throw new TrainingError("invalid_request");
   await db.notificationPreference.upsert({
     where: { userId_kind: { userId, kind } },
     create: { userId, kind, enabled },

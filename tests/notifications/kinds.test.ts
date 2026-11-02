@@ -43,10 +43,10 @@ describe("notificationText (es)", () => {
 
   it("pluralises fist bumps and labels the block", () => {
     const base = { resultId: "r1", blockId: "b1", block: fran, latestName: "Ana" };
-    expect(notificationText("fist_bump", { ...base, count: 3 }, tEs).body).toBe("👊 Ana y 2 más han dado fist bump a tu Fran");
-    expect(notificationText("fist_bump", { ...base, count: 1 }, tEs).body).toBe("👊 Ana ha dado fist bump a tu Fran");
+    expect(notificationText("fist_bump", { ...base, count: 3 }, tEs).body).toBe("👊 Ana y 2 más te han dado un choque de puño por tu Fran");
+    expect(notificationText("fist_bump", { ...base, count: 1 }, tEs).body).toBe("👊 Ana te ha dado un choque de puño por tu Fran");
     for (const count of [0, -1]) {
-      expect(notificationText("fist_bump", { ...base, count }, tEs).body).toBe("👊 Ana ha dado fist bump a tu Fran");
+      expect(notificationText("fist_bump", { ...base, count }, tEs).body).toBe("👊 Ana te ha dado un choque de puño por tu Fran");
     }
   });
 

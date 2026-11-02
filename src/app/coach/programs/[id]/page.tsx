@@ -90,7 +90,8 @@ export default async function PlannerPage({ params, searchParams }: Params) {
           <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
         </div>
         <WeekTools ctx={ctx} kind={program.kind as "continuous" | "closed"} published={published} empty={empty}
-          publishedWeeks={allPublished} filledWeeks={filledWeeks} weekNote={notes.week} />
+          publishedWeeks={allPublished} filledWeeks={filledWeeks} weekNote={notes.week}
+          resultCount={blocks.reduce((n, b) => n + b._count.results, 0)} />
       </div>
       <WeekBoard
         days={Array.from({ length: 7 }, (_, d) => weekIndex * 7 + d).map((dayIndex) => ({ dayIndex, label: dayLabel(dayIndex) }))}

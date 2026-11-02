@@ -44,7 +44,7 @@
     "enrollment_removed": "Tu coach te ha quitado de este programa.",
     "not_loggable": "Todavía no puedes registrar este bloque.",
     "invalid_score": "El resultado no es válido para este bloque.",
-    "own_result": "No puedes dar un fist bump a tu propio resultado.",
+    "own_result": "No puedes dar un choque de puño a tu propio resultado.",
     "account_disabled": "Tu cuenta está deshabilitada.",
     "invite_required": "Necesitas una invitación de tu coach para entrar.",
     "invalid_status_change": "Ese cambio de estado no está permitido.",
@@ -188,8 +188,8 @@
     "addBlock": "Añadir bloque",
     "blockActions": "Acciones del bloque",
     "dayActions": "Acciones del día",
-    "dayNote": "Objetivo del día…",
-    "weekNote": "Texto de la semana…",
+    "dayNote": "Objetivo del día",
+    "weekNote": "Texto de la semana",
     "noteDialogDay": "Objetivo del día",
     "noteDialogWeek": "Texto de la semana",
     "noteHint": "Déjalo vacío para quitarlo.",
@@ -199,6 +199,12 @@
     "duplicate": "Copiar",
     "duplicateDay": "Copiar día",
     "duplicateWeek": "Copiar semana",
+    "clearDay": "Limpiar día",
+    "clearWeek": "Limpiar semana",
+    "clear": "Limpiar",
+    "clearDayConfirm": "Se borran los bloques y el objetivo de este día.",
+    "clearWeekConfirm": "Se borran todos los bloques de la semana, los objetivos de cada día y el texto de la semana.",
+    "clearResults": "{count, plural, one {También se borra # resultado registrado por los atletas.} other {También se borran # resultados registrados por los atletas.}}",
     "targetWeek": "Semana",
     "targetDay": "Día",
     "targetDate": "Fecha de destino",
@@ -289,11 +295,9 @@
   "today": {
     "noPrograms": "Todavía no sigues ningún programa. Pide a tu coach su enlace de invitación.",
     "program": "Programa",
-    "today": "Hoy",
     "startsOn": "Este programa empieza el {date}.",
     "finished": "Programa terminado. Tu historial sigue disponible.",
     "nothing": "Nada publicado para este día.",
-    "dayOfProgram": "Semana {week} · Día {day}",
     "week": "Semana",
     "dayGoal": "Objetivo del día",
     "weekNotesTitle": "Semana {week}",
@@ -310,7 +314,7 @@
     "title": "Leaderboard",
     "empty": "Todavía nadie ha registrado este bloque.",
     "you": "Tú",
-    "fistBump": "Fist bump"
+    "fistBump": "Choque de puño"
   },
   "calendar": {
     "title": "Calendario",
@@ -355,7 +359,7 @@
     "division": "Categoría",
     "notes": "Notas",
     "rank": "#",
-    "bumps": "Fist bumps",
+    "bumps": "Choques de puño",
     "view": "Ver resultados"
   },
   "impersonation": {
@@ -478,7 +482,7 @@
       "disableTitle": "Deshabilitar a {name}",
       "disableConfirm": "No podrá usar la zona de atleta y sus resultados se ocultan de los leaderboards mientras esté deshabilitado.",
       "deleteTitle": "Borrar el atleta {name}",
-      "deleteConfirm": "Se borran el perfil de atleta, sus inscripciones, resultados, fist bumps y 1RMs. El email queda libre.",
+      "deleteConfirm": "Se borran el perfil de atleta, sus inscripciones, resultados, choques de puño y 1RMs. El email queda libre.",
       "enrollments": "Inscripciones",
       "resultsDeleted": "Resultados",
       "prs": "1RMs"
@@ -696,8 +700,7 @@
     "prefs": {
       "announcement": "Anuncios del tablón",
       "week_published": "Semanas publicadas",
-      "fist_bump": "Fist bumps en tus resultados",
-      "coach_deleted": "Cuando tu coach deja la plataforma",
+      "fist_bump": "Choques de puño en tus resultados",
       "athlete_joined": "Atletas que se unen",
       "athlete_left": "Atletas que se dan de baja",
       "week_reminder": "Semana siguiente sin publicar",
@@ -714,7 +717,7 @@
       },
       "fist_bump": {
         "title": "Training Tailor",
-        "body": "{others, plural, =0 {👊 {name} ha dado fist bump a tu {block}} other {👊 {name} y # más han dado fist bump a tu {block}}}"
+        "body": "{others, plural, =0 {👊 {name} te ha dado un choque de puño por tu {block}} other {👊 {name} y # más te han dado un choque de puño por tu {block}}}"
       },
       "coach_deleted": {
         "title": "Training Tailor",
