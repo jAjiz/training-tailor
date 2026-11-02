@@ -9,9 +9,11 @@ import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { getSessionContext } from "@/lib/session";
 import { listBoard } from "@/lib/training/services/announcements";
-import { getEnrollmentStatus } from "@/lib/training/services/enrollments";
+import { getEnrollmentStatus, listAthletePrograms } from "@/lib/training/services/enrollments";
 import { markProgramAnnouncementsRead } from "@/lib/training/services/notifications";
+import { AthleteHeader } from "../../../AthleteHeader";
 
+// The page opens with the black AthleteHeader: the browser bar matches it in both themes.
 export const viewport: Viewport = { themeColor: "#000000" };
 
 export default async function AthleteBoardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,27 +25,31 @@ export default async function AthleteBoardPage({ params }: { params: Promise<{ i
   if (status === "left" || status === "removed") {
     return <NotInProgram />;
   }
-  const { program, announcements } = await orNotFound(listBoard(prisma, { athleteId: athlete.id }, id));
+  const [{ program, announcements }, enrollments] = await Promise.all([
+    orNotFound(listBoard(prisma, { athleteId: athlete.id }, id)),
+    listAthletePrograms(prisma, athlete.id),
+  ]);
   const session = await getSessionContext();
   // During an impersonation nothing is marked read: the user still sees it unread.
   if (!session?.impersonatedBy) await markProgramAnnouncementsRead(prisma, athlete.userId, program.id);
   const fmt = new Intl.DateTimeFormat(await getLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: athlete.timezone });
   return (
-    <section className="flex flex-col gap-4 pt-2">
-      <h1 className="truncate text-2xl font-bold">{program.name}</h1>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">{t("title")}</h2>
-      {announcements.length === 0 ? <EmptyState>{t("athleteEmpty")}</EmptyState> : (
-        <ul className="flex flex-col gap-3">
-          {announcements.map((a) => (
-            <li key={a.id}>
-              <Card className="flex flex-col gap-2 p-5">
-                <p className="text-xs text-muted">{fmt.format(a.createdAt)}{a.editedAt && ` · ${t("edited")}`}</p>
-                <AnnouncementText body={a.body} />
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <>
+      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={program.id} page="board" />
+      <section className="flex flex-col gap-4">
+        {announcements.length === 0 ? <EmptyState>{t("athleteEmpty")}</EmptyState> : (
+          <ul className="flex flex-col gap-3">
+            {announcements.map((a) => (
+              <li key={a.id}>
+                <Card className="flex flex-col gap-2 p-5">
+                  <p className="text-xs text-muted">{fmt.format(a.createdAt)}{a.editedAt && ` · ${t("edited")}`}</p>
+                  <AnnouncementText body={a.body} />
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
   );
 }

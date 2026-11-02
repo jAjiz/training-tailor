@@ -74,7 +74,7 @@ export default async function TodayPage({ searchParams }: Props) {
 
   return (
     <>
-      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={programId} basePath="/"
+      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={programId} page="today"
         start={weekNote !== null ? <WeekNoteButton note={weekNote.body} title={weekNote.title} /> : undefined}>
         <WeekStrip programId={programId} selected={date} today={today} withBlocks={withBlocks} locale={locale}
           labels={{ prev: t("prevWeek"), next: t("nextWeek") }} />

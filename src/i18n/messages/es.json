@@ -21,9 +21,10 @@
     "adminIntro": "Solo para la cuenta de administración de Training Tailor."
   },
   "nav": {
-    "today": "Hoy",
+    "today": "Entreno",
     "calendar": "Calendario",
-    "prs": "PRs",
+    "board": "Anuncios",
+    "prs": "RMs",
     "me": "Perfil",
     "programs": "Mis programas",
     "main": "Navegación principal",
@@ -145,7 +146,7 @@
     }
   },
   "prs": {
-    "title": "PRs",
+    "title": "RMs",
     "search": "Buscar un ejercicio",
     "noResults": "Ningún ejercicio coincide.",
     "current": "1RM actual",
@@ -668,8 +669,7 @@
     "readOnly": "Este tablón es de solo lectura.",
     "athleteEmpty": "Tu coach todavía no ha publicado anuncios.",
     "notInProgram": "Ya no estás en este programa",
-    "toToday": "Ir a hoy",
-    "open": "Tablón de anuncios"
+    "toToday": "Ir a hoy"
   },
   "notifications": {
     "locale": "es",
