@@ -131,6 +131,7 @@
     "startDateLockedHint": "The start date cannot change because some weeks are already published."
   },
   "block": {
+    "untitled": "Block",
     "coachingTips": "Coaching tips",
     "video": "Watch video",
     "timeCap": "Time cap {minutes} min",
@@ -306,7 +307,6 @@
     "nextWeek": "Next week",
     "logResult": "Log result",
     "editResult": "Edit",
-    "myResult": "Your result: {score}",
     "scores": "{count, plural, =0 {No scores} one {# score} other {# scores}}",
     "addOneRm": "Add your {movement} 1RM to see the kg",
     "noNewSessions": "This program no longer receives new sessions."

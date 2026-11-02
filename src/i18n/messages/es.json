@@ -131,6 +131,7 @@
     "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas."
   },
   "block": {
+    "untitled": "Bloque",
     "coachingTips": "Coaching tips",
     "video": "Ver vídeo",
     "timeCap": "Time cap {minutes} min",
@@ -306,7 +307,6 @@
     "nextWeek": "Semana siguiente",
     "logResult": "Registrar resultado",
     "editResult": "Editar",
-    "myResult": "Tu resultado: {score}",
     "scores": "{count, plural, =0 {Sin scores} one {# score} other {# scores}}",
     "addOneRm": "Añade tu 1RM de {movement} para ver los kg",
     "noNewSessions": "Este programa ya no recibe sesiones nuevas."

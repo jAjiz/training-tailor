@@ -1,5 +1,5 @@
 import { useTranslations } from "next-intl";
-import { MessageSquareText, PlayCircle } from "lucide-react";
+import { ChevronDown, MessageSquareText, PlayCircle } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
@@ -46,9 +46,17 @@ function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number 
   );
 }
 
-/** One block: the athlete's card (stripe, tips and video as buttons) or, compact, the coach's planner tile. */
-export function BlockCard({ block, oneRm = null, compact = false, children }: {
-  block: CardBlock; oneRm?: number | null; compact?: boolean; children?: React.ReactNode;
+/** The collapsed card's title: the block's title, its movement, else the first line of its text. */
+function collapsedTitle(block: CardBlock): string | null {
+  return block.title ?? (block.kind === "barbell" ? block.movement : null) ?? block.description?.trim().split("\n")[0] ?? null;
+}
+
+/**
+ * One block: the athlete's card (stripe, tips and video as buttons) or, compact, the coach's planner tile.
+ * The athlete's card starts collapsed to its title and `summary` (e.g. their result); tapping the title opens it.
+ */
+export function BlockCard({ block, oneRm = null, compact = false, summary, children }: {
+  block: CardBlock; oneRm?: number | null; compact?: boolean; summary?: React.ReactNode; children?: React.ReactNode;
 }) {
   const t = useTranslations("block");
   const heading = block.title ?? (block.kind === "barbell" ? block.movement : null);
@@ -70,25 +78,34 @@ export function BlockCard({ block, oneRm = null, compact = false, children }: {
   }
 
   return (
-    <Card as="article" stripe data-color={blockColor(block.color)} className="flex min-w-0 flex-col gap-3 break-words p-5">
-      {heading && <h3 className="text-lg font-bold leading-snug">{heading}</h3>}
-      <BlockBody block={block} oneRm={oneRm} compact={false} />
-      {block.coachingTips && (
-        <details>
-          <summary className={cx(buttonClasses({ variant: "tinted", block: true }), "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
-            <MessageSquareText size={18} aria-hidden />
-            {t("coachingTips")}
-          </summary>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">{block.coachingTips}</p>
-        </details>
-      )}
-      {block.videoUrl && (
-        <Button href={block.videoUrl} target="_blank" rel="noopener noreferrer" block>
-          <PlayCircle size={18} aria-hidden />
-          {t("video")}
-        </Button>
-      )}
-      {children}
+    <Card as="article" stripe data-color={blockColor(block.color)} className="min-w-0 break-words">
+      <details className="group/block">
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 focus-visible:outline-2 focus-visible:outline-foreground [&::-webkit-details-marker]:hidden">
+          {/* A title taken from the text is cut to one line; a real title wraps. */}
+          <h3 className={cx("min-w-0 flex-1 text-lg font-bold leading-snug", !heading && "truncate")}>{collapsedTitle(block) ?? t("untitled")}</h3>
+          {summary && <span className="shrink-0 text-sm font-semibold text-(--block-ink)">{summary}</span>}
+          <ChevronDown size={20} aria-hidden className="shrink-0 text-muted transition group-open/block:rotate-180" />
+        </summary>
+        <div className="flex flex-col gap-3 px-5 pb-5">
+          <BlockBody block={block} oneRm={oneRm} compact={false} />
+          {block.coachingTips && (
+            <details>
+              <summary className={cx(buttonClasses({ variant: "tinted", block: true }), "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
+                <MessageSquareText size={18} aria-hidden />
+                {t("coachingTips")}
+              </summary>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">{block.coachingTips}</p>
+            </details>
+          )}
+          {block.videoUrl && (
+            <Button href={block.videoUrl} target="_blank" rel="noopener noreferrer" block>
+              <PlayCircle size={18} aria-hidden />
+              {t("video")}
+            </Button>
+          )}
+          {children}
+        </div>
+      </details>
     </Card>
   );
 }
