@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPublicPath, safeNext, signinPathFor, withProgram } from "@/lib/routes";
+import { isPublicPath, programOf, programPageHref, programPageOf, safeNext, signinPathFor, withProgram } from "@/lib/routes";
 
 describe("routes", () => {
   it("leaves the sign-in pages and invitations public", () => {
@@ -34,5 +34,24 @@ describe("routes", () => {
     expect(withProgram("/calendar", "p1")).toBe("/calendar?program=p1");
     expect(withProgram("/calendar", null)).toBe("/calendar");
     expect(withProgram("/", "a b")).toBe("/?program=a%20b");
+  });
+
+  it("links each program page for a program, or for the first one", () => {
+    expect(programPageHref("today", "p1")).toBe("/?program=p1");
+    expect(programPageHref("calendar", null)).toBe("/calendar");
+    expect(programPageHref("board", "p1")).toBe("/programs/p1/board");
+    expect(programPageHref("board", null)).toBe("/board");
+  });
+
+  it("tells which program page a path is and which program it shows", () => {
+    expect(programPageOf("/")).toBe("today");
+    expect(programPageOf("/calendar")).toBe("calendar");
+    expect(programPageOf("/programs/p1/board")).toBe("board");
+    expect(programPageOf("/board")).toBe("board");
+    expect(programPageOf("/prs")).toBeNull();
+    expect(programPageOf("/programs/p1/board/x")).toBeNull();
+    expect(programOf("/programs/a%20b/board", "p2")).toBe("a b");
+    expect(programOf("/calendar", "p2")).toBe("p2");
+    expect(programOf("/prs", null)).toBeNull();
   });
 });

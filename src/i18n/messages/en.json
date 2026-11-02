@@ -21,8 +21,9 @@
     "adminIntro": "Only for the Training Tailor admin account."
   },
   "nav": {
-    "today": "Today",
+    "today": "Workout",
     "calendar": "Calendar",
+    "board": "Announcements",
     "prs": "PRs",
     "me": "Me",
     "programs": "My programs",
@@ -668,8 +669,7 @@
     "readOnly": "This board is read-only.",
     "athleteEmpty": "Your coach has not posted any announcements yet.",
     "notInProgram": "You are no longer in this program",
-    "toToday": "Go to today",
-    "open": "Announcement board"
+    "toToday": "Go to today"
   },
   "notifications": {
     "locale": "en",

@@ -36,7 +36,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={enrollment.programId} basePath="/calendar" />
+      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={enrollment.programId} page="calendar" />
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <IconButton href={href(addMonths(month, -1))} label={t("prevMonth")}><ChevronLeft size={20} aria-hidden /></IconButton>

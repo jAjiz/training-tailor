@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
+import { programPageHref, type ProgramPage } from "@/lib/routes";
 
 export type ProgramOption = { id: string; name: string };
 
-/** Program name in the black header; with several programs it is a select styled as the title. */
-export function ProgramTitle({ programs, selected, basePath }: { programs: ProgramOption[]; selected: string; basePath: "/" | "/calendar" }) {
+/** Program name in the black header; with several programs it is a select styled as the title that keeps the page. */
+export function ProgramTitle({ programs, selected, page }: { programs: ProgramOption[]; selected: string; page: ProgramPage }) {
   const t = useTranslations("today");
   const router = useRouter();
   const name = programs.find((p) => p.id === selected)?.name ?? "";
@@ -15,7 +16,7 @@ export function ProgramTitle({ programs, selected, basePath }: { programs: Progr
   return (
     <div className="relative mx-auto flex w-fit max-w-full items-center">
       <h1 className="sr-only">{name}</h1>
-      <select aria-label={t("program")} value={selected} onChange={(e) => router.push(`${basePath}?program=${e.target.value}`)}
+      <select aria-label={t("program")} value={selected} onChange={(e) => router.push(programPageHref(page, e.target.value))}
         className="max-w-full cursor-pointer appearance-none truncate bg-transparent pr-7 text-center text-xl font-bold text-on-chrome outline-none focus-visible:underline [&>option]:bg-surface [&>option]:text-foreground">
         {programs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
