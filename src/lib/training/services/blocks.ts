@@ -190,15 +190,7 @@ export async function importBlocks(
       })
       : [];
     const weeks = [...new Set(filled.map((b) => Math.floor(b.dayIndex / 7)))];
-    if (weeks.length > 0) {
-      const days = weeks.map((w) => ({ dayIndex: { gte: w * 7, lt: w * 7 + 7 } }));
-      const where = { programId, OR: days };
-      const results = await tx.result.findMany({ where: { block: where }, select: { id: true } });
-      await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: results.map((r) => r.id) } } });
-      await tx.block.deleteMany({ where });
-      await tx.weekNote.deleteMany({ where: { programId, weekIndex: { in: weeks } } });
-      await tx.dayNote.deleteMany({ where: { programId, OR: days } });
-    }
+    if (weeks.length > 0) await clearWeeks(tx, programId, weeks);
     await appendAll(tx, programId, items.map(({ dayIndex, block }) => ({ dayIndex, columns: columns(block) })));
     for (const [key, { scope, index, texts: imported }] of texts) {
       const existing = scope === "day"
@@ -249,6 +241,34 @@ export async function duplicateWeek(db: Db, coachId: string, programId: string, 
     if (weekNote) await putWeekNote(tx, programId, toWeek, weekNote.body);
     for (const n of dayNotes) await putDayNote(tx, programId, toWeek * 7 + (n.dayIndex - fromWeek * 7), n.body);
   });
+}
+
+/** Deletes the day's blocks (results go with them, as with deleteBlock) and its day note. */
+export async function clearDay(db: Db, coachId: string, programId: string, dayIndex: number) {
+  const program = await writableProgram(db, coachId, programId);
+  assertDay(program, dayIndex);
+  await db.$transaction((tx) => clearDays(tx, programId, [{ gte: dayIndex, lt: dayIndex + 1 }]));
+}
+
+/** Deletes the week's blocks (results go with them), its day notes and its week note. */
+export async function clearWeek(db: Db, coachId: string, programId: string, weekIndex: number) {
+  const program = await writableProgram(db, coachId, programId);
+  assertDay(program, weekIndex * 7);
+  await db.$transaction((tx) => clearWeeks(tx, programId, [weekIndex]));
+}
+
+async function clearWeeks(tx: DbOrTx, programId: string, weeks: number[]) {
+  await clearDays(tx, programId, weeks.map((w) => ({ gte: w * 7, lt: w * 7 + 7 })));
+  await tx.weekNote.deleteMany({ where: { programId, weekIndex: { in: weeks } } });
+}
+
+async function clearDays(tx: DbOrTx, programId: string, ranges: { gte: number; lt: number }[]) {
+  const where = { programId, OR: ranges.map((dayIndex) => ({ dayIndex })) };
+  // Results cascade away with the blocks; so must their grouped fist-bump entries (entityId is the resultId).
+  const results = await tx.result.findMany({ where: { block: where }, select: { id: true } });
+  await tx.notification.deleteMany({ where: { kind: "fist_bump", entityId: { in: results.map((r) => r.id) } } });
+  await tx.block.deleteMany({ where });
+  await tx.dayNote.deleteMany({ where });
 }
 
 const putDayNote = (tx: DbOrTx, programId: string, dayIndex: number, body: string) =>

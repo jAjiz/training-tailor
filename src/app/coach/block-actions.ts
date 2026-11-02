@@ -8,7 +8,8 @@ import { prisma } from "@/lib/db";
 import type { ActionResult } from "@/lib/training/errors";
 import { BlockInput, IMPORTED_NOTE_MAX, parse } from "@/lib/training/schemas";
 import {
-  createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, moveBlock, updateBlock,
+  clearDay, clearWeek, createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, moveBlock,
+  updateBlock,
 } from "@/lib/training/services/blocks";
 
 const Id = z.string().min(1).max(64);
@@ -81,5 +82,19 @@ export async function duplicateWeekAction(raw: unknown) {
   return coachAction("duplicateWeekAction", async (coachId) => {
     const { programId, fromWeek, toWeek } = parse(z.object({ programId: Id, fromWeek: Day, toWeek: Day }), raw);
     await duplicateWeek(prisma, coachId, programId, fromWeek, toWeek);
+  });
+}
+
+export async function clearDayAction(raw: unknown) {
+  return coachAction("clearDayAction", async (coachId) => {
+    const { programId, dayIndex } = parse(z.object({ programId: Id, dayIndex: Day }), raw);
+    await clearDay(prisma, coachId, programId, dayIndex);
+  });
+}
+
+export async function clearWeekAction(raw: unknown) {
+  return coachAction("clearWeekAction", async (coachId) => {
+    const { programId, weekIndex } = parse(z.object({ programId: Id, weekIndex: Day }), raw);
+    await clearWeek(prisma, coachId, programId, weekIndex);
   });
 }

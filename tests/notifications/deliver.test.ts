@@ -87,6 +87,13 @@ describe("deliver", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("delivers an always-on kind despite a saved off preference", async () => {
+    const u = await makeUser(tdb.prisma);
+    await tdb.prisma.notificationPreference.create({ data: { userId: u.id, kind: "coach_deleted", enabled: false } });
+    const r = await deliver(tdb.prisma, [intent("coach_deleted", [{ userId: u.id, locale: null }], { programId: "p", programName: "Test Program" })], null);
+    expect(r.created).toBe(1);
+  });
+
   it("de-duplicates recipients by user id", async () => {
     const u = await makeUser(tdb.prisma);
     await deliver(tdb.prisma, [announce([{ userId: u.id, locale: null }, { userId: u.id, locale: "en" }])], null);

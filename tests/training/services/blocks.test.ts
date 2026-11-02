@@ -2,10 +2,11 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makeResult } from "../../helpers/factories";
 import {
-  createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, listWeekBlocks, moveBlock, updateBlock,
+  clearDay, clearWeek, createBlock, deleteBlock, duplicateBlock, duplicateDay, duplicateWeek, importBlocks, listWeekBlocks, moveBlock, updateBlock,
   weeksWithBlocks,
 } from "@/lib/training/services/blocks";
 import { enroll } from "../../helpers/factories";
+import { setDayNote, setWeekNote } from "@/lib/training/services/notes";
 import { archiveProgram } from "@/lib/training/services/programs";
 import type { BlockInputValue } from "@/lib/training/schemas";
 import type { ImportItem, ImportMode } from "@/lib/training/services/blocks";
@@ -396,5 +397,61 @@ describe("weeksWithBlocks", () => {
     const { coach, program } = await setup();
     for (const day of [15, 0, 6, 15]) await createBlock(tdb.prisma, coach.id, program.id, day, custom("A"));
     expect(await weeksWithBlocks(tdb.prisma, program.id)).toEqual([0, 2]);
+  });
+});
+
+describe("clearing days and weeks", () => {
+  async function filled() {
+    const { coach, program } = await setup();
+    const ana = await makeAthlete(tdb.prisma);
+    await enroll(tdb.prisma, program.id, ana.id);
+    const blocks = [];
+    for (const day of [2, 3, 7]) blocks.push(await makeCustomBlock(tdb.prisma, program.id, day, { title: `Test ${day}` }));
+    for (const day of [2, 3, 7]) await setDayNote(tdb.prisma, coach.id, program.id, day, `Test goal ${day}`);
+    for (const week of [0, 1]) await setWeekNote(tdb.prisma, coach.id, program.id, week, `Test week ${week}`);
+    for (const b of blocks) {
+      const r = await makeResult(tdb.prisma, b.id, ana.id);
+      await tdb.prisma.notification.create({
+        data: { userId: ana.userId, audience: "athlete", kind: "fist_bump", entityId: r.id, groupKey: `fist_bump:${r.id}`, data: {} },
+      });
+    }
+    return { coach, program, blocks };
+  }
+  const blockDays = async (programId: string) =>
+    (await tdb.prisma.block.findMany({ where: { programId }, orderBy: { dayIndex: "asc" } })).map((b) => b.dayIndex);
+  const noteDays = async (programId: string) =>
+    (await tdb.prisma.dayNote.findMany({ where: { programId }, orderBy: { dayIndex: "asc" } })).map((n) => n.dayIndex);
+
+  it("clears one day's blocks, results, fist bumps and day note, and nothing else", async () => {
+    const { coach, program, blocks } = await filled();
+    await clearDay(tdb.prisma, coach.id, program.id, 2);
+    expect(await blockDays(program.id)).toEqual([3, 7]);
+    expect(await noteDays(program.id)).toEqual([3, 7]);
+    expect(await tdb.prisma.weekNote.count({ where: { programId: program.id } })).toBe(2);
+    expect(await tdb.prisma.result.count({ where: { blockId: blocks[0].id } })).toBe(0);
+    expect(await tdb.prisma.notification.count({ where: { kind: "fist_bump" } })).toBe(2);
+  });
+
+  it("clears one week's blocks, day notes and week note, and keeps the other weeks", async () => {
+    const { coach, program } = await filled();
+    await clearWeek(tdb.prisma, coach.id, program.id, 0);
+    expect(await blockDays(program.id)).toEqual([7]);
+    expect(await noteDays(program.id)).toEqual([7]);
+    expect((await tdb.prisma.weekNote.findMany({ where: { programId: program.id } })).map((n) => n.weekIndex)).toEqual([1]);
+    expect(await tdb.prisma.result.count()).toBe(1);
+    expect(await tdb.prisma.notification.count({ where: { kind: "fist_bump" } })).toBe(1);
+  });
+
+  it("checks owner, archive and range", async () => {
+    const { coach, program } = await setup();
+    const other = await makeCoach(tdb.prisma);
+    const closed = await makeClosed(tdb.prisma, coach.id, 2);
+    await expect(clearDay(tdb.prisma, other.id, program.id, 0)).rejects.toMatchObject({ code: "not_found" });
+    await expect(clearWeek(tdb.prisma, other.id, program.id, 0)).rejects.toMatchObject({ code: "not_found" });
+    await expect(clearDay(tdb.prisma, coach.id, closed.id, 14)).rejects.toMatchObject({ code: "day_out_of_range" });
+    await expect(clearWeek(tdb.prisma, coach.id, closed.id, 2)).rejects.toMatchObject({ code: "day_out_of_range" });
+    await archiveProgram(tdb.prisma, coach.id, program.id);
+    await expect(clearDay(tdb.prisma, coach.id, program.id, 0)).rejects.toMatchObject({ code: "program_archived" });
+    await expect(clearWeek(tdb.prisma, coach.id, program.id, 0)).rejects.toMatchObject({ code: "program_archived" });
   });
 });

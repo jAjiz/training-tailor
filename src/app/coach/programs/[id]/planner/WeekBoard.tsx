@@ -88,7 +88,8 @@ function DayColumn({ day, ids, byId, ctx, receiving, note }: {
           <span aria-hidden>{ids.length}</span>
           <span className="sr-only">{t("blockCount", { count: ids.length })}</span>
         </span>
-        <DayMenu dayIndex={day.dayIndex} ctx={ctx} onNote={() => setNoting(true)} />
+        <DayMenu dayIndex={day.dayIndex} ctx={ctx} onNote={() => setNoting(true)} empty={ids.length === 0 && note === null}
+          resultCount={ids.reduce((n, id) => n + (byId.get(id)?.resultCount ?? 0), 0)} />
       </div>
       {note !== null && (ctx.readOnly
         ? <p data-color="neutral" className="line-clamp-4 whitespace-pre-wrap rounded-xl bg-(--block-fill) px-3 py-2 text-sm text-(--block-ink)">{note}</p>

@@ -118,11 +118,17 @@ describe("preferences", () => {
     await setPreference(tdb.prisma, u.id, "fist_bump", false);
     await setPreference(tdb.prisma, u.id, "fist_bump", false);
     const prefs = await getPreferences(tdb.prisma, u.id, "athlete");
-    expect(prefs).toEqual({ announcement: true, week_published: true, fist_bump: false, coach_deleted: true });
+    expect(prefs).toEqual({ announcement: true, week_published: true, fist_bump: false });
     expect(Object.keys(await getPreferences(tdb.prisma, u.id, "coach")).sort())
       .toEqual(["athlete_joined", "athlete_left", "coach_approved", "week_reminder"]);
     await setPreference(tdb.prisma, u.id, "fist_bump", true);
     expect((await getPreferences(tdb.prisma, u.id, "athlete")).fist_bump).toBe(true);
+  });
+
+  it("refuses to turn off an always-on kind", async () => {
+    const u = await makeUser(tdb.prisma);
+    await expect(setPreference(tdb.prisma, u.id, "coach_deleted", false)).rejects.toMatchObject({ code: "invalid_request" });
+    expect(await tdb.prisma.notificationPreference.count()).toBe(0);
   });
 });
 
