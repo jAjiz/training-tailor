@@ -1,7 +1,7 @@
 # Training Tailor — Notifications and Announcements Design (Closed Beta)
 
-> Revision 1 (2026-10-19), after a builder review. Second part of the closed-beta preparation decided on 2026-10-18: the
-> admin panel (`training-tailor-admin-design.md`, merged in #11 on 2026-10-19) is the
+> Implemented on 2026-10-22 (revision 1, 2026-10-19, after a builder review). Second part of the closed-beta preparation decided on 2026-10-18: the
+> admin panel (`training-tailor-admin-design.md`, implemented on 2026-10-20) is the
 > first part; the production deploy comes after both. This spec **builds on the admin
 > spec**: it uses its `rejected`/`suspended` coach statuses, `AthleteAccount.disabledAt`,
 > nullable `Program.coachId` with `coachName`, `runAction(name, …)` and the impersonation

@@ -1,6 +1,6 @@
 # Training Tailor — Coaching Design (Programs, Results, Leaderboards)
 
-> Revision 1 (2026-10-08), amended the same day: blocks are reordered by drag and drop (dnd-kit). A new project on top of the existing app: coaches write and
+> Phases 1 and 2 implemented on 2026-10-08 and 2026-10-16; phases 3 to 5 not specced yet (revision 1, 2026-10-08, amended the same day: blocks are reordered by drag and drop with dnd-kit). A new project on top of the existing app: coaches write and
 > publish programs, athletes follow them on their phone, log results and compare them on a
 > leaderboard. The tailoring engine (`training-tailor-engine-v1-design.md`, paused on
 > 2026-10-07) is **not** part of this project; plugging it into the athlete's day view is a

@@ -1,5 +1,9 @@
 # Training Tailor — v1 Design (Engine + Athlete Self-Serve)
 
+> Implemented on 2026-10-07 and paused since then. The domain library no longer lives in `data/*.json`:
+> see `training-tailor-domain-library-design.md`, which supersedes the "Domain-grounding assets"
+> file paths below.
+>
 > Revision 2 (2026-10-02). Supersedes revision 1. Changes: the domain layer now
 > **enforces** safety (deterministic validation of the LLM output, fail-closed),
 > movement-name resolution is core, today's situation activates contraindications,
