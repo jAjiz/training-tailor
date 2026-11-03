@@ -308,7 +308,7 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
                     const heading = block.title ?? (block.kind === "barbell" ? block.movement : null) ?? t(`editor.kinds.${block.kind}`);
                     return (
                       <label key={key} data-color={note ? "neutral" : blockColor(block.color)}
-                        className={cx("flex cursor-pointer flex-col gap-1.5 rounded-xl bg-(--block-fill) p-2.5 transition-opacity",
+                        className={cx("flex min-w-0 cursor-pointer flex-col gap-1.5 break-words rounded-xl bg-(--block-fill) p-2.5 transition-opacity",
                           note && "border border-dashed",
                           (!on || !importable) && "opacity-50", !importable && "cursor-not-allowed")}>
                         <span className="flex items-start gap-1.5">
