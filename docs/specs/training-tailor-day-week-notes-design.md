@@ -1,6 +1,6 @@
 # Training Tailor — Day and Week Notes Design
 
-> Approved (2026-10-30). Builds on the coaching spec (`training-tailor-coaching-design.md`): the
+> Implemented on 2026-11-01 in #15 (approved 2026-10-30). Builds on the coaching spec (`training-tailor-coaching-design.md`): the
 > planner, blocks, week publishing and the athlete's day view. The import section builds on the
 > week import spec (`training-tailor-week-import-design.md`, merged in #13 and #14).
 

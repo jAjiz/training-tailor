@@ -1,6 +1,6 @@
 # Training Tailor — UI Restyle Design (light and dark)
 
-> Revision 1 (2026-10-08). Restyles the screens shipped in coaching phase 1 so the app looks and
+> Implemented on 2026-10-09 (revision 1, 2026-10-08). Restyles the screens shipped in coaching phase 1 so the app looks and
 > feels like the reference screenshots (not in the repo). Coaching phase 2
 > (results, leaderboard, PRs) starts after this and is built directly in the new style.
 
@@ -196,5 +196,4 @@ screen in both themes go to the user next to the matching reference screenshot.
 
 Branch `feat/ui-restyle` from `main`, one PR. Commits by layer: tokens and font; base
 components and tests; navigation and layouts; athlete screens; planner and editor; remaining
-coach screens; engine screens. Implementation plan in
-`docs/plans/training-tailor-ui-restyle-plan.md`.
+coach screens; engine screens.

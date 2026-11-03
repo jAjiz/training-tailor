@@ -1,6 +1,6 @@
 # Training Tailor — Week Import from PDF Design
 
-> Draft (2026-10-28). Builds on the coaching spec (`training-tailor-coaching-design.md`): the
+> Implemented on 2026-10-28 in #13 and #14. Builds on the coaching spec (`training-tailor-coaching-design.md`): the
 > planner, blocks (`custom` / `barbell`), week publishing and `runAction`. Reuses the engine's
 > LLM provider (`src/lib/ai`) and quota (`src/lib/quota.ts`).
 

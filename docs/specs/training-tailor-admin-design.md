@@ -1,6 +1,6 @@
 # Training Tailor — Admin Panel Design (Closed Beta)
 
-> Revision 1 (2026-10-18), after a builder review. Prepares the closed beta: on 2026-10-18 the owner decided to put
+> Implemented on 2026-10-20 (revision 1, 2026-10-18, after a builder review). Prepares the closed beta: on 2026-10-18 the owner decided to put
 > coaching (phases 1 and 2 of `training-tailor-coaching-design.md`) in production for a small
 > group of coaches and athletes, before the later phases. This spec covers the admin panel
 > and the invitation-only athlete sign-up. Notifications and coach announcements are a
