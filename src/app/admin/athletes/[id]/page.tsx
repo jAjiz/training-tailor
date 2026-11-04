@@ -38,7 +38,7 @@ export default async function AdminAthletePage({ params }: { params: Promise<{ i
           </p>
         )}
       </Card>
-      <h2 className="text-lg font-bold">{t("athlete.enrollmentsTitle")}</h2>
+      <h2 className="text-lg">{t("athlete.enrollmentsTitle")}</h2>
       {athlete.enrollments.length === 0 ? <EmptyState>{t("athlete.noEnrollments")}</EmptyState> : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">

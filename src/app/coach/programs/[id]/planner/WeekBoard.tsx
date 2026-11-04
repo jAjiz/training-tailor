@@ -83,8 +83,8 @@ function DayColumn({ day, ids, byId, ctx, receiving, note }: {
   return (
     <div ref={setNodeRef} className={cx("flex min-h-40 min-w-0 flex-col gap-2 rounded-2xl p-1.5 transition-colors", receiving && "bg-surface-2")}>
       <div className="flex min-h-9 items-center gap-2 pl-1.5">
-        <h2 className="inline-block truncate text-sm font-bold first-letter:uppercase">{day.label}</h2>
-        <span className="rounded-full bg-surface-2 px-2 text-xs font-semibold text-muted">
+        <h2 className="truncate text-sm">{day.label}</h2>
+        <span className="rounded-md bg-surface-2 px-2 text-xs font-semibold text-muted">
           <span aria-hidden>{ids.length}</span>
           <span className="sr-only">{t("blockCount", { count: ids.length })}</span>
         </span>

@@ -22,7 +22,7 @@ export default async function MePage() {
   const timeZones = Intl.supportedValuesOf("timeZone");
   return (
     <section className="flex flex-col gap-6 pt-4">
-      <h1 className="text-3xl font-bold">{t("title")}</h1>
+      <h1 className="text-3xl">{t("title")}</h1>
       <Card className="p-5">
         <SettingsForm
           initial={{ displayName: athlete.displayName, timezone: athlete.timezone, locale: isLocale(athlete.locale) ? athlete.locale : "es" }}

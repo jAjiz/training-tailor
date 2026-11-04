@@ -90,7 +90,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
 
   const header = (
     <div className="flex flex-col gap-1">
-      <h1 className="text-3xl font-bold">{title}</h1>
+      <h1 className="text-3xl">{title}</h1>
       <p className="text-[15px] text-muted">{subtitle}</p>
     </div>
   );

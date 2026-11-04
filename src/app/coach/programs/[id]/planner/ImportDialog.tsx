@@ -55,7 +55,7 @@ function Loading({ title, hint }: { title: string; hint?: string }) {
   return (
     <div role="status" className="flex min-h-64 flex-col items-center justify-center gap-3 py-10 text-center">
       <LoaderCircle size={40} aria-hidden className="animate-spin text-muted motion-reduce:animate-none" />
-      <p className="text-base font-bold">{title}</p>
+      <p className="type-display text-base">{title}</p>
       {hint && <p className="max-w-xs text-sm text-muted">{hint}</p>}
     </div>
   );
@@ -273,7 +273,7 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
             <IconButton label={t("planner.prevWeek")} disabled={week === 0} onClick={() => setWeek(week - 1)}>
               <ChevronLeft size={20} aria-hidden />
             </IconButton>
-            <span className="min-w-24 text-center text-sm font-bold">{t("import.weekOf", { week: week + 1, total: preview.weeks.length })}</span>
+            <span className="type-display min-w-24 text-center text-sm">{t("import.weekOf", { week: week + 1, total: preview.weeks.length })}</span>
             <IconButton label={t("planner.nextWeek")} disabled={week === preview.weeks.length - 1} onClick={() => setWeek(week + 1)}>
               <ChevronRight size={20} aria-hidden />
             </IconButton>
@@ -298,7 +298,7 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
               const items = current.days.find((d) => d.day === day)?.items ?? [];
               return (
                 <div key={day} className="flex min-w-0 flex-col gap-2">
-                  <h3 className="truncate px-1 text-xs font-bold first-letter:uppercase">{dayLabel(target * 7 + day)}</h3>
+                  <h3 className="truncate px-1 text-xs first-letter:uppercase">{dayLabel(target * 7 + day)}</h3>
                   {items.map((item, i) => {
                     const { block } = item;
                     const key = blockKey(week, day, i);
@@ -316,7 +316,7 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
                             onChange={() => setSelection(toggleBlock(selection, key))} />
                           {note
                             ? <span className="line-clamp-4 min-w-0 whitespace-pre-line text-xs leading-snug">{noteText(block)}</span>
-                            : <span className="min-w-0 text-sm font-bold leading-snug">{heading}</span>}
+                            : <span className="type-display min-w-0 text-sm leading-snug">{heading}</span>}
                         </span>
                         {!note && <span className="truncate text-xs text-foreground/80">{summary(block)}</span>}
                         <span className="flex flex-wrap items-center gap-1.5">

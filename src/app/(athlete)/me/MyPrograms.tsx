@@ -28,7 +28,7 @@ export function MyPrograms({ programs }: { programs: { id: string; name: string 
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-bold">{t("me.programsTitle")}</h2>
+      <h2 className="text-lg">{t("me.programsTitle")}</h2>
       {programs.length === 0 ? <p className="text-sm text-muted">{t("me.noPrograms")}</p> : (
         <Card className="divide-y">
           {programs.map((p) => (

@@ -12,7 +12,7 @@ export default async function TailorPage() {
   const domain = await getDomainData();
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-3xl font-bold">Tailor a workout</h1>
+      <h1 className="text-3xl">Tailor a workout</h1>
       <TailorClient
         movementNames={domain.movements.map((m) => m.name)}
         equipmentOptions={[...Equipment.options]}

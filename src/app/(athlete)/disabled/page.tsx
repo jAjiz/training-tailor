@@ -15,7 +15,7 @@ export default async function DisabledPage() {
   return (
     <section className="mx-auto max-w-lg pt-12">
       <Card className="flex flex-col gap-3 p-6">
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
+        <h1 className="text-2xl">{t("title")}</h1>
         <p className="text-[15px] text-muted">{t("body")}</p>
         <AccountSignOut />
       </Card>

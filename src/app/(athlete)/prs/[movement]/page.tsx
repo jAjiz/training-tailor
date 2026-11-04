@@ -32,7 +32,7 @@ export default async function MovementPrPage({ params }: { params: Promise<{ mov
         <IconButton href="/prs" label={tc("back")}><ChevronLeft size={20} aria-hidden /></IconButton>
       </div>
       <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold">{movement}</h1>
+        <h1 className="text-3xl">{movement}</h1>
         <p className="text-[15px] text-muted">{t("current")}</p>
         <p className="type-display text-4xl tabular-nums">{current !== null ? `${current} ${t("kg")}` : "—"}</p>
       </div>

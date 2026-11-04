@@ -13,7 +13,7 @@ export default async function CoachNotificationSettingsPage() {
   const impersonating = Boolean((await getSessionContext())?.impersonatedBy);
   return (
     <section className="mx-auto flex max-w-2xl flex-col gap-6">
-      <h1 className="text-3xl font-bold">{t("settingsTitle")}</h1>
+      <h1 className="text-3xl">{t("settingsTitle")}</h1>
       {impersonating
         ? <p className="text-sm text-muted">{t("preferencesImpersonating")}</p>
         : <PreferenceSwitches initial={initial} save={setPreferenceAction} />}

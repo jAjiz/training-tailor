@@ -65,7 +65,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
 
       {tailored.droppedBlocks.length > 0 && (
         <section>
-          <h3 className="font-semibold">Dropped</h3>
+          <h3>Dropped</h3>
           <ul className="list-disc pl-5 text-sm">
             {tailored.droppedBlocks.map((d) => (
               <li key={d.index}>{result.original.blocks[d.index]?.title ?? `Block ${d.index + 1}`}: {d.reason}</li>
@@ -76,7 +76,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
 
       {tailored.changes.length > 0 && (
         <section>
-          <h3 className="font-semibold">What changed</h3>
+          <h3>What changed</h3>
           <ul className="list-disc pl-5 text-sm">
             {tailored.changes.map((c, i) => (
               <li key={i}>
@@ -89,7 +89,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
       )}
 
       <section>
-        <h3 className="font-semibold">Why the stimulus is preserved</h3>
+        <h3>Why the stimulus is preserved</h3>
         <p className="text-sm">{tailored.rationale}</p>
       </section>
 
@@ -99,7 +99,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
 
       {result.findings.some((f) => !BADGE[f.kind] || f.blockIndex === null) && (
         <section>
-          <h3 className="font-semibold">Checks</h3>
+          <h3>Checks</h3>
           <ul className="list-disc pl-5 text-sm text-muted">
             {result.findings.filter((f) => !BADGE[f.kind] || f.blockIndex === null).map((f, i) => <li key={i}>{f.message}</li>)}
           </ul>

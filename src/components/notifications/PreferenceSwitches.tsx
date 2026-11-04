@@ -32,7 +32,7 @@ export function PreferenceSwitches({ initial, save }: Props) {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-bold">{t("prefsTitle")}</h2>
+      <h2 className="text-lg">{t("prefsTitle")}</h2>
       <p className="text-sm text-muted">{t("prefsHint")}</p>
       <Card className="divide-y">
         {(Object.keys(values) as NotificationKind[]).map((kind) => (

@@ -24,7 +24,7 @@ export function PageHeader({ title, back, children }: { title: string; back?: { 
         </Link>
       )}
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <h1 className="text-2xl tracking-tight">{title}</h1>
         {children}
       </div>
     </header>

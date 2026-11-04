@@ -76,7 +76,7 @@ export function PushSettings() {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-bold">{t("notifications.pushTitle")}</h2>
+      <h2 className="text-lg">{t("notifications.pushTitle")}</h2>
       <Card className="flex flex-col gap-3 p-4">
         {state === "loading" && <p className="text-sm text-muted">…</p>}
         {state === "unsupported" && <p className="text-sm text-muted">{t("notifications.unsupported")}</p>}

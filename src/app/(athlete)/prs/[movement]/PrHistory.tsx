@@ -79,7 +79,7 @@ export function PrHistory({ movement, today, entries }: { movement: string; toda
         <Button type="submit" variant="primary" block slanted disabled={pending}>{t("prs.add")}</Button>
       </form>
       <section className="flex flex-col gap-2">
-        <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">{t("prs.history")}</h2>
+        <h2 className="px-1 text-xs uppercase tracking-wide text-muted">{t("prs.history")}</h2>
         {entries.length === 0 ? <EmptyState>{t("prs.empty")}</EmptyState> : (
           <Card className="overflow-hidden">
             <ul className="flex flex-col divide-y">

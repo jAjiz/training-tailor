@@ -14,7 +14,7 @@ const words = (s: string) => s.replaceAll("_", " ");
 export function WorkoutView({ heading, name, blocks, badge }: Props) {
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{heading}</h3>
+      <h3 className="text-xs uppercase tracking-wide text-muted">{heading}</h3>
       {/* A single block usually carries the session name as its title: show it once. */}
       {name && !(blocks.length === 1 && blocks[0].title === name) && <div className="font-medium">{name}</div>}
       {blocks.map((b, i) => (

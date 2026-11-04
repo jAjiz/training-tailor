@@ -33,7 +33,7 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ id
         <IconButton href={`/?program=${block.programId}&date=${date}`} label={tc("back")}><ChevronLeft size={20} aria-hidden /></IconButton>
       </div>
       <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <h1 className="text-3xl">{t("title")}</h1>
         <p className="text-[15px] text-muted">{blockLabel(block, tb)} · {formatDay(date, locale, { day: "numeric", month: "long", year: "numeric" })}</p>
       </div>
       {entries.length === 0 && <EmptyState>{t("empty")}</EmptyState>}

@@ -12,7 +12,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
       <Brand size="lg" className="self-center text-2xl" />
       <Card className="flex flex-col gap-5 p-6">
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-bold">{t("athleteTitle")}</h1>
+          <h1 className="text-2xl">{t("athleteTitle")}</h1>
           <p className="text-[15px] text-muted">{t("athleteIntro")}</p>
         </div>
         <GoogleSignInButton callbackURL={`/onboarding?next=${encodeURIComponent(safeNext(next))}`} />

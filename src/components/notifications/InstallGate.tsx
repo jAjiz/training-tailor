@@ -88,7 +88,7 @@ export function InstallGate({ enabled, children }: { enabled: boolean; children:
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="install-title" className="fixed inset-0 z-50 overflow-y-auto bg-background">
       <div className="mx-auto flex min-h-full max-w-md flex-col justify-center gap-5 px-6 py-10">
-        <h1 id="install-title" className="text-2xl font-bold">{t("title")}</h1>
+        <h1 id="install-title" className="text-2xl">{t("title")}</h1>
         <p className="text-muted">{t("body")}</p>
         {content}
         {ios && <p className="text-sm text-muted">{t("signInAgain")}</p>}

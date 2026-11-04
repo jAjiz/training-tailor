@@ -8,7 +8,7 @@ export default async function CoachNotificationsPage() {
   const t = await getTranslations("notifications");
   return (
     <section className="mx-auto flex max-w-2xl flex-col gap-4">
-      <h1 className="text-3xl font-bold">{t("title")}</h1>
+      <h1 className="text-3xl">{t("title")}</h1>
       <InboxView audience="coach" open={openNotificationAction} markAll={markAllReadAction} />
     </section>
   );

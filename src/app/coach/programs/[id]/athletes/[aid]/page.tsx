@@ -28,7 +28,7 @@ export default async function AthleteResultsPage({ params }: { params: Promise<{
           <ChevronLeft size={16} aria-hidden />{t("roster.title")}
         </Button>
       </div>
-      <h1 className="text-3xl font-bold">{athlete.displayName} · {t("coachResults.title")}</h1>
+      <h1 className="text-3xl">{athlete.displayName} · {t("coachResults.title")}</h1>
       {results.length === 0 ? <EmptyState>{t("coachResults.empty")}</EmptyState> : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">

@@ -35,7 +35,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
     return (
       <section className="flex flex-col gap-6">
         {back}
-        <h1 className="text-3xl font-bold">{blockLabel(block, t)} · {t("leaderboard.title")}</h1>
+        <h1 className="text-3xl">{blockLabel(block, t)} · {t("leaderboard.title")}</h1>
         {entries.length === 0 ? <EmptyState>{t("coachResults.empty")}</EmptyState> : (
           <Card className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
@@ -69,7 +69,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
   return (
     <section className="flex flex-col gap-6">
       {back}
-      <h1 className="text-3xl font-bold">{blockLabel(block, t)} · {t("coachResults.title")}</h1>
+      <h1 className="text-3xl">{blockLabel(block, t)} · {t("coachResults.title")}</h1>
       {!results?.length ? <EmptyState>{t("coachResults.empty")}</EmptyState> : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">

@@ -25,7 +25,7 @@ export function WeekPicker({ label, startDate, weekStart }: { label: string; sta
     <>
       <button ref={trigger} type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open}
         aria-label={t("pickWeek", { week: label })}
-        className="min-w-28 rounded-lg px-1 text-center text-lg font-bold transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-foreground">
+        className="type-display min-w-28 rounded-lg px-1 text-center text-lg transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-foreground">
         {label}
       </button>
       {open && (

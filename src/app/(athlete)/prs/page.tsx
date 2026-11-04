@@ -20,7 +20,7 @@ export default async function PrsPage() {
   }));
   return (
     <section className="flex flex-col gap-5 pt-4">
-      <h1 className="text-3xl font-bold">{t("prs.title")}</h1>
+      <h1 className="text-3xl">{t("prs.title")}</h1>
       <PrList groups={groups} />
     </section>
   );
