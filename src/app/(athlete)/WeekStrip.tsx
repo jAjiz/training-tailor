@@ -33,8 +33,8 @@ export function WeekStrip({ programId, selected, today, withBlocks, locale, labe
                 <span className={cx("type-display text-[11px]", !isSelected && "text-on-chrome/70")}>
                   {formatDay(d, locale, { weekday: "short" }).replace(/\.$/, "")}
                 </span>
-                <span className={cx("text-lg leading-tight", !isSelected && d === today && "text-accent")}>{Number(d.slice(8))}</span>
-                <span className={cx("mt-0.5 h-1 w-1 rounded-full", !withBlocks.has(d) ? "bg-transparent" : isSelected ? "bg-current" : "bg-on-chrome")} />
+                <span className={cx("text-lg leading-tight", !isSelected && d === today && "text-accent forced-colors:underline")}>{Number(d.slice(8))}</span>
+                <span className={cx("mt-0.5 h-1 w-1 rounded-full", !withBlocks.has(d) ? "bg-transparent" : isSelected ? "bg-current" : "bg-on-chrome forced-colors:bg-[CanvasText]")} />
               </Link>
             </li>
           );

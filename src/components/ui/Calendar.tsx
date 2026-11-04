@@ -115,7 +115,7 @@ export function Calendar({ value, onSelect, min, allow, select = "day", autoFocu
                         "mx-auto flex h-9 w-9 items-center justify-center rounded-xl text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-30",
                         daySelected ? "bg-foreground text-background" : select === "day" && "[&:not([aria-disabled])]:hover:bg-surface-2",
                         d === today && !daySelected && !weekSelected && "ring-1 ring-muted",
-                        d.slice(0, 7) !== month && !weekSelected && "text-muted/50",
+                        d.slice(0, 7) !== month && !weekSelected && "font-normal text-muted/90",
                       )}>
                       {Number(d.slice(8))}
                     </button>

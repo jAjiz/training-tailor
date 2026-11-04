@@ -50,6 +50,12 @@ describe("WeekStrip", () => {
     expect(cyan.map((a) => a.getAttribute("href"))).toEqual(["/?program=p1&date=2026-03-10"]);
   });
 
+  it("keeps today and days with blocks visible in forced colors", () => {
+    const { link } = dayLinks();
+    expect(link("12").querySelector(".bg-on-chrome")).toHaveClass("forced-colors:bg-[CanvasText]");
+    expect(link("10").querySelector(".text-accent")).toHaveClass("forced-colors:underline");
+  });
+
   it("shows a dot on days with blocks, navy on the selected day", () => {
     const { link } = dayLinks();
     expect(link("12").querySelector(".bg-on-chrome")).not.toBeNull();

@@ -1,6 +1,6 @@
 # Training Tailor — Visual Identity Redesign
 
-> Status: design, not implemented. When implemented, this replaces the look described in
+> Implemented on 2026-11-04. This replaces the look described in
 > `training-tailor-ui-restyle-design.md`. That spec's tokens-and-components architecture and its
 > scope rules still apply unless this document says otherwise.
 

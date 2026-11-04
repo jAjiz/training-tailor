@@ -29,5 +29,7 @@ describe("ProgramTitle", () => {
     const select = screen.getByRole("combobox");
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Test Strength", "Test engine"]);
     expect(select).toHaveClass("type-display", "[&>option]:normal-case", "[&>option]:text-foreground");
+    expect(select).toHaveClass("focus-visible:outline-2", "focus-visible:outline-on-chrome");
+    expect(select).not.toHaveClass("outline-none");
   });
 });

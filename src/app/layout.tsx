@@ -5,7 +5,7 @@ import { getLocale } from "next-intl/server";
 import "./globals.css";
 
 const saira = Saira({
-  subsets: ["latin", "latin-ext"],
+  subsets: ["latin"], // Only preloads: other subsets, such as latin-ext, still load on demand.
   variable: "--font-saira",
   style: ["normal", "italic"],
   axes: ["wdth"],

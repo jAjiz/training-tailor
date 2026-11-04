@@ -67,8 +67,8 @@ describe("identity", () => {
     expect(slant).toContain("Highlight");
   });
 
-  it("loads Saira with its italic, width axis and extended Latin", () => {
-    for (const piece of ["Saira", "latin-ext", 'axes: ["wdth"]', '"italic"']) {
+  it("loads Saira with its italic and width axis, preloading only basic Latin", () => {
+    for (const piece of ["Saira", 'subsets: ["latin"]', 'axes: ["wdth"]', '"italic"']) {
       expect(layout, piece).toContain(piece);
     }
     expect(layout).not.toMatch(/\bInter\b/);

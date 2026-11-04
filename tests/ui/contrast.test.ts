@@ -36,6 +36,19 @@ describe.each(["light", "dark"] as const)("%s theme contrast", (theme) => {
     }
   });
 
+  it("keeps out-of-month calendar days readable at their reduced opacity", () => {
+    const blend = (hex: string, over: string, alpha: number) =>
+      "#" + [1, 3, 5].map((i) => {
+        const value = parseInt(hex.slice(i, i + 2), 16) * alpha + parseInt(over.slice(i, i + 2), 16) * (1 - alpha);
+        return Math.round(value).toString(16).padStart(2, "0");
+      }).join("");
+    const surface = token(theme, "surface");
+    expect(ratio(blend(token(theme, "muted"), surface, 0.9), surface)).toBeGreaterThanOrEqual(AA);
+    for (const file of ["src/app/(athlete)/calendar/page.tsx", "src/components/ui/Calendar.tsx"]) {
+      expect(readFileSync(file, "utf8"), file).toContain("text-muted/90");
+    }
+  });
+
   it("keeps text readable on filled tokens", () => {
     check("on-primary", "primary");
     check("on-accent", "accent");

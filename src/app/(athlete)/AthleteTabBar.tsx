@@ -37,7 +37,7 @@ export function AthleteTabBar() {
               <Link href={href} aria-current={active ? "page" : undefined}
                 className={cx("relative flex flex-col items-center gap-1 pb-2 pt-2.5 text-xs font-medium [font-stretch:80%] transition focus-visible:outline-2 focus-visible:outline-foreground",
                   active ? "text-foreground" : "text-muted hover:text-foreground")}>
-                {active && <span aria-hidden className="absolute inset-x-[28%] -top-px h-[3px] -skew-x-30 bg-accent forced-colors:bg-[Highlight]" />}
+                {active && <span aria-hidden className="absolute inset-x-[28%] -top-px h-1.5 -skew-x-12 bg-accent forced-colors:bg-[Highlight]" />}
                 <Icon size={24} strokeWidth={active ? 2.4 : 2} aria-hidden />
                 {t(key)}
               </Link>

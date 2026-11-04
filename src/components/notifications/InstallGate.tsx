@@ -79,7 +79,7 @@ export function InstallGate({ enabled, children }: { enabled: boolean; children:
   } else {
     content = (
       <div className="space-y-3">
-        {prompt && <Button variant="primary" block onClick={install}>{t("install")}</Button>}
+        {prompt && <Button variant="primary" block slanted onClick={install}>{t("install")}</Button>}
         <p className="text-[15px]">{t("androidMenu")}</p>
       </div>
     );

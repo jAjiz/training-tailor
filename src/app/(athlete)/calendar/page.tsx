@@ -14,7 +14,7 @@ import { getVisibleDays } from "@/lib/training/services/athlete-view";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { AthleteHeader } from "../AthleteHeader";
 
-// The page opens with the black AthleteHeader: the browser bar matches it in both themes.
+// The page opens with the navy AthleteHeader: the browser bar matches it in both themes.
 export const viewport: Viewport = { themeColor: "#0f172a" };
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -50,7 +50,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           {weeks.flat().map((d) => (
             <Link key={d} href={`/?program=${enrollment.programId}&date=${d}`}
               className={cx("mx-auto flex h-11 w-11 flex-col items-center justify-center rounded-xl border-2 text-sm font-semibold transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-foreground",
-                d === today ? "border-foreground" : "border-transparent", d.slice(0, 7) !== month && "text-muted/50")}>
+                d === today ? "border-foreground" : "border-transparent", d.slice(0, 7) !== month && "font-normal text-muted/90")}>
               {Number(d.slice(8))}
               <span className={cx("mt-0.5 h-1 w-1 rounded-full", withBlocks.has(d) ? "bg-foreground" : "bg-transparent")} />
             </Link>

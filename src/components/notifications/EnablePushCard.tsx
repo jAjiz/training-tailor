@@ -81,7 +81,7 @@ export function EnablePushCard() {
       {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       <div className="flex gap-2">
         {!blocked && (
-          <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void enable()}>
+          <Button type="button" size="sm" variant="primary" slanted disabled={busy} onClick={() => void enable()}>
             {busy ? t("notifications.working") : t("notifications.enable")}
           </Button>
         )}

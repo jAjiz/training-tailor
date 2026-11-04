@@ -22,7 +22,7 @@ export function PrList({ groups }: { groups: Group[] }) {
       {visible.length === 0 && <EmptyState>{t("noResults")}</EmptyState>}
       {visible.map((g) => (
         <section key={g.pattern} className="flex flex-col gap-2">
-          <h2 className="px-1 text-xs uppercase tracking-wide text-muted">{g.label}</h2>
+          <h2 className="px-1 text-xs tracking-wide text-muted">{g.label}</h2>
           <Card className="overflow-hidden">
             <ul className="flex flex-col divide-y">
               {g.movements.map((m) => (

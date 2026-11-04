@@ -298,7 +298,7 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
               const items = current.days.find((d) => d.day === day)?.items ?? [];
               return (
                 <div key={day} className="flex min-w-0 flex-col gap-2">
-                  <h3 className="truncate px-1 text-xs first-letter:uppercase">{dayLabel(target * 7 + day)}</h3>
+                  <h3 className="truncate px-1 text-xs">{dayLabel(target * 7 + day)}</h3>
                   {items.map((item, i) => {
                     const { block } = item;
                     const key = blockKey(week, day, i);

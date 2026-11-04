@@ -24,7 +24,7 @@ import { AthleteHeader } from "./AthleteHeader";
 import { WeekNoteButton } from "./WeekNoteButton";
 import { WeekStrip } from "./WeekStrip";
 
-// The page opens with the black AthleteHeader: the browser bar matches it in both themes.
+// The page opens with the navy AthleteHeader: the browser bar matches it in both themes.
 export const viewport: Viewport = { themeColor: "#0f172a" };
 
 type Props = { searchParams: Promise<{ program?: string; date?: string }> };
