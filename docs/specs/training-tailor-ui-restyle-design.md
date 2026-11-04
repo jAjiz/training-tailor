@@ -1,5 +1,8 @@
 # Training Tailor — UI Restyle Design (light and dark)
 
+> The look this document describes is replaced by `training-tailor-visual-identity-design.md`. Its
+> tokens-and-components architecture and its scope rules still apply unless that document says otherwise.
+>
 > Implemented on 2026-10-09 (revision 1, 2026-10-08). Restyles the screens shipped in coaching phase 1 so the app looks and
 > feels like the reference screenshots (not in the repo). Coaching phase 2
 > (results, leaderboard, PRs) starts after this and is built directly in the new style.

@@ -28,7 +28,23 @@ describe("logo artwork", () => {
   it("uses the same paths as the inline logo", () => {
     const ds = [...markup.matchAll(/\bd="([^"]+)"/g)].map((m) => m[1]);
     expect(ds).toEqual([LOGO_BACK_PATH, LOGO_FRONT_PATH]);
-    expect(markup).toContain(`viewBox="${LOGO_VIEWBOX}"`);
+  });
+
+  it("keeps the full icon box for the generated icons", () => {
+    expect(markup).toContain('viewBox="0 0 512 512"');
+  });
+
+  it("crops the inline logo to the glyph, so it has no hidden margin beside the wordmark", () => {
+    const [x, y, width, height] = LOGO_VIEWBOX.split(" ").map(Number);
+    const points = [...`${LOGO_BACK_PATH}${LOGO_FRONT_PATH}`.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    const xs = points.map((p) => p[0]);
+    const ys = points.map((p) => p[1]);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(x);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(y);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(x + width);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(y + height);
+    expect(width).toBe(height);
+    expect(width - (Math.max(...xs) - Math.min(...xs))).toBeLessThanOrEqual(6);
   });
 });
 
