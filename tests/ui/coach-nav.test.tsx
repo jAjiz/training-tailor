@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({
   default: ({ href, ...rest }: { href: string } & Record<string, unknown>) => <a href={href} {...rest} />,
 }));
 
+import { CoachNav } from "@/app/coach/CoachNav";
 import { CoachNavLinks } from "@/app/coach/CoachNavLinks";
 
 function renderAt(path: string) {
@@ -24,6 +25,13 @@ function renderAt(path: string) {
 
 const current = (container: HTMLElement) => [...container.querySelectorAll('[aria-current="page"]')].map((el) => el.textContent);
 const sections = () => screen.queryByRole("navigation", { name: en.programs.sectionsNav });
+
+describe("CoachNav", () => {
+  it("keeps the first row's spacing on phones, whether or not the tabs wrap below it", () => {
+    const { container } = render(<CoachNav user={null} approved={false} impersonating={false} />);
+    expect(container.querySelector("header > div")).toHaveClass("max-md:py-3.5");
+  });
+});
 
 describe("CoachNavLinks", () => {
   it("highlights Programs on the coach home, with no tabs", () => {
@@ -48,6 +56,7 @@ describe("CoachNavLinks", () => {
     expect(current(container)).toEqual([en.programs.planner]);
     const hrefs = within(sections() as HTMLElement).getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(hrefs).toEqual(["/coach/programs/abc", "/coach/programs/abc/athletes", "/coach/programs/abc/board", "/coach/programs/abc/settings"]);
+    expect(sections()).toHaveClass("max-md:-mb-3");
   });
 
   it("keeps the roster tab current on an athlete's page", () => {

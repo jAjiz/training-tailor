@@ -16,7 +16,7 @@ export async function NotificationBell({ audience, href, className }: { audience
     <Link href={href} title={t("bell")}
       className={cx("relative grid size-9 shrink-0 place-items-center rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2", className)}>
       <Bell size={20} aria-hidden />
-      {count > 0 && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-danger" />}
+      {count > 0 && <span aria-hidden className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-danger ring-1 ring-on-chrome" />}
       <span className="sr-only">{t("bell")}{count > 0 && ` · ${t("unread", { count })}`}</span>
     </Link>
   );

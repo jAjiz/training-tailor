@@ -12,7 +12,7 @@ type Props = { user: { name: string; image: string | null } | null; approved: bo
 export function CoachNav({ user, approved, impersonating, bell }: Props) {
   return (
     <header className="sticky top-0 z-30 bg-chrome text-on-chrome">
-      <div className="flex min-h-16 flex-wrap items-center gap-x-6 px-4 lg:px-8">
+      <div className="flex min-h-16 flex-wrap items-center gap-x-6 px-4 max-md:py-3.5 lg:px-8">
         <Link href="/coach" className="rounded-lg focus-visible:outline-2 focus-visible:outline-on-chrome"><Brand onChrome compactWordmark /></Link>
         {approved && <CoachNavLinks />}
         {user && (

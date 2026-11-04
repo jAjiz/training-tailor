@@ -28,9 +28,13 @@ describe("WeekStrip", () => {
     const { link } = dayLinks();
     const selected = link("11");
     expect(selected).toHaveAttribute("aria-current", "date");
-    expect(selected).toHaveClass("slant", "before:bg-accent");
-    for (const label of selected.querySelectorAll("span:not(:last-child)")) {
-      expect(label).toHaveClass("text-on-accent");
+    expect(selected).toHaveClass("slant", "before:bg-accent", "text-on-accent");
+  });
+
+  it("lets the selected day's labels inherit their color, so forced colors can reach them", () => {
+    const { link } = dayLinks();
+    for (const child of link("11").querySelectorAll("span")) {
+      expect(child.className).not.toMatch(/text-(on-accent|on-chrome|accent)/);
     }
   });
 
@@ -49,7 +53,7 @@ describe("WeekStrip", () => {
   it("shows a dot on days with blocks, navy on the selected day", () => {
     const { link } = dayLinks();
     expect(link("12").querySelector(".bg-on-chrome")).not.toBeNull();
-    expect(link("11").querySelector(".bg-on-accent")).not.toBeNull();
-    expect(link("09").querySelector(".bg-on-chrome, .bg-on-accent")).toBeNull();
+    expect(link("11").querySelector(".bg-current")).not.toBeNull();
+    expect(link("09").querySelector(".bg-on-chrome, .bg-current")).toBeNull();
   });
 });

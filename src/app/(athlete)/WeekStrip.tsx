@@ -29,12 +29,12 @@ export function WeekStrip({ programId, selected, today, withBlocks, locale, labe
             <li key={d}>
               <Link href={`/?program=${programId}&date=${d}`} aria-current={isSelected ? "date" : undefined}
                 className={cx("slant flex flex-col items-center py-1 [--slant-focus:var(--on-chrome)]",
-                  isSelected ? "before:bg-accent" : "before:bg-white/10", d === today ? "font-extrabold" : "font-semibold")}>
-                <span className={cx("type-display text-[11px]", isSelected ? "text-on-accent" : "text-on-chrome/70")}>
+                  isSelected ? "text-on-accent before:bg-accent" : "before:bg-white/10", d === today ? "font-extrabold" : "font-semibold")}>
+                <span className={cx("type-display text-[11px]", !isSelected && "text-on-chrome/70")}>
                   {formatDay(d, locale, { weekday: "short" }).replace(/\.$/, "")}
                 </span>
-                <span className={cx("text-lg leading-tight", isSelected ? "text-on-accent" : d === today && "text-accent")}>{Number(d.slice(8))}</span>
-                <span className={cx("mt-0.5 h-1 w-1 rounded-full", !withBlocks.has(d) ? "bg-transparent" : isSelected ? "bg-on-accent" : "bg-on-chrome")} />
+                <span className={cx("text-lg leading-tight", !isSelected && d === today && "text-accent")}>{Number(d.slice(8))}</span>
+                <span className={cx("mt-0.5 h-1 w-1 rounded-full", !withBlocks.has(d) ? "bg-transparent" : isSelected ? "bg-current" : "bg-on-chrome")} />
               </Link>
             </li>
           );
