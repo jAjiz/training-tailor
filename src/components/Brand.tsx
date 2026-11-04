@@ -1,11 +1,27 @@
-import Image from "next/image";
 import { cx } from "@/components/ui/cx";
+import { LOGO_BACK_PATH, LOGO_FRONT_PATH, LOGO_VIEWBOX } from "./logo-paths";
 
-export function Brand({ className }: { className?: string }) {
+/** The logo on no background. On navy chrome it is always white and cyan; elsewhere it follows the theme. */
+export function Logo({ onChrome = false, className }: { onChrome?: boolean; className?: string }) {
   return (
-    <span className={cx("inline-flex items-center gap-2 font-extrabold tracking-tight", className)}>
-      <Image src="/icons/icon-192.png" alt="" width={32} height={32} className="h-8 w-8 rounded-lg" />
-      Training Tailor
+    <svg viewBox={LOGO_VIEWBOX} aria-hidden className={cx("shrink-0", className ?? "size-8")}>
+      <path d={LOGO_BACK_PATH} className={onChrome ? "fill-accent" : "fill-logo-back"} />
+      <path d={LOGO_FRONT_PATH} className={onChrome ? "fill-on-chrome" : "fill-logo-front"} />
+    </svg>
+  );
+}
+
+export function Brand({ className, onChrome = false, size = "md", compactWordmark = false }: {
+  className?: string;
+  onChrome?: boolean;
+  size?: "md" | "lg";
+  /** Keeps only the logo on narrow screens; the name stays for screen readers. */
+  compactWordmark?: boolean;
+}) {
+  return (
+    <span className={cx("inline-flex items-center gap-2", className)}>
+      <Logo onChrome={onChrome} className={size === "lg" ? "size-14" : "size-8"} />
+      <span className={cx("type-display", compactWordmark && "max-sm:sr-only")}>Training Tailor</span>
     </span>
   );
 }
