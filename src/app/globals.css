@@ -1,43 +1,50 @@
 @import "tailwindcss";
 
 /* Semantic tokens. Light values here; dark values in the media query that closes this file.
-   The theme follows the operating system only (docs/specs/training-tailor-ui-restyle-design.md). */
+   The theme follows the operating system only. Values and shape rules come from
+   docs/specs/training-tailor-visual-identity-design.md. */
 :root {
   color-scheme: light dark;
-  --background: #f5f5f5;
+  --background: #eef2f7;
   --surface: #ffffff;
-  --surface-2: #f0f0f0;
+  --surface-2: #e6ecf3;
   --raised: #ffffff;
-  --border: #e5e5e5;
-  --foreground: #111111;
-  --muted: #666666;
-  --primary: #111111;
+  --border: #dbe3ec;
+  --foreground: #0f172a;
+  --muted: #526077;
+  --primary: #0f172a;
   --on-primary: #ffffff;
-  --chrome: #000000;
+  --chrome: #0f172a;
   --on-chrome: #ffffff;
-  --danger: #dc2626;
-  --success: #15803d;
+  --danger: #b91c1c;
+  --success: #166534;
+  --accent: #22d3ee;
+  --on-accent: #0f172a;
+  --accent-ink: #0e7490;
+  --accent-tint: rgba(34, 211, 238, 0.18);
+  --logo-front: #0f172a;
+  --logo-back: #0891b2;
 
-  /* Block colors: stripe (athlete card), fill (planner block, tinted buttons), ink (text on a fill). */
-  --color-block-neutral-stripe: #d4d4d4;
-  --color-block-neutral-fill: #f0f0f0;
-  --color-block-neutral-ink: #404040;
-  --color-block-red-stripe: #fca5a5;
+  /* Block colors: stripe (athlete card), fill (planner block), ink (text on a fill). */
+  --color-block-neutral-stripe: #94a3b8;
+  --color-block-neutral-fill: #e6ecf3;
+  --color-block-neutral-ink: #334155;
+  --color-block-red-stripe: #f87171;
   --color-block-red-fill: #fee2e2;
   --color-block-red-ink: #b91c1c;
-  --color-block-orange-stripe: #fdba74;
+  --color-block-orange-stripe: #fb923c;
   --color-block-orange-fill: #ffedd5;
   --color-block-orange-ink: #c2410c;
-  --color-block-yellow-stripe: #fde047;
+  --color-block-yellow-stripe: #facc15;
   --color-block-yellow-fill: #fef9c3;
   --color-block-yellow-ink: #a16207;
-  --color-block-green-stripe: #86efac;
+  --color-block-green-stripe: #4ade80;
   --color-block-green-fill: #dcfce7;
   --color-block-green-ink: #15803d;
-  --color-block-blue-stripe: #93c5fd;
+  --color-block-blue-stripe: #60a5fa;
   --color-block-blue-fill: #dbeafe;
   --color-block-blue-ink: #1d4ed8;
-  --color-block-purple-stripe: #d8b4fe;
+  --color-block-purple-stripe: #c084fc;
   --color-block-purple-fill: #f3e8ff;
   --color-block-purple-ink: #7e22ce;
 }
@@ -56,7 +63,21 @@
   --color-on-chrome: var(--on-chrome);
   --color-danger: var(--danger);
   --color-success: var(--success);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-logo-front: var(--logo-front);
+  --color-logo-back: var(--logo-back);
+  --font-sans: var(--font-saira), ui-sans-serif, system-ui, sans-serif;
+
+  /* Sharper than Tailwind's scale, to go with Saira. Remapped here so every rounded-* class takes
+     the new shape: cards and modals 6px, inputs and straight buttons 4px, small labels 3px. */
+  --radius-2xl: 6px;
+  --radius-xl: 4px;
+  --radius-lg: 4px;
+  --radius-md: 3px;
+  --radius-sm: 3px;
 }
 
 @layer base {
@@ -103,41 +124,106 @@
   --block-ink: var(--color-block-purple-ink);
 }
 
+@utility type-display {
+  font-style: italic;
+  font-weight: 700;
+  font-stretch: 75%;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+@utility type-label {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    @apply type-display;
+  }
+}
+
+/* A 12deg fill behind the element. Text and icons stay upright, because only the pseudo-element is
+   skewed. Set the fill with before:bg-* and the focus ring color with [--slant-focus:...].
+   Forced colors drop backgrounds, so the shape gets a border and the current item a system fill. */
+@utility slant {
+  position: relative;
+  isolation: isolate;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    transform: skewX(-12deg);
+    border-radius: 3px;
+  }
+  &:focus-visible {
+    outline: none;
+  }
+  &:focus-visible::before {
+    outline: 2px solid var(--slant-focus, var(--foreground));
+    outline-offset: 2px;
+  }
+  @media (forced-colors: active) {
+    &::before {
+      border: 1px solid ButtonText;
+    }
+    &[aria-current] {
+      forced-color-adjust: none;
+      color: HighlightText;
+    }
+    &[aria-current]::before {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+  }
+}
+
 /* Keep this block last: tests/ui/tokens.test.ts reads everything after it as the dark theme. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #111111;
-    --surface: #1e1e1e;
-    --surface-2: #2c2c2c;
-    --raised: #555555;
-    --border: #2e2e2e;
-    --foreground: #f5f5f5;
-    --muted: #a3a3a3;
-    --primary: #f5f5f5;
-    --on-primary: #111111;
+    --background: #0b1220;
+    --surface: #131c2e;
+    --surface-2: #1c2840;
+    --raised: #2a3a58;
+    --border: #24324b;
+    --foreground: #f1f5f9;
+    --muted: #94a3b8;
+    --primary: #22d3ee;
+    --on-primary: #0f172a;
     --danger: #f87171;
     --success: #4ade80;
+    --accent: #22d3ee;
+    --on-accent: #0f172a;
+    --accent-ink: #22d3ee;
+    --accent-tint: rgba(34, 211, 238, 0.14);
+    --logo-front: #ffffff;
+    --logo-back: #22d3ee;
 
-    --color-block-neutral-stripe: #525252;
-    --color-block-neutral-fill: #262626;
-    --color-block-neutral-ink: #d4d4d4;
-    --color-block-red-stripe: #dc2626;
-    --color-block-red-fill: #3b1d1d;
+    --color-block-neutral-stripe: #475569;
+    --color-block-neutral-fill: #1c2840;
+    --color-block-neutral-ink: #cbd5e1;
+    --color-block-red-stripe: #ef4444;
+    --color-block-red-fill: #3a1c28;
     --color-block-red-ink: #fca5a5;
-    --color-block-orange-stripe: #ea580c;
-    --color-block-orange-fill: #3b2414;
+    --color-block-orange-stripe: #f97316;
+    --color-block-orange-fill: #37240f;
     --color-block-orange-ink: #fdba74;
-    --color-block-yellow-stripe: #a16207;
-    --color-block-yellow-fill: #352b12;
+    --color-block-yellow-stripe: #eab308;
+    --color-block-yellow-fill: #332b14;
     --color-block-yellow-ink: #fde047;
-    --color-block-green-stripe: #16a34a;
-    --color-block-green-fill: #15301f;
+    --color-block-green-stripe: #22c55e;
+    --color-block-green-fill: #12302a;
     --color-block-green-ink: #86efac;
-    --color-block-blue-stripe: #2563eb;
-    --color-block-blue-fill: #172a46;
+    --color-block-blue-stripe: #3b82f6;
+    --color-block-blue-fill: #16294a;
     --color-block-blue-ink: #93c5fd;
-    --color-block-purple-stripe: #7e22ce;
-    --color-block-purple-fill: #2e1a40;
+    --color-block-purple-stripe: #a855f7;
+    --color-block-purple-fill: #2b1c47;
     --color-block-purple-ink: #d8b4fe;
   }
 }

@@ -15,7 +15,7 @@ import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { AthleteHeader } from "../AthleteHeader";
 
 // The page opens with the black AthleteHeader: the browser bar matches it in both themes.
-export const viewport: Viewport = { themeColor: "#000000" };
+export const viewport: Viewport = { themeColor: "#0f172a" };
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 

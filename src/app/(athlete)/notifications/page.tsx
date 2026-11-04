@@ -4,7 +4,7 @@ import { InboxView } from "@/components/notifications/InboxView";
 import { requireAthletePage } from "@/lib/accounts";
 import { markAllReadAction, openNotificationAction } from "../notification-actions";
 
-export const viewport: Viewport = { themeColor: "#000000" };
+export const viewport: Viewport = { themeColor: "#0f172a" };
 
 export default async function AthleteNotificationsPage() {
   await requireAthletePage("/notifications");
