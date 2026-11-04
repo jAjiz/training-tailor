@@ -27,7 +27,7 @@ function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number 
   return (
     <>
       {block.kind === "custom" && block.scoring && block.scoring !== "none" && (
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        <p className={cx("type-label", compact ? "text-muted" : "text-accent-ink")}>
           {t(`scoring.${block.scoring as "for_time"}`)}
           {block.timeCapSeconds ? ` · ${t("timeCap", { minutes: block.timeCapSeconds / 60 })}` : ""}
         </p>
@@ -38,7 +38,13 @@ function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number 
       {block.kind === "barbell" && (
         <div className={text}>
           {block.title && block.movement && <p className="font-semibold">{block.movement}</p>}
-          <ul className="text-foreground/80">{describeSets(block.sets ?? [], oneRm).map((line, i) => <li key={i}>{line}</li>)}</ul>
+          {compact ? (
+            <ul className="text-foreground/80">{describeSets(block.sets ?? [], oneRm).map((line, i) => <li key={i}>{line}</li>)}</ul>
+          ) : (
+            <ul className="mt-1 flex flex-wrap gap-2 px-1 text-foreground/80">
+              {describeSets(block.sets ?? [], oneRm).map((line, i) => <li key={i} className="slant px-2 py-0.5 before:bg-surface-2">{line}</li>)}
+            </ul>
+          )}
           {block.instructions && <p className="mt-1 whitespace-pre-wrap text-foreground/80">{block.instructions}</p>}
         </div>
       )}
@@ -64,7 +70,7 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, child
   if (compact) {
     return (
       <article data-color={blockColor(block.color)} className="flex min-w-0 flex-col gap-1.5 break-words rounded-xl bg-(--block-fill) p-3">
-        {heading && <h3 className="pr-8 text-sm font-bold leading-snug">{heading}</h3>}
+        {heading && <h3 className="pr-8 text-sm leading-snug">{heading}</h3>}
         <BlockBody block={block} oneRm={oneRm} compact />
         {(block.coachingTips || block.videoUrl) && (
           <p className="flex flex-wrap items-center gap-3 text-xs font-semibold text-(--block-ink)">
@@ -82,7 +88,7 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, child
       <details className="group/block">
         <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 focus-visible:outline-2 focus-visible:outline-foreground [&::-webkit-details-marker]:hidden">
           {/* A title taken from the text is cut to one line; a real title wraps. */}
-          <h3 className={cx("min-w-0 flex-1 text-lg font-bold leading-snug", !heading && "truncate")}>{collapsedTitle(block) ?? t("untitled")}</h3>
+          <h3 className={cx("min-w-0 flex-1 text-lg leading-snug", !heading && "truncate normal-case")}>{collapsedTitle(block) ?? t("untitled")}</h3>
           {summary && <span className="shrink-0 text-sm font-semibold text-(--block-ink)">{summary}</span>}
           <ChevronDown size={20} aria-hidden className="shrink-0 text-muted transition group-open/block:rotate-180" />
         </summary>
@@ -90,7 +96,7 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, child
           <BlockBody block={block} oneRm={oneRm} compact={false} />
           {block.coachingTips && (
             <details>
-              <summary className={cx(buttonClasses({ variant: "tinted", block: true }), "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
+              <summary className={cx(buttonClasses({ variant: "tinted", slanted: true, block: true }), "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
                 <MessageSquareText size={18} aria-hidden />
                 {t("coachingTips")}
               </summary>

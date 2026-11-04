@@ -9,7 +9,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   const t = await getTranslations("auth");
   return (
     <section className="flex min-h-[80vh] flex-col justify-center gap-8">
-      <Brand className="self-center text-xl" />
+      <Brand size="lg" className="self-center text-2xl" />
       <Card className="flex flex-col gap-5 p-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-bold">{t("athleteTitle")}</h1>

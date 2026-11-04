@@ -113,7 +113,7 @@ export function ClarifyStep({ questions, allowFreeText, busy, onSubmit, onCancel
       ))}
 
       <div className="flex gap-2">
-        <button type="button" className={buttonClasses({ variant: "primary", size: "sm" })} disabled={busy || !answered} onClick={submit}>
+        <button type="button" className={buttonClasses({ variant: "primary", size: "sm", slanted: true })} disabled={busy || !answered} onClick={submit}>
           Continue
         </button>
         <button type="button" className={buttonClasses({ size: "sm" })} onClick={onCancel}>Back</button>

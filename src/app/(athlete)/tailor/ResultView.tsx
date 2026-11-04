@@ -35,7 +35,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
     componentFindings(result.findings, blockIndex, c.canonical ?? c.movement)
       .filter((f) => BADGE[f.kind])
       .map((f) => (
-        <span key={f.kind} title={f.message} data-color={BADGE[f.kind]!.color} className="mr-2 rounded-full bg-(--block-fill) px-2 text-xs font-semibold text-(--block-ink)">
+        <span key={f.kind} title={f.message} data-color={BADGE[f.kind]!.color} className="mr-2 rounded-md bg-(--block-fill) px-2 text-xs font-semibold text-(--block-ink)">
           {BADGE[f.kind]!.text}
         </span>
       ));
@@ -45,7 +45,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
       {result.conditions.length + result.restrictions.length > 0 && (
         <div className="flex flex-wrap gap-2 text-xs">
           {result.conditions.map((c) => (
-            <span key={c.key} className="rounded-full bg-surface-2 px-2.5 py-1 font-medium">
+            <span key={c.key} className="rounded-md bg-surface-2 px-2.5 py-1 font-medium">
               {entry(c.key)?.label ?? c.key}{c.side ? ` (${c.side})` : ""}
               {/* Severity only grades injuries; a limitation or condition always applies in full. */}
               {entry(c.key)?.kind === "injury" ? ` · ${c.severity}` : ""}
@@ -53,7 +53,7 @@ export function ResultView({ result, catalog }: { result: PipelineResult; catalo
             </span>
           ))}
           {result.restrictions.map((r, i) => (
-            <span key={`r${i}`} title={[r.evidence, ...r.movements].join(" · ")} className="rounded-full bg-surface-2 px-2.5 py-1 font-medium">{restrictionText(r)}</span>
+            <span key={`r${i}`} title={[r.evidence, ...r.movements].join(" · ")} className="rounded-md bg-surface-2 px-2.5 py-1 font-medium">{restrictionText(r)}</span>
           ))}
         </div>
       )}

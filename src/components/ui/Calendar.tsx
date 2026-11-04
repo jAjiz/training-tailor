@@ -80,7 +80,7 @@ export function Calendar({ value, onSelect, min, allow, select = "day", autoFocu
         <IconButton label={t("prevMonth")} size="sm" disabled={!canGoBack} onClick={() => setMonth(addMonths(month, -1))}>
           <ChevronLeft size={16} aria-hidden />
         </IconButton>
-        <span aria-live="polite" className="text-sm font-bold first-letter:uppercase">
+        <span aria-live="polite" className="type-display text-sm">
           {formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}
         </span>
         <IconButton label={t("nextMonth")} size="sm" onClick={() => setMonth(addMonths(month, 1))}>

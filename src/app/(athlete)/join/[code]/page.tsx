@@ -39,7 +39,7 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
         {user && !athlete && (
           <>
             <p className="text-sm text-muted">{t("needsProfile")}</p>
-            <Button href={`/onboarding?next=${encodeURIComponent(here)}`} variant="primary" block>{t("continue")}</Button>
+            <Button href={`/onboarding?next=${encodeURIComponent(here)}`} variant="primary" block slanted>{t("continue")}</Button>
           </>
         )}
         {athlete && status === "removed" && <p role="alert" className="text-sm text-danger">{t("removed")}</p>}

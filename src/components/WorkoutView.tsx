@@ -26,7 +26,7 @@ export function WorkoutView({ heading, name, blocks, badge }: Props) {
               {words(b.format)}{b.timeDomainMinutes !== null ? ` · ~${b.timeDomainMinutes} min` : ""}
             </span>
             {b.stimulus && (
-              <span className="rounded-full bg-surface-2 px-2 text-xs font-semibold text-muted">
+              <span className="rounded-md bg-surface-2 px-2 text-xs font-semibold text-muted">
                 {words(b.stimulus.quality)}{b.stimulus.energySystem ? ` · ${b.stimulus.energySystem}` : ""}
               </span>
             )}

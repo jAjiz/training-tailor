@@ -40,12 +40,12 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <IconButton href={href(addMonths(month, -1))} label={t("prevMonth")}><ChevronLeft size={20} aria-hidden /></IconButton>
-          <h2 className="inline-block text-xl font-bold first-letter:uppercase">{formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}</h2>
+          <h2 className="text-xl">{formatDay(`${month}-01`, locale, { month: "long", year: "numeric" })}</h2>
           <IconButton href={href(addMonths(month, 1))} label={t("nextMonth")}><ChevronRight size={20} aria-hidden /></IconButton>
         </div>
         <Card className="grid grid-cols-7 gap-y-1 p-3 text-center">
           {weeks[0].map((d) => (
-            <span key={d} className="pb-1 text-xs font-semibold uppercase text-muted">{formatDay(d, locale, { weekday: "narrow" })}</span>
+            <span key={d} className="type-display pb-1 text-xs text-muted">{formatDay(d, locale, { weekday: "narrow" })}</span>
           ))}
           {weeks.flat().map((d) => (
             <Link key={d} href={`/?program=${enrollment.programId}&date=${d}`}

@@ -26,7 +26,7 @@ export function JoinButton({ code }: { code: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Button type="button" variant="primary" block onClick={join} disabled={pending}>{t("join.join")}</Button>
+      <Button type="button" variant="primary" block slanted onClick={join} disabled={pending}>{t("join.join")}</Button>
       {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
     </div>
   );

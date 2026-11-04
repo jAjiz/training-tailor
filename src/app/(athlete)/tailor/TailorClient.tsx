@@ -252,7 +252,7 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
         )}
       </section>
 
-      <button type="button" className={buttonClasses({ variant: "primary", className: "w-fit" })} disabled={busy} onClick={() => void submit()}>
+      <button type="button" className={buttonClasses({ variant: "primary", slanted: true, className: "w-fit" })} disabled={busy} onClick={() => void submit()}>
         Tailor my workout
       </button>
 
@@ -272,7 +272,7 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
               placeholder="e.g. still hurts, too easy, no rower" />
             <div className="flex flex-wrap gap-2">
               <button type="button" className={chip(false)} disabled={busy || !feedback.trim()} onClick={() => void refine()}>Refine</button>
-              <button type="button" className={buttonClasses({ variant: "primary", size: "sm" })} disabled={busy || saved} onClick={save}>
+              <button type="button" className={buttonClasses({ variant: "primary", size: "sm", slanted: true })} disabled={busy || saved} onClick={save}>
                 {saved ? "Saved" : "Save to history"}
               </button>
             </div>

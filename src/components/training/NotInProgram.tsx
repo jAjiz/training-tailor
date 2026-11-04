@@ -9,7 +9,7 @@ export async function NotInProgram() {
     <div className="pt-8">
       <EmptyState>
         <p>{t("notInProgram")}</p>
-        <div className="mt-4"><Button href="/" variant="tinted" size="sm">{t("toToday")}</Button></div>
+        <div className="mt-4"><Button href="/" variant="tinted" size="sm" slanted>{t("toToday")}</Button></div>
       </EmptyState>
     </div>
   );

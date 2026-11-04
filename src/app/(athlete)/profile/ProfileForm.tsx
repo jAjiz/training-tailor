@@ -181,7 +181,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <div className="flex items-center gap-3">
-        <button type="button" className={buttonClasses({ variant: "primary" })} onClick={save}>Save profile</button>
+        <button type="button" className={buttonClasses({ variant: "primary", slanted: true })} onClick={save}>Save profile</button>
         {status && <span className="text-sm text-muted">{status}</span>}
       </div>
     </div>

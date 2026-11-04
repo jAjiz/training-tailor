@@ -76,7 +76,7 @@ export function PrHistory({ movement, today, entries }: { movement: string; toda
           </Field>
         </div>
         {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
-        <Button type="submit" variant="primary" block disabled={pending}>{t("prs.add")}</Button>
+        <Button type="submit" variant="primary" block slanted disabled={pending}>{t("prs.add")}</Button>
       </form>
       <section className="flex flex-col gap-2">
         <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">{t("prs.history")}</h2>
