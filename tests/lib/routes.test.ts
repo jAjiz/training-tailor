@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPublicPath, programOf, programPageHref, programPageOf, safeNext, signinPathFor, withProgram } from "@/lib/routes";
+import { coachProgramIdOf, isPublicPath, programOf, programPageHref, programPageOf, safeNext, signinPathFor, withProgram } from "@/lib/routes";
 
 describe("routes", () => {
   it("leaves the sign-in pages and invitations public", () => {
@@ -53,5 +53,14 @@ describe("routes", () => {
     expect(programOf("/programs/a%20b/board", "p2")).toBe("a b");
     expect(programOf("/calendar", "p2")).toBe("p2");
     expect(programOf("/prs", null)).toBeNull();
+  });
+
+  it("finds the program a coach page belongs to", () => {
+    expect(coachProgramIdOf("/coach/programs/abc")).toBe("abc");
+    expect(coachProgramIdOf("/coach/programs/abc/athletes/x")).toBe("abc");
+    expect(coachProgramIdOf("/coach/programs/new")).toBeNull();
+    expect(coachProgramIdOf("/coach/programs")).toBeNull();
+    expect(coachProgramIdOf("/coach/blocks/x/results")).toBeNull();
+    expect(coachProgramIdOf("/coach")).toBeNull();
   });
 });

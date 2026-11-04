@@ -14,7 +14,7 @@ export default async function ProgramSettingsPage({ params }: { params: Promise<
   const locked = program.kind === "continuous" && (await publishedWeeks(prisma, program.id)).size > 0;
   return (
     <section className="flex flex-col gap-6">
-      <ProgramHeader programId={program.id} name={program.name} />
+      <ProgramHeader name={program.name} />
       <Card className="p-6">
         <ProgramSettingsForm
           programId={program.id}

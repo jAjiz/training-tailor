@@ -28,7 +28,7 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   const base = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
   return (
     <section className="flex flex-col gap-6">
-      <ProgramHeader programId={program.id} name={program.name} />
+      <ProgramHeader name={program.name} />
       <InviteLink programId={program.id} url={`${base}/join/${program.inviteCode}`} readOnly={program.archivedAt !== null}
         inviteDisabled={program.inviteDisabledAt !== null} />
       {program.kind === "closed" && !program.publishedAt && (

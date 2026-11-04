@@ -13,7 +13,7 @@ export default async function CoachBoardPage({ params }: { params: Promise<{ id:
   const fmt = new Intl.DateTimeFormat(await getLocale(), { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Madrid" });
   return (
     <section className="flex flex-col gap-6">
-      <ProgramHeader programId={program.id} name={program.name} />
+      <ProgramHeader name={program.name} />
       <BoardEditor programId={program.id} writable={writable}
         items={announcements.map((a) => ({ id: a.id, body: a.body, when: fmt.format(a.createdAt), edited: a.editedAt !== null }))} />
     </section>
