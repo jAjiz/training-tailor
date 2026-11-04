@@ -68,29 +68,19 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
   }
 }
 
-function describeError(e: unknown): string {
-  const { name, message } = (e ?? {}) as { name?: unknown; message?: unknown };
-  return typeof name === "string" && typeof message === "string" ? `${name}: ${message}` : String(e);
-}
-
-/**
- * Call from a click handler, after permission is granted.
- * `detail` says which step failed and why: phones have no console to read it from, so the screen shows it.
- */
-export async function subscribeThisDevice(): Promise<{ ok: true } | { ok: false; code: ErrorCode; detail?: string }> {
+/** Call from a click handler, after permission is granted. */
+export async function subscribeThisDevice(): Promise<{ ok: true } | { ok: false; code: ErrorCode }> {
   const key = vapidPublicKey();
   if (!key || !pushSupported()) return { ok: false, code: "push_unavailable" };
-  let step = "subscribe";
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = (await registration.pushManager.getSubscription())
       ?? (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(key) }));
     const json = subscription.toJSON();
-    if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return { ok: false, code: "push_unavailable", detail: "subscribe: incomplete subscription" };
-    step = "save";
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return { ok: false, code: "push_unavailable" };
     const saved = await savePushSubscriptionAction({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } });
-    return saved.ok ? { ok: true } : { ok: false, code: saved.code, detail: `save: ${saved.code}` };
-  } catch (e) {
-    return { ok: false, code: "push_unavailable", detail: `${step}: ${describeError(e)}` };
+    return saved.ok ? { ok: true } : saved;
+  } catch {
+    return { ok: false, code: "push_unavailable" };
   }
 }
