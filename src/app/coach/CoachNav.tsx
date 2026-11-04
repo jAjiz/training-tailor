@@ -13,7 +13,7 @@ export function CoachNav({ user, approved, impersonating, bell }: Props) {
   return (
     <header className="sticky top-0 z-30 bg-chrome text-on-chrome">
       <div className="flex min-h-16 flex-wrap items-center gap-x-6 px-4 max-md:py-3.5 lg:px-8">
-        <Link href="/coach" className="rounded-lg focus-visible:outline-2 focus-visible:outline-on-chrome"><Brand onChrome compactWordmark /></Link>
+        <Link href="/coach" className="flex rounded-lg focus-visible:outline-2 focus-visible:outline-on-chrome"><Brand onChrome compactWordmark className="whitespace-nowrap" /></Link>
         {approved && <CoachNavLinks />}
         {user && (
           <div className="ml-auto flex items-center gap-2">

@@ -56,7 +56,7 @@ describe("CoachNavLinks", () => {
     expect(current(container)).toEqual([en.programs.planner]);
     const hrefs = within(sections() as HTMLElement).getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(hrefs).toEqual(["/coach/programs/abc", "/coach/programs/abc/athletes", "/coach/programs/abc/board", "/coach/programs/abc/settings"]);
-    expect(sections()).toHaveClass("max-md:-mb-3");
+    expect(sections()).toHaveClass("max-md:-mb-5");
   });
 
   it("keeps the roster tab current on an athlete's page", () => {

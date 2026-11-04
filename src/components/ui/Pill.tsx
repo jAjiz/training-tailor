@@ -17,12 +17,12 @@ export function Pill({ tone = "neutral", className, children }: { tone?: PillTon
 
 /** Navigation pill: the active one inverted. */
 export const navPillClasses = (active: boolean): string =>
-  cx("rounded-md px-4 py-1.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-foreground",
+  cx("inline-block whitespace-nowrap rounded-md px-4 py-1.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-foreground",
     active ? "bg-primary text-on-primary" : "text-muted hover:bg-surface-2 hover:text-foreground");
 
 /** Navigation item on the navy bar: the active one is a slanted cyan label. */
 export const chromeNavClasses = (active: boolean): string =>
-  cx("slant whitespace-nowrap px-3 py-1.5 text-sm font-semibold [--slant-focus:var(--on-chrome)]",
+  cx("slant block whitespace-nowrap px-3 py-1.5 text-sm font-semibold [--slant-focus:var(--on-chrome)]",
     active ? "text-on-accent before:bg-accent" : "text-on-chrome/80 hover:text-on-chrome hover:before:bg-white/10");
 
 /** Toggle chip for multi-select options. */

@@ -33,7 +33,7 @@ export function CoachNavLinks() {
         </ul>
       </nav>
       {programId && (
-        <nav aria-label={t("programs.sectionsNav")} className="min-w-0 overflow-x-auto max-md:order-last max-md:-mb-3 max-md:w-full">
+        <nav aria-label={t("programs.sectionsNav")} className="min-w-0 overflow-x-auto max-md:order-last max-md:-mb-5 max-md:w-full">
           {/* The padding keeps the slant's overhang and the focus ring from being clipped by the scroller. */}
           <ul className="flex w-max gap-1 px-2 py-2">
             {tabs.map((tab) => (

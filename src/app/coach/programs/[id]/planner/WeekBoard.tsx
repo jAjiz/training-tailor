@@ -195,7 +195,8 @@ export function WeekBoard({ days, blocks, ctx, dayNotes }: {
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={onDragStart} onDragMove={follow} onDragOver={follow} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
       {error && <p role="alert" className="text-sm text-danger">{te(error)}</p>}
-      <div className="-mx-6 overflow-x-auto px-6 pb-2 lg:-mx-8 lg:px-8">
+      {/* relative: absolutely positioned sr-only text in the columns must stay inside this scroller, or the page itself scrolls. */}
+      <div className="relative -mx-6 overflow-x-auto px-6 pb-2 lg:-mx-8 lg:px-8">
         <div className="grid min-w-[1050px] grid-cols-7 gap-2">
           {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx} note={dayNotes[d.dayIndex] ?? null}
             receiving={activeId !== null && (board[d.dayIndex] ?? []).includes(activeId)} />)}
