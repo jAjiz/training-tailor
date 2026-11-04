@@ -20,6 +20,12 @@ export function withProgram(path: string, program: string | null): string {
   return program ? `${path}?program=${encodeURIComponent(program)}` : path;
 }
 
+/** The program a coach page belongs to; "/coach/programs/new" is not a program. */
+export function coachProgramIdOf(pathname: string): string | null {
+  const id = /^\/coach\/programs\/([^/]+)/.exec(pathname)?.[1];
+  return id && id !== "new" ? id : null;
+}
+
 /** The athlete pages that hang from one program, under its header. */
 export type ProgramPage = "today" | "calendar" | "board";
 

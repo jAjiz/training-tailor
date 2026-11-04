@@ -73,7 +73,7 @@ export function WeekTools({ ctx, kind, published, empty, publishedWeeks, filledW
       <Pill tone={published ? "success" : "neutral"}>{status}</Pill>
       {!ctx.readOnly && (
         <>
-          <Button type="button" size="sm" variant={published ? "secondary" : "primary"} onClick={toggle} disabled={blockedEmpty}>{action}</Button>
+          <Button type="button" size="sm" variant={published ? "secondary" : "primary"} slanted={!published} onClick={toggle} disabled={blockedEmpty}>{action}</Button>
           <Button type="button" size="sm" title={ti("tooltip")} onClick={() => setImporting(true)}>{ti("button")}</Button>
           <Menu label={t("weekActions")} items={[
             { label: t("weekNote"), onSelect: () => setNoting(true) },

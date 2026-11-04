@@ -2,12 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { blockColor } from "@/components/training/colors";
 import { BLOCK_COLORS } from "@/lib/training/schemas";
+import manifest from "@/app/manifest";
 
 const css = readFileSync("src/app/globals.css", "utf8");
 const darkAt = css.indexOf("@media (prefers-color-scheme: dark)");
 const light = css.slice(0, darkAt);
 const dark = css.slice(darkAt);
-const BASE = ["background", "surface", "surface-2", "raised", "border", "foreground", "muted", "primary", "on-primary", "danger", "success"];
+const BASE = ["background", "surface", "surface-2", "raised", "border", "foreground", "muted", "primary", "on-primary", "danger", "success", "accent", "on-accent", "accent-ink", "accent-tint", "logo-front", "logo-back"];
 
 describe("theme tokens", () => {
   it("has a dark theme block at the end of the file", () => {
@@ -41,5 +42,40 @@ describe("blockColor", () => {
   it("keeps known colors and falls back to neutral", () => {
     expect(blockColor("blue")).toBe("blue");
     expect(blockColor("magenta")).toBe("neutral");
+  });
+});
+
+describe("identity", () => {
+  const slant = css.slice(css.indexOf("@utility slant"), darkAt);
+  const layout = readFileSync("src/app/layout.tsx", "utf8");
+
+  it("defines the slant and type utilities", () => {
+    for (const name of ["slant", "type-display", "type-label"]) {
+      expect(css, name).toContain(`@utility ${name}`);
+    }
+  });
+
+  it("skews only the pseudo-element, so text and icons stay upright", () => {
+    expect(slant).toContain("skewX(-12deg)");
+    expect(slant.match(/transform/g)).toHaveLength(1);
+    expect(slant.slice(slant.indexOf("&::before"), slant.indexOf("}"))).toContain("transform");
+  });
+
+  it("keeps slanted shapes and the current item visible in forced colors", () => {
+    expect(slant).toContain("forced-colors");
+    expect(slant).toContain("&[aria-current]::before");
+    expect(slant).toContain("Highlight");
+  });
+
+  it("loads Saira with its italic and width axis, preloading only basic Latin", () => {
+    for (const piece of ["Saira", 'subsets: ["latin"]', 'axes: ["wdth"]', '"italic"']) {
+      expect(layout, piece).toContain(piece);
+    }
+    expect(layout).not.toMatch(/\bInter\b/);
+  });
+
+  it("paints the installed app's browser chrome navy", () => {
+    expect(manifest().theme_color).toBe("#0f172a");
+    expect(manifest().background_color).toBe("#0f172a");
   });
 });

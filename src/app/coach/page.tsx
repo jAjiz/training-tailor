@@ -16,7 +16,7 @@ export default async function CoachHome() {
   return (
     <section className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <h1 className="text-3xl">{t("title")}</h1>
         <Button href="/coach/programs/new" variant="primary"><Plus size={18} aria-hidden />{t("new")}</Button>
       </div>
       {programs.length === 0 && <EmptyState>{t("empty")}</EmptyState>}
@@ -26,7 +26,7 @@ export default async function CoachHome() {
             <Link href={`/coach/programs/${p.id}`}
               className={cx("flex h-full flex-col gap-3 rounded-2xl border bg-surface p-5 transition hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-foreground",
                 p.archivedAt && "opacity-60")}>
-              <span className="text-lg font-bold">{p.name}</span>
+              <span className="type-display text-lg">{p.name}</span>
               <span className="flex flex-wrap items-center gap-2">
                 <Pill>{t(`kinds.${p.kind as "continuous" | "closed"}`)}</Pill>
                 {p.archivedAt && <Pill>{t("archived")}</Pill>}

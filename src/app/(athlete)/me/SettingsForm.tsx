@@ -40,7 +40,7 @@ export function SettingsForm({ initial, timeZones }: { initial: Settings; timeZo
         <Segmented label={t("me.language")} value={form.locale} onChange={(locale) => setForm({ ...form, locale })}
           options={[{ value: "es", label: t("me.languages.es") }, { value: "en", label: t("me.languages.en") }]} />
       </Field>
-      <Button type="submit" variant="primary" block disabled={state === "saving"}>
+      <Button type="submit" variant="primary" block slanted disabled={state === "saving"}>
         {state === "saving" ? t("common.saving") : t("common.save")}
       </Button>
       {state === "saved" && <p role="status" className="text-center text-sm text-success">{t("me.saved")}</p>}

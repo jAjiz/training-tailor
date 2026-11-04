@@ -16,6 +16,8 @@ type Props = {
   /** A smaller trigger, for controls laid over content (planner tiles). */
   compact?: boolean;
   align?: "start" | "end";
+  /** The trigger's tone; the popup keeps surface colors. */
+  tone?: "default" | "chrome";
   className?: string;
 };
 
@@ -23,7 +25,7 @@ type Props = {
  * Icon trigger plus a popup list of actions; Esc, an outside pointer down, focus leaving, a scroll or a choice
  * closes it. The popup is portaled with fixed positioning so scroll containers (the planner board) cannot clip it.
  */
-export function Menu({ label, items, icon, compact = false, align = "end", className }: Props) {
+export function Menu({ label, items, icon, compact = false, align = "end", tone = "default", className }: Props) {
   const [open, setOpen] = useState(false);
   const [style, setStyle] = useState<React.CSSProperties>({ position: "fixed", visibility: "hidden" });
   const root = useRef<HTMLDivElement>(null);
@@ -87,7 +89,7 @@ export function Menu({ label, items, icon, compact = false, align = "end", class
       onBlur={open ? (e) => { if (!inside(e.relatedTarget)) setOpen(false); } : undefined}>
       <IconButton ref={trigger} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
         // While open, pressing the trigger must not blur the focused item first (that would close, then reopen).
-        onMouseDown={open ? (e) => e.preventDefault() : undefined} onClick={toggle} size={compact ? "sm" : "md"}>
+        onMouseDown={open ? (e) => e.preventDefault() : undefined} onClick={toggle} size={compact ? "sm" : "md"} tone={tone}>
         {icon ?? <ChevronDown size={compact ? 14 : 18} aria-hidden />}
       </IconButton>
       {open && createPortal(

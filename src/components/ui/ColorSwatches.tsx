@@ -33,7 +33,7 @@ export function ColorSwatches({ colors, value, onChange, label, colorLabel }: Pr
           aria-label={colorLabel(c)} title={colorLabel(c)} tabIndex={i === selected ? 0 : -1} data-color={c}
           onClick={() => onChange(c)} onKeyDown={(e) => onKeyDown(e, i)}
           className={cx(
-            "h-8 w-8 rounded-full border-2 border-(--block-stripe) bg-(--block-fill) transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
+            "h-8 w-8 rounded-md border-2 border-(--block-stripe) bg-(--block-fill) transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
             c === value && "ring-2 ring-foreground ring-offset-2 ring-offset-surface",
           )} />
       ))}

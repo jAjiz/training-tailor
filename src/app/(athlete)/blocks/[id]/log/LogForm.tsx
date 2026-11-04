@@ -90,7 +90,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
 
   const header = (
     <div className="flex flex-col gap-1">
-      <h1 className="text-3xl font-bold">{title}</h1>
+      <h1 className="text-3xl">{title}</h1>
       <p className="text-[15px] text-muted">{subtitle}</p>
     </div>
   );
@@ -104,7 +104,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
           ? t("log.singlePromptFirst", { movement: prompt.movement, to: prompt.to })
           : t("log.singlePrompt", { movement: prompt.movement, from: prompt.from, to: prompt.to })}</p>
         <div className="flex gap-3">
-          <Button type="button" variant="primary" onClick={acceptPrompt} disabled={pending}>{t("log.yes")}</Button>
+          <Button type="button" variant="primary" slanted onClick={acceptPrompt} disabled={pending}>{t("log.yes")}</Button>
           <Button type="button" variant="ghost" onClick={done} disabled={pending}>{t("log.no")}</Button>
         </div>
         {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
@@ -183,7 +183,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
         <Textarea rows={4} maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
       {error && <p role="alert" className="text-sm text-danger">{error === "number" ? t("log.invalidNumber") : t(`errors.${error}`)}</p>}
-      <Button type="submit" variant="primary" block disabled={pending}>{t("log.save")}</Button>
+      <Button type="submit" variant="primary" block slanted disabled={pending}>{t("log.save")}</Button>
       {hasResult && <Button type="button" variant="danger" block onClick={remove} disabled={pending}>{t("log.delete")}</Button>}
       {dialog}
     </form>

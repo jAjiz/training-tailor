@@ -68,7 +68,7 @@ export function Modal({ title, closeLabel, onClose, children, footer, size = "lg
         size === "xl" ? "max-w-5xl" : size === "lg" ? "max-w-2xl" : size === "md" ? "max-w-md" : "max-w-sm",
       )}>
       <header className="flex items-center justify-between gap-4 px-6 pb-2 pt-5">
-        <h2 id={titleId} className="text-lg font-bold">{title}</h2>
+        <h2 id={titleId} className="text-lg">{title}</h2>
         <IconButton label={closeLabel} onClick={dismiss} disabled={busy}><X size={18} aria-hidden /></IconButton>
       </header>
       <div className="flex-1 overflow-y-auto px-6 pb-5 pt-2">{children}</div>

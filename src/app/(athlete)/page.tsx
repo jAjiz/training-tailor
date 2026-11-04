@@ -24,8 +24,8 @@ import { AthleteHeader } from "./AthleteHeader";
 import { WeekNoteButton } from "./WeekNoteButton";
 import { WeekStrip } from "./WeekStrip";
 
-// The page opens with the black AthleteHeader: the browser bar matches it in both themes.
-export const viewport: Viewport = { themeColor: "#000000" };
+// The page opens with the navy AthleteHeader: the browser bar matches it in both themes.
+export const viewport: Viewport = { themeColor: "#0f172a" };
 
 type Props = { searchParams: Promise<{ program?: string; date?: string }> };
 
@@ -86,7 +86,7 @@ export default async function TodayPage({ searchParams }: Props) {
         )}
         {day.note && (
           <div data-color="neutral" className="rounded-xl bg-(--block-fill) px-4 py-3 text-(--block-ink)">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-70">{t("dayGoal")}</p>
+            <p className="type-label mb-1 opacity-70">{t("dayGoal")}</p>
             <AnnouncementText body={day.note} />
           </div>
         )}
@@ -106,12 +106,12 @@ export default async function TodayPage({ searchParams }: Props) {
               {(scored && day.loggable) || board ? (
                 <div className="flex gap-2">
                   {scored && day.loggable && (
-                    <Button href={`/blocks/${b.id}/log`} variant="tinted" size="sm" block>
+                    <Button href={`/blocks/${b.id}/log`} variant="tinted" size="sm" block slanted>
                       {mine ? t("editResult") : t("logResult")}
                     </Button>
                   )}
                   {board && (
-                    <Button href={`/blocks/${b.id}/leaderboard`} variant="tinted" size="sm" block>
+                    <Button href={`/blocks/${b.id}/leaderboard`} variant="tinted" size="sm" block slanted>
                       {t("scores", { count: dayResults.counts.get(b.id) ?? 0 })}
                     </Button>
                   )}

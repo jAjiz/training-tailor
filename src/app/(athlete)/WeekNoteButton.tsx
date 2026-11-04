@@ -13,7 +13,7 @@ export function WeekNoteButton({ note, title }: { note: string; title: string })
   return (
     <>
       <button type="button" onClick={() => setOpen(true)}
-        className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-on-chrome">
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 sm:px-3 text-sm font-medium hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-on-chrome">
         <Info size={18} aria-hidden />
         {t("today.week")}
       </button>

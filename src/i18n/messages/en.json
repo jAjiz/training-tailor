@@ -103,6 +103,7 @@
     "body": "Your account is disabled."
   },
   "programs": {
+    "sectionsNav": "Program sections",
     "title": "My programs",
     "new": "New program",
     "empty": "You have no programs yet.",

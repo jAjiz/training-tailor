@@ -34,7 +34,7 @@ export default async function AdminCoachPage({ params }: { params: Promise<{ id:
           </p>
         )}
       </Card>
-      <h2 className="text-lg font-bold">{t("coach.programsTitle")}</h2>
+      <h2 className="text-lg">{t("coach.programsTitle")}</h2>
       {coach.programs.length === 0 ? <EmptyState>{t("coach.noPrograms")}</EmptyState> : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">

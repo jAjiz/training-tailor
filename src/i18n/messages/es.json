@@ -103,6 +103,7 @@
     "body": "Tu cuenta está deshabilitada."
   },
   "programs": {
+    "sectionsNav": "Secciones del programa",
     "title": "Mis programas",
     "new": "Nuevo programa",
     "empty": "Todavía no tienes programas.",

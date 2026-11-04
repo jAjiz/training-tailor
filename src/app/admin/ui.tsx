@@ -24,7 +24,7 @@ export function PageHeader({ title, back, children }: { title: string; back?: { 
         </Link>
       )}
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <h1 className="text-2xl tracking-tight">{title}</h1>
         {children}
       </div>
     </header>
@@ -34,7 +34,7 @@ export function PageHeader({ title, back, children }: { title: string; back?: { 
 /** Colored status tag: data-color picks the block palette, so it reads in both themes. */
 export function Tag({ color, children }: { color: "yellow" | "green" | "red" | "neutral" | "blue"; children: React.ReactNode }) {
   return (
-    <span data-color={color} className="inline-flex items-center whitespace-nowrap rounded-full bg-(--block-fill) px-2.5 py-0.5 text-xs font-semibold text-(--block-ink)">
+    <span data-color={color} className="inline-flex items-center whitespace-nowrap rounded-md bg-(--block-fill) px-2.5 py-0.5 text-xs font-semibold text-(--block-ink)">
       {children}
     </span>
   );

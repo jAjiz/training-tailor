@@ -59,7 +59,7 @@ export function ClarifyStep({ questions, allowFreeText, busy, onSubmit, onCancel
 
   return (
     <section data-color="yellow" className="flex flex-col gap-3 rounded-xl bg-(--block-fill) p-3" aria-labelledby="clarify-heading">
-      <h2 id="clarify-heading" className="font-semibold">One question before we tailor</h2>
+      <h2 id="clarify-heading">One question before we tailor</h2>
 
       {questions.map((q, i) => q.kind === "site" ? (
         <fieldset key={i} className="flex flex-col gap-2 rounded-xl border bg-surface p-2 text-sm shadow-lg">
@@ -113,7 +113,7 @@ export function ClarifyStep({ questions, allowFreeText, busy, onSubmit, onCancel
       ))}
 
       <div className="flex gap-2">
-        <button type="button" className={buttonClasses({ variant: "primary", size: "sm" })} disabled={busy || !answered} onClick={submit}>
+        <button type="button" className={buttonClasses({ variant: "primary", size: "sm", slanted: true })} disabled={busy || !answered} onClick={submit}>
           Continue
         </button>
         <button type="button" className={buttonClasses({ size: "sm" })} onClick={onCancel}>Back</button>

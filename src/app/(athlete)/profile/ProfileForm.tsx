@@ -61,7 +61,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       <datalist id="movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">About you</h2>
+        <h2>About you</h2>
         <div className="flex flex-wrap gap-3">
           <label className="flex items-center gap-2 text-sm">Loads
             <select className={field} value={p.sex ?? ""} onChange={(e) => setP({ ...p, sex: e.target.value === "" ? null : Sex.parse(e.target.value) })}>
@@ -79,7 +79,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Injuries and limitations</h2>
+        <h2>Injuries and limitations</h2>
         {p.injuries.map((inj, i) => (
           <div key={inj.key} className="flex flex-wrap items-center gap-2 rounded-xl border bg-surface p-2">
             <span className="font-medium">{conditionLabel(inj.key)}</span>
@@ -115,7 +115,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Equipment</h2>
+        <h2>Equipment</h2>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={p.equipment === null} onChange={(e) => setP({ ...p, equipment: e.target.checked ? null : [] })} />
           I train in a fully equipped box
@@ -131,7 +131,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Benchmarks</h2>
+        <h2>Benchmarks</h2>
         {p.benchmarks.map((b, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
             <input className={field} list="movement-names" placeholder="movement" value={b.movement} onChange={(e) => setBenchmark(i, { movement: e.target.value })} />
@@ -151,7 +151,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Goals</h2>
+        <h2>Goals</h2>
         {p.goals.map((g, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
             <input className={`${field} grow`} placeholder="e.g. first strict muscle-up" value={g.description} onChange={(e) => setGoal(i, { description: e.target.value })} />
@@ -163,7 +163,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Availability</h2>
+        <h2>Availability</h2>
         <div className="flex flex-wrap gap-3 text-sm">
           <label className="flex items-center gap-2">Minutes per day
             <input className={`${field} w-20`} type="number" min={1} value={p.availability.minutesPerDay ?? ""} onChange={(e) => setP({ ...p, availability: { ...p.availability, minutesPerDay: intOrNull(e.target.value) } })} />
@@ -181,7 +181,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       </section>
 
       <div className="flex items-center gap-3">
-        <button type="button" className={buttonClasses({ variant: "primary" })} onClick={save}>Save profile</button>
+        <button type="button" className={buttonClasses({ variant: "primary", slanted: true })} onClick={save}>Save profile</button>
         {status && <span className="text-sm text-muted">{status}</span>}
       </div>
     </div>

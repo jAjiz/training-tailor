@@ -26,7 +26,7 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
     <section className="flex min-h-[70vh] flex-col justify-center">
       <Card className="flex flex-col gap-4 p-6">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold">{program.name}</h1>
+          <h1 className="text-2xl">{program.name}</h1>
           <p className="text-sm text-muted">{t("by", { coach: program.coachName })}</p>
         </div>
         {program.description && <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground/80">{program.description}</p>}
@@ -39,7 +39,7 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
         {user && !athlete && (
           <>
             <p className="text-sm text-muted">{t("needsProfile")}</p>
-            <Button href={`/onboarding?next=${encodeURIComponent(here)}`} variant="primary" block>{t("continue")}</Button>
+            <Button href={`/onboarding?next=${encodeURIComponent(here)}`} variant="primary" block slanted>{t("continue")}</Button>
           </>
         )}
         {athlete && status === "removed" && <p role="alert" className="text-sm text-danger">{t("removed")}</p>}

@@ -40,6 +40,11 @@ describe("Segmented", () => {
 });
 
 describe("ColorSwatches", () => {
+  it("uses the squared shape, not the old round one", () => {
+    render(<ColorSwatches {...props} value="neutral" onChange={() => {}} />);
+    expect(screen.getByRole("radio", { checked: true })).toHaveClass("rounded-md");
+  });
+
   const props = { colors: ["neutral", "red", "blue"], label: "Color", colorLabel: (c: string) => c.toUpperCase() };
 
   it("selects a color by click and by arrow key", () => {

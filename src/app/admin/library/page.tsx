@@ -25,7 +25,7 @@ export default async function AdminLibraryPage() {
       {needsExport && <p role="status" className="rounded-xl bg-surface-2 p-4 text-sm">{t("exportReminder")}</p>}
 
       <Card className="flex flex-col gap-3 p-5">
-        <h2 className="text-lg font-semibold">{t("live")}</h2>
+        <h2 className="text-lg">{t("live")}</h2>
         {live ? (
           <>
             <p className="font-medium">{t("version", { number: live.number })}</p>
@@ -37,7 +37,7 @@ export default async function AdminLibraryPage() {
       </Card>
 
       <Card className="flex flex-col gap-4 p-5">
-        <h2 className="text-lg font-semibold">{t("draft")}</h2>
+        <h2 className="text-lg">{t("draft")}</h2>
         {draft && draftSummary ? (
           <>
             <div className="flex flex-col gap-1">
@@ -45,7 +45,7 @@ export default async function AdminLibraryPage() {
               <p className="text-sm text-muted">{draft.basedOnNumber === null ? t("basedOnNone") : t("basedOn", { number: draft.basedOnNumber })}</p>
               <p className="text-sm text-muted">{t("lastEdit", { date: formatDate(draftSummary.createdAt, locale) })}</p>
             </div>
-            <h3 className="text-base font-semibold">{t("publishTitle")}</h3>
+            <h3 className="text-base">{t("publishTitle")}</h3>
             <PublishForm key={draft.revision} revision={draft.revision} />
             <div><DiscardButton /></div>
           </>
@@ -53,7 +53,7 @@ export default async function AdminLibraryPage() {
       </Card>
 
       <Card className="flex flex-col gap-3 p-5">
-        <h2 className="text-lg font-semibold">{t("importTitle")}</h2>
+        <h2 className="text-lg">{t("importTitle")}</h2>
         <ImportForm />
       </Card>
     </section>

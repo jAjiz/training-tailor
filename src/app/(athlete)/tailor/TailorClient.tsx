@@ -219,13 +219,13 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
       <datalist id="movement-names">{movementNames.map((n) => <option key={n} value={n} />)}</datalist>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Workout</h2>
+        <h2>Workout</h2>
         <textarea className={`${field} min-h-48`} value={rawText} onChange={(e) => setRawText(e.target.value)}
           placeholder={"Paste today's session exactly as programmed.\nMissed days? Paste all of them."} />
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Today</h2>
+        <h2>Today</h2>
         <textarea className={`${field} min-h-20`} value={situation} onChange={(e) => setSituation(e.target.value)}
           placeholder="How are you? Pain, fatigue, missing equipment… in your own words (optional)" />
         <div className="flex flex-wrap gap-3 text-sm">
@@ -252,7 +252,7 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
         )}
       </section>
 
-      <button type="button" className={buttonClasses({ variant: "primary", className: "w-fit" })} disabled={busy} onClick={() => void submit()}>
+      <button type="button" className={buttonClasses({ variant: "primary", slanted: true, className: "w-fit" })} disabled={busy} onClick={() => void submit()}>
         Tailor my workout
       </button>
 
@@ -267,12 +267,12 @@ export function TailorClient({ movementNames, equipmentOptions, catalog }: Props
         <>
           <ResultView result={result} catalog={catalog} />
           <section className="flex flex-col gap-2">
-            <h2 className="font-semibold">Not quite right?</h2>
+            <h2>Not quite right?</h2>
             <textarea className={`${field} min-h-16`} value={feedback} onChange={(e) => setFeedback(e.target.value)}
               placeholder="e.g. still hurts, too easy, no rower" />
             <div className="flex flex-wrap gap-2">
               <button type="button" className={chip(false)} disabled={busy || !feedback.trim()} onClick={() => void refine()}>Refine</button>
-              <button type="button" className={buttonClasses({ variant: "primary", size: "sm" })} disabled={busy || saved} onClick={save}>
+              <button type="button" className={buttonClasses({ variant: "primary", size: "sm", slanted: true })} disabled={busy || saved} onClick={save}>
                 {saved ? "Saved" : "Save to history"}
               </button>
             </div>

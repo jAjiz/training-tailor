@@ -83,8 +83,8 @@ function DayColumn({ day, ids, byId, ctx, receiving, note }: {
   return (
     <div ref={setNodeRef} className={cx("flex min-h-40 min-w-0 flex-col gap-2 rounded-2xl p-1.5 transition-colors", receiving && "bg-surface-2")}>
       <div className="flex min-h-9 items-center gap-2 pl-1.5">
-        <h2 className="inline-block truncate text-sm font-bold first-letter:uppercase">{day.label}</h2>
-        <span className="rounded-full bg-surface-2 px-2 text-xs font-semibold text-muted">
+        <h2 className="truncate text-sm">{day.label}</h2>
+        <span className="rounded-md bg-surface-2 px-2 text-xs font-semibold text-muted">
           <span aria-hidden>{ids.length}</span>
           <span className="sr-only">{t("blockCount", { count: ids.length })}</span>
         </span>
@@ -195,7 +195,8 @@ export function WeekBoard({ days, blocks, ctx, dayNotes }: {
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={onDragStart} onDragMove={follow} onDragOver={follow} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
       {error && <p role="alert" className="text-sm text-danger">{te(error)}</p>}
-      <div className="-mx-6 overflow-x-auto px-6 pb-2 lg:-mx-8 lg:px-8">
+      {/* relative: absolutely positioned sr-only text in the columns must stay inside this scroller, or the page itself scrolls. */}
+      <div className="relative -mx-6 overflow-x-auto px-6 pb-2 lg:-mx-8 lg:px-8">
         <div className="grid min-w-[1050px] grid-cols-7 gap-2">
           {days.map((d) => <DayColumn key={d.dayIndex} day={d} ids={board[d.dayIndex] ?? []} byId={byId} ctx={ctx} note={dayNotes[d.dayIndex] ?? null}
             receiving={activeId !== null && (board[d.dayIndex] ?? []).includes(activeId)} />)}

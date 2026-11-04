@@ -32,9 +32,9 @@ export default async function MovementPrPage({ params }: { params: Promise<{ mov
         <IconButton href="/prs" label={tc("back")}><ChevronLeft size={20} aria-hidden /></IconButton>
       </div>
       <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold">{movement}</h1>
+        <h1 className="text-3xl">{movement}</h1>
         <p className="text-[15px] text-muted">{t("current")}</p>
-        <p className="text-4xl font-bold tabular-nums">{current !== null ? `${current} ${t("kg")}` : "—"}</p>
+        <p className="type-display text-4xl tabular-nums">{current !== null ? `${current} ${t("kg")}` : "—"}</p>
       </div>
       <PrHistory movement={movement} today={todayIn(athlete.timezone)}
         entries={records.map((r) => ({ id: r.id, kg: r.kg, label: formatDay(fromDbDate(r.achievedOn), locale, { day: "numeric", month: "short", year: "numeric" }) }))} />

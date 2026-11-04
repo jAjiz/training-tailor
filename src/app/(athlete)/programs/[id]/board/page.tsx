@@ -14,7 +14,7 @@ import { markProgramAnnouncementsRead } from "@/lib/training/services/notificati
 import { AthleteHeader } from "../../../AthleteHeader";
 
 // The page opens with the black AthleteHeader: the browser bar matches it in both themes.
-export const viewport: Viewport = { themeColor: "#000000" };
+export const viewport: Viewport = { themeColor: "#0f172a" };
 
 export default async function AthleteBoardPage({ params }: { params: Promise<{ id: string }> }) {
   const athlete = await requireAthletePage();

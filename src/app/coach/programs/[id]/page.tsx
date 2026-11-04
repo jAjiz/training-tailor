@@ -77,7 +77,7 @@ export default async function PlannerPage({ params, searchParams }: Params) {
 
   return (
     <section className="flex flex-col gap-6">
-      <ProgramHeader programId={program.id} name={program.name} />
+      <ProgramHeader name={program.name} />
       {ctx.readOnly && <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">{t("planner.archivedNotice")}</p>}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-1">
@@ -85,7 +85,7 @@ export default async function PlannerPage({ params, searchParams }: Params) {
           <h2>
             {startDate
               ? <WeekPicker label={weekLabel} startDate={startDate} weekStart={addDays(startDate, weekIndex * 7)} />
-              : <span className="block min-w-28 px-1 text-center text-lg font-bold">{weekLabel}</span>}
+              : <span className="type-display block min-w-28 px-1 text-center text-lg">{weekLabel}</span>}
           </h2>
           <WeekArrow to={maxWeek === null || weekIndex < maxWeek ? weekIndex + 1 : null} label={t("planner.nextWeek")}><ChevronRight size={20} aria-hidden /></WeekArrow>
         </div>

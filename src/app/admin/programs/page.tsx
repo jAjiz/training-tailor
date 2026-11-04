@@ -23,7 +23,7 @@ export default async function AdminProgramsPage({ searchParams }: Props) {
         <SearchForm action="/admin/programs" search={search} placeholder={t("programs.searchPlaceholder")} />
       </PageHeader>
       {rows.length === 0 ? <EmptyState>{t("programs.empty")}</EmptyState> : (
-        <Card className="overflow-x-auto">
+        <Card className="relative overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
             <thead className={theadClasses}>
               <tr>

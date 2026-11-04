@@ -5,10 +5,19 @@ import { ImageResponse } from "next/og";
 // Renders assets/icon.svg onto the app background at every size the app ships.
 // Run with: pnpm exec tsx scripts/icons.ts
 const BACKGROUND = "#0f172a";
-const glyph = `data:image/svg+xml;base64,${readFileSync("assets/icon.svg").toString("base64")}`;
+const ARTWORK = readFileSync("assets/icon.svg", "utf8");
+// Android uses only the badge's alpha channel, so both Ts are drawn in one color with no background.
+const SILHOUETTE = ARTWORK.replace(/#22d3ee/g, "#ffffff");
+
+const dataUri = (svg: string) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+
+type RenderOptions = { glyphScale?: number; background?: string; svg?: string };
 
 // glyphScale < 1 shrinks the glyph so maskable icons keep it inside the 80% safe zone.
-async function render(size: number, glyphScale = 1): Promise<Buffer> {
+async function render(
+  size: number,
+  { glyphScale = 1, background, svg = ARTWORK }: RenderOptions,
+): Promise<Buffer> {
   const glyphSize = Math.round(size * glyphScale);
   const image = new ImageResponse(
     createElement(
@@ -20,10 +29,10 @@ async function render(size: number, glyphScale = 1): Promise<Buffer> {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: BACKGROUND,
+          ...(background ? { background } : {}),
         },
       },
-      createElement("img", { src: glyph, width: glyphSize, height: glyphSize }),
+      createElement("img", { src: dataUri(svg), width: glyphSize, height: glyphSize }),
     ),
     { width: size, height: size },
   );
@@ -51,14 +60,16 @@ function ico(images: { size: number; png: Buffer }[]): Buffer {
 }
 
 async function main() {
-  writeFileSync("public/icons/icon-192.png", await render(192));
-  writeFileSync("public/icons/icon-512.png", await render(512));
-  writeFileSync("public/icons/maskable-512.png", await render(512, 0.72));
-  writeFileSync("src/app/apple-icon.png", await render(180, 0.86));
+  const onNavy = (glyphScale: number): RenderOptions => ({ glyphScale, background: BACKGROUND });
+  writeFileSync("public/icons/icon-192.png", await render(192, onNavy(1)));
+  writeFileSync("public/icons/icon-512.png", await render(512, onNavy(1)));
+  writeFileSync("public/icons/maskable-512.png", await render(512, onNavy(0.85)));
+  writeFileSync("public/icons/badge-96.png", await render(96, { glyphScale: 1.1, svg: SILHOUETTE }));
+  writeFileSync("src/app/apple-icon.png", await render(180, onNavy(0.86)));
   const sizes = [16, 32, 48];
   writeFileSync(
     "src/app/favicon.ico",
-    ico(await Promise.all(sizes.map(async (size) => ({ size, png: await render(size, 1.12) })))),
+    ico(await Promise.all(sizes.map(async (size) => ({ size, png: await render(size, onNavy(1.12)) })))),
   );
   console.log("Icons written.");
 }

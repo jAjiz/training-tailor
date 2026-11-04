@@ -28,14 +28,14 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   const base = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
   return (
     <section className="flex flex-col gap-6">
-      <ProgramHeader programId={program.id} name={program.name} />
+      <ProgramHeader name={program.name} />
       <InviteLink programId={program.id} url={`${base}/join/${program.inviteCode}`} readOnly={program.archivedAt !== null}
         inviteDisabled={program.inviteDisabledAt !== null} />
       {program.kind === "closed" && !program.publishedAt && (
         <p data-color="yellow" className="rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">{t("roster.notPublishedHint")}</p>
       )}
       {roster.length === 0 ? <EmptyState>{t("roster.empty")}</EmptyState> : (
-        <Card className="overflow-x-auto">
+        <Card className="relative overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold uppercase tracking-wide text-muted">
               <tr>

@@ -14,9 +14,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
       <header className="sticky top-0 z-30 border-b bg-surface">
-        <div className="flex h-16 items-center gap-8 px-6 lg:px-8">
-          <Link href="/admin" className="flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-foreground">
-            <Brand />
+        <div className="flex h-16 items-center gap-3 px-4 md:gap-8 lg:px-8">
+          <Link href="/admin" className="flex shrink-0 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-foreground">
+            <Brand compactWordmark className="whitespace-nowrap" />
             <span className="rounded-md border px-1.5 py-0.5 text-xs font-semibold text-muted">{t("badge")}</span>
           </Link>
           {admin && <AdminNavLinks />}
