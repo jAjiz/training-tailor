@@ -70,6 +70,8 @@
     "tailoring_off": "La adaptación no está activada para este programa.",
     "tailoring_not_allowed": "Pide al administrador que active la adaptación con IA en tu cuenta antes.",
     "day_passed": "Ese día ya pasó y no se puede adaptar.",
+    "block_changed": "El coach ha cambiado este bloque. Vuelve a empezar la adaptación.",
+    "invalid_state": "Ese paso no es posible ahora. Recarga e inténtalo de nuevo.",
     "note_too_long": "El texto de {target} superaría los 2000 caracteres."
   },
   "onboarding": {

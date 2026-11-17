@@ -70,6 +70,8 @@
     "tailoring_off": "Tailoring is not enabled for this program.",
     "tailoring_not_allowed": "Ask the administrator to enable AI tailoring for your account first.",
     "day_passed": "That day has passed and can no longer be adapted.",
+    "block_changed": "The coach changed this block. Start the adaptation again.",
+    "invalid_state": "That step is not possible right now. Reload and try again.",
     "note_too_long": "The text for {target} would exceed 2000 characters."
   },
   "onboarding": {
