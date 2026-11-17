@@ -94,6 +94,94 @@
       "en": "English"
     }
   },
+  "profile": {
+    "title": "Perfil de entrenamiento",
+    "intro": "Lo que el motor sabe de ti al adaptar un bloque. Tus 1RM salen de tus PRs.",
+    "back": "Volver a Perfil",
+    "link": "Perfil de entrenamiento",
+    "linkHint": "Lesiones, material, marcas y objetivos para adaptar bloques.",
+    "about": "Sobre ti",
+    "sex": "Cargas",
+    "level": "Nivel",
+    "notSet": "Sin indicar",
+    "sexes": {
+      "male": "Hombre",
+      "female": "Mujer"
+    },
+    "levels": {
+      "scaled": "Scaled",
+      "intermediate": "Intermedio",
+      "rx": "Rx",
+      "rx_plus": "Rx+"
+    },
+    "injuries": "Lesiones y limitaciones",
+    "noSide": "Sin lado",
+    "side": "Lado",
+    "severity": "Gravedad",
+    "sides": {
+      "left": "Izquierdo",
+      "right": "Derecho",
+      "both": "Ambos"
+    },
+    "severities": {
+      "mild": "Leve",
+      "moderate": "Moderada",
+      "acute": "Aguda"
+    },
+    "alwaysApplies": "Siempre se aplica",
+    "notes": "Notas",
+    "remove": "Quitar",
+    "addInjury": "Añadir una lesión o limitación…",
+    "add": "Añadir",
+    "equipment": "Material",
+    "fullBox": "Entreno en un box completo",
+    "equipmentItems": {
+      "barbell": "Barra",
+      "dumbbell": "Mancuerna",
+      "kettlebell": "Kettlebell",
+      "pullup_bar": "Barra de dominadas",
+      "rings": "Anillas",
+      "box": "Cajón",
+      "ramp": "Rampa",
+      "bench": "Banco",
+      "ghd": "GHD",
+      "band": "Banda",
+      "rope": "Cuerda de trepa",
+      "jump_rope": "Comba",
+      "rower": "Remo",
+      "ski_erg": "SkiErg",
+      "bike": "Bike erg",
+      "air_bike": "Air bike",
+      "wall_ball": "Wall ball",
+      "sandbag": "Saco de arena",
+      "d_ball": "Balón medicinal sin bote"
+    },
+    "benchmarks": "Marcas",
+    "benchmarksHint": "Repeticiones máximas y mejores tiempos. Los 1RM se leen de tus PRs.",
+    "prsLink": "Gestionar tus PRs",
+    "movement": "Movimiento",
+    "kind": "Tipo",
+    "value": "Valor",
+    "unit": "Unidad",
+    "kinds": {
+      "max_reps": "Reps máximas",
+      "time": "Tiempo"
+    },
+    "units": {
+      "kg": "kg",
+      "lb": "lb",
+      "reps": "reps",
+      "seconds": "segundos"
+    },
+    "addBenchmark": "Añadir marca",
+    "goals": "Objetivos",
+    "goalPlaceholder": "p. ej. primer muscle-up estricto",
+    "goalMovement": "Movimiento (opcional)",
+    "addGoal": "Añadir objetivo",
+    "save": "Guardar perfil",
+    "saved": "Guardado",
+    "saveFailed": "No se pudo guardar. Revisa los valores e inténtalo de nuevo."
+  },
   "coachPending": {
     "titles": {
       "pending": "Cuenta pendiente de aprobación",

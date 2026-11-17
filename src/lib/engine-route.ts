@@ -10,7 +10,7 @@ import { engineUserId } from "@/lib/engine-access";
 import { jsonError, readJsonBody } from "@/lib/http";
 import { consumeQuota, dailyLimit, type UsageKind } from "@/lib/quota";
 import { prismaQuotaStore } from "@/lib/quota-store";
-import { loadProfile } from "@/lib/tailor-service";
+import { loadEngineProfile } from "@/lib/tailor-service";
 import { TrainingError } from "@/lib/training/errors";
 import { getAthleteByUserId } from "@/lib/training/services/accounts";
 import type { AdaptContext } from "@/lib/training/services/adaptations";
@@ -69,7 +69,7 @@ export async function loadAdaptContext(userId: string): Promise<Adapting> {
   const athlete = await getAthleteByUserId(prisma, userId);
   if (!athlete) return { ok: false, response: jsonError("unauthorized", 403) };
   const [profile, domain, libraryVersion, requestLocale] = await Promise.all([
-    loadProfile(userId), getDomainData(), getPublishedLibraryVersion(), getLocale(),
+    loadEngineProfile(prisma, userId), getDomainData(), getPublishedLibraryVersion(), getLocale(),
   ]);
   const locale = isLocale(athlete.locale) ? athlete.locale : isLocale(requestLocale) ? requestLocale : DEFAULT_LOCALE;
   return { ok: true, athlete, ctx: { profile, domain, libraryVersion, locale } };

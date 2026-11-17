@@ -94,6 +94,94 @@
       "en": "English"
     }
   },
+  "profile": {
+    "title": "Training profile",
+    "intro": "What the engine knows about you when it adapts a block. Your 1RMs come from your PRs.",
+    "back": "Back to Me",
+    "link": "Training profile",
+    "linkHint": "Injuries, equipment, benchmarks and goals for block adaptation.",
+    "about": "About you",
+    "sex": "Loads",
+    "level": "Level",
+    "notSet": "Not set",
+    "sexes": {
+      "male": "Male",
+      "female": "Female"
+    },
+    "levels": {
+      "scaled": "Scaled",
+      "intermediate": "Intermediate",
+      "rx": "Rx",
+      "rx_plus": "Rx+"
+    },
+    "injuries": "Injuries and limitations",
+    "noSide": "No side",
+    "side": "Side",
+    "severity": "Severity",
+    "sides": {
+      "left": "Left",
+      "right": "Right",
+      "both": "Both"
+    },
+    "severities": {
+      "mild": "Mild",
+      "moderate": "Moderate",
+      "acute": "Acute"
+    },
+    "alwaysApplies": "Always applies",
+    "notes": "Notes",
+    "remove": "Remove",
+    "addInjury": "Add an injury or limitation…",
+    "add": "Add",
+    "equipment": "Equipment",
+    "fullBox": "I train in a fully equipped box",
+    "equipmentItems": {
+      "barbell": "Barbell",
+      "dumbbell": "Dumbbell",
+      "kettlebell": "Kettlebell",
+      "pullup_bar": "Pull-up bar",
+      "rings": "Rings",
+      "box": "Box",
+      "ramp": "Ramp",
+      "bench": "Bench",
+      "ghd": "GHD",
+      "band": "Band",
+      "rope": "Climbing rope",
+      "jump_rope": "Jump rope",
+      "rower": "Rower",
+      "ski_erg": "SkiErg",
+      "bike": "Bike erg",
+      "air_bike": "Air bike",
+      "wall_ball": "Wall ball",
+      "sandbag": "Sandbag",
+      "d_ball": "Dead ball"
+    },
+    "benchmarks": "Benchmarks",
+    "benchmarksHint": "Max reps and best times. 1RMs are read from your PRs.",
+    "prsLink": "Manage your PRs",
+    "movement": "Movement",
+    "kind": "Type",
+    "value": "Value",
+    "unit": "Unit",
+    "kinds": {
+      "max_reps": "Max reps",
+      "time": "Time"
+    },
+    "units": {
+      "kg": "kg",
+      "lb": "lb",
+      "reps": "reps",
+      "seconds": "seconds"
+    },
+    "addBenchmark": "Add benchmark",
+    "goals": "Goals",
+    "goalPlaceholder": "e.g. first strict muscle-up",
+    "goalMovement": "Movement (optional)",
+    "addGoal": "Add goal",
+    "save": "Save profile",
+    "saved": "Saved",
+    "saveFailed": "Could not save. Check the values and try again."
+  },
   "coachPending": {
     "titles": {
       "pending": "Account awaiting approval",
