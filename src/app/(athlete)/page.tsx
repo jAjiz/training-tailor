@@ -12,13 +12,16 @@ import { prisma } from "@/lib/db";
 import { getSessionContext } from "@/lib/session";
 import { formatDay, formatDayRange } from "@/lib/format";
 import { hasLeaderboard } from "@/lib/training/access";
+import { workoutHash } from "@/lib/training/block-engine";
 import { addDays, dateOfDay, isIsoDate, mondayOf, todayIn, weekIndexOf } from "@/lib/training/dates";
 import type { BarbellSet } from "@/lib/training/schemas";
 import { formatScore, scoreTarget } from "@/lib/training/scoring";
+import { listAdaptations } from "@/lib/training/services/adaptations";
 import { getAthleteDay, getAthleteWeekNote, getVisibleDays } from "@/lib/training/services/athlete-view";
 import { getEnrollmentStatus, listAthletePrograms } from "@/lib/training/services/enrollments";
 import { oneRmMap } from "@/lib/training/services/prs";
 import { getDayResults } from "@/lib/training/services/results";
+import { isAdaptableDay, tailoringOn } from "@/lib/training/services/tailoring";
 import { AnnouncementText } from "@/components/notifications/AnnouncementText";
 import { AthleteHeader } from "./AthleteHeader";
 import { WeekNoteButton } from "./WeekNoteButton";
@@ -67,10 +70,14 @@ export default async function TodayPage({ searchParams }: Props) {
       : t("weekNotesTitle", { week: week + 1 });
     if (body) weekNote = { body, title };
   }
-  const [dayResults, oneRms] = await Promise.all([
-    getDayResults(prisma, athlete.id, programId, day.blocks.map((b) => b.id)),
+  const blockIds = day.blocks.map((b) => b.id);
+  const [dayResults, oneRms, adaptations] = await Promise.all([
+    getDayResults(prisma, athlete.id, programId, blockIds),
     oneRmMap(prisma, athlete.id, movements),
+    listAdaptations(prisma, athlete.id, blockIds),
   ]);
+  // An impersonation session never runs the engine: it sees accepted adaptations but cannot adapt.
+  const adaptable = !impersonating && tailoringOn(day.program) && isAdaptableDay(date, today);
 
   return (
     <>
@@ -97,9 +104,15 @@ export default async function TodayPage({ searchParams }: Props) {
           const mine = dayResults.mine.get(b.id);
           const scored = b.kind === "barbell" || (b.scoring !== null && b.scoring !== "none");
           const board = hasLeaderboard(b, day.program);
+          const adaptation = adaptations.get(b.id);
+          const accepted = adaptation?.accepted ?? null;
           return (
             <BlockCard key={b.id} block={{ ...b, sets: b.sets as BarbellSet[] | null }} oneRm={b.movement ? oneRms.get(b.movement) ?? null : null}
-              summary={mine ? formatScore(scoreTarget(b), mine.score, locale) : null}>
+              summary={mine ? formatScore(scoreTarget(b), mine.score, locale) : null}
+              adaptation={{
+                blockId: b.id, adaptable, accepted: accepted?.tailored ?? null,
+                stale: accepted !== null && accepted.workoutHash !== workoutHash(b), messages: adaptation?.messages ?? [],
+              }}>
               {b.kind === "barbell" && b.movement && !oneRms.has(b.movement) && (b.sets as BarbellSet[] | null)?.some((s) => s.percent !== null) && (
                 <Link href={`/prs/${encodeURIComponent(b.movement)}`} className="text-xs text-muted underline">{t("addOneRm", { movement: b.movement })}</Link>
               )}

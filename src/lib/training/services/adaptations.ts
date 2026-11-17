@@ -54,6 +54,12 @@ export async function getAdaptation(db: Db, athleteId: string, blockId: string):
   return row ? parseRow(row) : null;
 }
 
+/** The athlete's adaptations of the given blocks, by block id, in one query. */
+export async function listAdaptations(db: Db, athleteId: string, blockIds: string[]): Promise<Map<string, Adaptation>> {
+  const rows = await db.blockAdaptation.findMany({ where: { athleteId, blockId: { in: blockIds } } });
+  return new Map(rows.map((row) => [row.blockId, parseRow(row)]));
+}
+
 async function save(
   db: Db, athleteId: string, blockId: string, messages: AdaptationMessage[], state: AdaptationState,
   extra: { model?: string; libraryVersion?: number } = {},
