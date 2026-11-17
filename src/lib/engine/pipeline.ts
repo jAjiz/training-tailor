@@ -102,7 +102,7 @@ interface TailorStage extends TailorOptions {
   progress: (stage: ProgressStage) => void;
 }
 
-const analyzeContext = (d: DomainData): AnalyzeContext => ({
+export const analyzeContext = (d: DomainData): AnalyzeContext => ({
   movements: d.movements, contraindications: d.contraindications, taxonomy: d.taxonomy,
 });
 
