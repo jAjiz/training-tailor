@@ -12,6 +12,9 @@ updates:
     ignore:
       # 1.16.13 breaks `next build` on the dev machine; pinned to 1.16.2.
       - dependency-name: "@swc/core"
+      # Types follow the Node runtime (engines: 24.x); bump both together by hand.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
