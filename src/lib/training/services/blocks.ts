@@ -1,5 +1,6 @@
 import { Prisma, type Block } from "@/generated/prisma/client";
 import { toJson } from "@/lib/json";
+import { activeAthleteIn } from "../access";
 import { TrainingError } from "../errors";
 import { NOTE_MAX, type BlockInputValue } from "../schemas";
 import { assertLiftMovement } from "./catalog";
@@ -55,7 +56,7 @@ export async function writableProgram(db: Db, coachId: string, programId: string
 
 const nextPosition = (db: DbOrTx, programId: string, dayIndex: number) => db.block.count({ where: { programId, dayIndex } });
 
-/** `_count.results` counts every result (scoring lock, delete warning); `visibleResultCount` skips disabled athletes (badge). */
+/** `_count.results` counts every result (scoring lock, delete warning); `visibleResultCount` only counts athletes still in the program (badge), as the results page does. */
 export async function listWeekBlocks(db: Db, programId: string, weekIndex: number) {
   const blocks = await db.block.findMany({
     where: { programId, dayIndex: { gte: weekIndex * 7, lt: weekIndex * 7 + 7 } },
@@ -64,7 +65,7 @@ export async function listWeekBlocks(db: Db, programId: string, weekIndex: numbe
   });
   const visible = await db.result.groupBy({
     by: ["blockId"],
-    where: { blockId: { in: blocks.map((b) => b.id) }, athlete: { disabledAt: null } },
+    where: { blockId: { in: blocks.map((b) => b.id) }, athlete: activeAthleteIn(programId) },
     _count: { _all: true },
   });
   const visibleByBlock = new Map(visible.map((v) => [v.blockId, v._count._all]));

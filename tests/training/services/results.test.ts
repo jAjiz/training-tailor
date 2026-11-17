@@ -166,6 +166,16 @@ describe("results", () => {
     expect((await getCoachBlockResults(tdb.prisma, coach.id, wod.id)).entries).toHaveLength(1);
     expect((await listAthleteResults(tdb.prisma, coach.id, program.id, ana.id)).results).toHaveLength(0);
   });
+
+  it("leaves results of athletes removed from the program out of the coach's block list", async () => {
+    const { coach, program, ana, ben, wod } = await setup();
+    await log(ana, wod.id, { seconds: 600 });
+    await log(ben, wod.id, { seconds: 700 });
+    await tdb.prisma.enrollment.update({
+      where: { programId_athleteId: { programId: program.id, athleteId: ana.id } }, data: { removedAt: new Date() },
+    });
+    expect((await listBlockResults(tdb.prisma, coach.id, wod.id)).results.map((r) => r.athleteId)).toEqual([ben.id]);
+  });
 });
 
 describe("fist bump notifications", () => {

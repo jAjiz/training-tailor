@@ -1,6 +1,6 @@
 import { toJson } from "@/lib/json";
 import { intent, type NotificationIntent } from "@/lib/notifications/notify";
-import { athleteTimeline, hasLeaderboard } from "../access";
+import { activeAthleteIn, athleteTimeline, hasLeaderboard } from "../access";
 import { addDays, canLogDay, dateOfDay, fromDbDate, isDayVisible, toDbDate, todayIn, type IsoDate } from "../dates";
 import { TrainingError } from "../errors";
 import { rank } from "../leaderboard";
@@ -85,7 +85,7 @@ export async function getDayResults(db: Db, athleteId: string, programId: string
     db.result.findMany({ where: { athleteId, blockId: { in: blockIds } } }),
     db.result.groupBy({
       by: ["blockId"],
-      where: { blockId: { in: blockIds }, athlete: { disabledAt: null, enrollments: { some: { programId, removedAt: null, leftAt: null } } } },
+      where: { blockId: { in: blockIds }, athlete: activeAthleteIn(programId) },
       _count: { _all: true },
     }),
   ]);
@@ -120,7 +120,7 @@ async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null,
   const results = await db.result.findMany({
     where: {
       blockId: block.id,
-      athlete: { disabledAt: null, enrollments: { some: { programId: block.programId, removedAt: null, leftAt: null } } },
+      athlete: activeAthleteIn(block.programId),
     },
     include: {
       athlete: true,
@@ -208,17 +208,17 @@ async function coachBlock(db: Db, coachId: string, blockId: string) {
 export async function getCoachBlockResults(db: Db, coachId: string, blockId: string, locale = "en") {
   const block = await coachBlock(db, coachId, blockId);
   if (hasLeaderboard(block, block.program)) return { block, entries: (await leaderboardOf(db, block, null, locale)).entries, results: null };
-  return { block, entries: null, results: await blockResultRows(db, blockId, locale) };
+  return { block, entries: null, results: await blockResultRows(db, block, locale) };
 }
 
 export async function listBlockResults(db: Db, coachId: string, blockId: string, locale = "en") {
   const block = await coachBlock(db, coachId, blockId);
-  return { block, results: await blockResultRows(db, blockId, locale) };
+  return { block, results: await blockResultRows(db, block, locale) };
 }
 
-async function blockResultRows(db: Db, blockId: string, locale: string) {
+async function blockResultRows(db: Db, block: { id: string; programId: string }, locale: string) {
   const results = await db.result.findMany({
-    where: { blockId, athlete: { disabledAt: null } }, include: { athlete: true, block: true },
+    where: { blockId: block.id, athlete: activeAthleteIn(block.programId) }, include: { athlete: true, block: true },
     orderBy: [{ performedOn: "desc" }, { createdAt: "asc" }],
   });
   return results.map(toRow(locale));
