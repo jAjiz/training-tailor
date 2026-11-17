@@ -10,7 +10,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { Field } from "@/components/ui/Field";
 import { isMonday } from "@/lib/training/dates";
 import type { ErrorCode } from "@/lib/training/errors";
-import { archiveProgramAction, updateProgramAction } from "../../../program-actions";
+import { archiveProgramAction, setProgramTailoringAction, updateProgramAction } from "../../../program-actions";
 
 type Props = {
   programId: string;
@@ -18,9 +18,11 @@ type Props = {
   initial: { name: string; description: string; startDate: string | null; weeks: number | null };
   startDateLocked: boolean;
   archived: boolean;
+  /** `available` is the coach's own switch, set by an admin. */
+  tailoring: { available: boolean; enabled: boolean };
 };
 
-export function ProgramSettingsForm({ programId, kind, initial, startDateLocked, archived }: Props) {
+export function ProgramSettingsForm({ programId, kind, initial, startDateLocked, archived, tailoring }: Props) {
   const t = useTranslations();
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
@@ -36,6 +38,13 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
     const r = await updateProgramAction({ programId, program });
     setState(r.ok ? "saved" : r.code);
     if (r.ok) router.refresh();
+  }
+
+  async function setTailoring(enabled: boolean) {
+    setState("saving");
+    const r = await setProgramTailoringAction({ programId, enabled });
+    setState(r.ok ? "saved" : r.code);
+    router.refresh();
   }
 
   async function archive() {
@@ -70,6 +79,16 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
         {state === "saved" && <p role="status" className="text-sm text-success">{t("me.saved")}</p>}
         {state !== "idle" && state !== "saving" && state !== "saved" && <p role="alert" className="text-sm text-danger">{t(`errors.${state}`)}</p>}
       </form>
+      {tailoring.available && (
+        <label className="flex cursor-pointer items-start justify-between gap-3 border-t pt-6">
+          <span className="flex flex-col gap-1">
+            <span className="text-[15px] font-semibold">{t("programs.tailoring")}</span>
+            <span className="text-sm text-muted">{t("programs.tailoringHint")}</span>
+          </span>
+          <input type="checkbox" role="switch" checked={tailoring.enabled} disabled={archived || state === "saving"}
+            onChange={(e) => void setTailoring(e.target.checked)} className="mt-1 size-5 shrink-0 accent-primary" />
+        </label>
+      )}
       {!archived && (
         <div className="border-t pt-6">
           <Button type="button" variant="danger" onClick={archive}>{t("programs.archive")}</Button>

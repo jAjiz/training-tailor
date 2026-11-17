@@ -67,6 +67,9 @@
     "import_quota": "You reached today's import limit. Try again tomorrow.",
     "import_empty": "No training blocks were found in the PDF.",
     "import_failed": "The PDF could not be read. Try again.",
+    "tailoring_off": "Tailoring is not enabled for this program.",
+    "tailoring_not_allowed": "Ask the administrator to enable AI tailoring for your account first.",
+    "day_passed": "That day has passed and can no longer be adapted.",
     "note_too_long": "The text for {target} would exceed 2000 characters."
   },
   "onboarding": {
@@ -130,7 +133,9 @@
     "board": "Board",
     "archive": "Archive program",
     "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
-    "startDateLockedHint": "The start date cannot change because some weeks are already published."
+    "startDateLockedHint": "The start date cannot change because some weeks are already published.",
+    "tailoring": "AI tailoring",
+    "tailoringHint": "Athletes see an \"Adapt\" button on each block to adjust it to their own situation. It is available because the administrator enabled it for you."
   },
   "block": {
     "untitled": "Block",
@@ -416,6 +421,15 @@
       "title": "Coaches",
       "empty": "No coach matches.",
       "programs": "Programs",
+      "tailoring": "AI tailoring",
+      "tailoringOn": "On",
+      "tailoringOff": "Off",
+      "tailoringOnTitle": "Turn on AI tailoring for {name}",
+      "tailoringOnConfirm": "Their athletes will be able to adapt blocks to their own situation, within the programs where the coach also turns it on.",
+      "tailoringOffTitle": "Turn off AI tailoring for {name}",
+      "tailoringOffConfirm": "Athletes lose the Adapt option in all their programs.",
+      "tailoringTurnOn": "Turn on",
+      "tailoringTurnOff": "Turn off",
       "all": "All",
       "filter": "Filter by status",
       "statuses": {

@@ -67,6 +67,9 @@
     "import_quota": "Has alcanzado el límite de importaciones de hoy. Inténtalo mañana.",
     "import_empty": "No se encontró ningún bloque de entrenamiento en el PDF.",
     "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo.",
+    "tailoring_off": "La adaptación no está activada para este programa.",
+    "tailoring_not_allowed": "Pide al administrador que active la adaptación con IA en tu cuenta antes.",
+    "day_passed": "Ese día ya pasó y no se puede adaptar.",
     "note_too_long": "El texto de {target} superaría los 2000 caracteres."
   },
   "onboarding": {
@@ -130,7 +133,9 @@
     "board": "Tablón",
     "archive": "Archivar programa",
     "archiveConfirm": "¿Archivar este programa? Desaparecerá para tus atletas y el enlace dejará de funcionar.",
-    "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas."
+    "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas.",
+    "tailoring": "Adaptación con IA",
+    "tailoringHint": "Tus atletas verán un botón «Adaptar» en cada bloque para ajustarlo a su situación. Está disponible porque el administrador la activó para ti."
   },
   "block": {
     "untitled": "Bloque",
@@ -416,6 +421,15 @@
       "title": "Coaches",
       "empty": "Ningún coach coincide.",
       "programs": "Programas",
+      "tailoring": "Adaptación con IA",
+      "tailoringOn": "Activada",
+      "tailoringOff": "Desactivada",
+      "tailoringOnTitle": "Activar la adaptación con IA de {name}",
+      "tailoringOnConfirm": "Sus atletas podrán adaptar los bloques a su situación, en los programas donde el coach también la active.",
+      "tailoringOffTitle": "Desactivar la adaptación con IA de {name}",
+      "tailoringOffConfirm": "Los atletas pierden la opción Adaptar en todos sus programas.",
+      "tailoringTurnOn": "Activar",
+      "tailoringTurnOff": "Desactivar",
       "all": "Todos",
       "filter": "Filtrar por estado",
       "statuses": {

@@ -14,7 +14,7 @@ import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { parse } from "@/lib/training/schemas";
 import {
   adminRegenerateInvite, changeCoachStatus, deleteAthlete, deleteCoach, previewAthleteDeletion, previewCoachDeletion,
-  setAthleteDisabled, setInviteDisabled, type AthleteDeletionPreview, type CoachDeletionPreview,
+  setAthleteDisabled, setCoachTailoring, setInviteDisabled, type AthleteDeletionPreview, type CoachDeletionPreview,
 } from "@/lib/training/services/admin";
 import { writeAudit } from "@/lib/training/services/audit";
 
@@ -29,6 +29,14 @@ export async function changeCoachStatusAction(coachId: unknown, to: unknown): Pr
   return runAction("changeCoachStatusAction", async () => {
     const admin = await requireAdmin();
     dispatch(await changeCoachStatus(prisma, admin.id, parse(Id, coachId), parse(Transition, to)));
+    revalidateAdmin();
+  });
+}
+
+export async function setCoachTailoringAction(coachId: unknown, enabled: unknown): Promise<ActionResult> {
+  return runAction("setCoachTailoringAction", async () => {
+    const admin = await requireAdmin();
+    await setCoachTailoring(prisma, admin.id, parse(Id, coachId), parse(z.boolean(), enabled));
     revalidateAdmin();
   });
 }

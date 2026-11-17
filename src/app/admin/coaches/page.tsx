@@ -7,7 +7,7 @@ import { requireAdminPage } from "@/lib/accounts";
 import { prisma } from "@/lib/db";
 import { listCoaches } from "@/lib/training/services/admin-queries";
 import { COACH_STATUSES, listHref, parseListParams } from "../params";
-import { CoachStatusTag, formatDate, PageHeader, Pagination, SearchForm, td, th, theadClasses } from "../ui";
+import { CoachStatusTag, formatDate, PageHeader, Pagination, SearchForm, Tag, td, th, theadClasses } from "../ui";
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -35,12 +35,13 @@ export default async function AdminCoachesPage({ searchParams }: Props) {
       </nav>
       {rows.length === 0 ? <EmptyState>{t("coaches.empty")}</EmptyState> : (
         <Card className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <thead className={theadClasses}>
               <tr>
                 <th scope="col" className={th}>{t("common.name")}</th>
                 <th scope="col" className={th}>{t("common.email")}</th>
                 <th scope="col" className={th}>{t("common.status")}</th>
+                <th scope="col" className={th}>{t("coaches.tailoring")}</th>
                 <th scope="col" className={`${th} text-right`}>{t("coaches.programs")}</th>
                 <th scope="col" className={th}>{t("common.signedUp")}</th>
               </tr>
@@ -53,6 +54,9 @@ export default async function AdminCoachesPage({ searchParams }: Props) {
                   </td>
                   <td className={`${td} text-muted`}>{c.email}</td>
                   <td className={td}><CoachStatusTag status={c.status} /></td>
+                  <td className={td}>
+                    <Tag color={c.tailoringEnabled ? "green" : "neutral"}>{t(c.tailoringEnabled ? "coaches.tailoringOn" : "coaches.tailoringOff")}</Tag>
+                  </td>
                   <td className={`${td} text-right tabular-nums`}>{c.programs}</td>
                   <td className={`${td} text-muted`}>{formatDate(c.createdAt, locale)}</td>
                 </tr>

@@ -11,6 +11,7 @@ import { ProgramCreateInput, ProgramUpdateInput, parse } from "@/lib/training/sc
 import {
   archiveProgram, createProgram, regenerateInvite, setProgramPublished, setWeekPublished, updateProgram,
 } from "@/lib/training/services/programs";
+import { setProgramTailoring } from "@/lib/training/services/tailoring";
 
 const Id = z.string().min(1).max(64);
 
@@ -66,5 +67,14 @@ export async function setProgramPublishedAction(raw: unknown): Promise<ActionRes
     const { programId, published } = parse(z.object({ programId: Id, published: z.boolean() }), raw);
     await setProgramPublished(prisma, coach.id, programId, published);
     revalidatePath(`/coach/programs/${programId}`);
+  });
+}
+
+export async function setProgramTailoringAction(raw: unknown): Promise<ActionResult> {
+  return runAction("setProgramTailoringAction", async () => {
+    const coach = await requireCoach();
+    const { programId, enabled } = parse(z.object({ programId: Id, enabled: z.boolean() }), raw);
+    await setProgramTailoring(prisma, coach.id, programId, enabled);
+    revalidatePath(`/coach/programs/${programId}`, "layout");
   });
 }
