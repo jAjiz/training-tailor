@@ -54,8 +54,8 @@ importers:
         specifier: 19.3.1
         version: 19.3.1(react@19.3.1)
       unpdf:
-        specifier: 1.9.1
-        version: 1.9.1
+        specifier: 2.2.0
+        version: 2.2.0
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
@@ -3938,13 +3938,16 @@ packages:
     resolution: {integrity: sha512-+fdndUTwBP86cVjihTp21hZHo7d6oj1c/47XPA3lL8mM0XHs+C4EkcjmgRsFnFk2f/UONGDy9ItBItmXsLOQHw==}
     engines: {node: '>=22.19.0'}
 
-  unpdf@1.9.1:
-    resolution: {integrity: sha512-nO1npM2kNyd4hj1fKzUVU6bvnWjDSxI97eycM/DgzI83dYyW+pNRI9NeMQVEfef8fI3Q06i9lkMeE1HxrQqKoA==}
-    engines: {node: '>=22'}
+  unpdf@2.2.0:
+    resolution: {integrity: sha512-E33ir6FPxrLuRlhLJ3KbPwcOnHozd6ITe/uhr22+Oiis6e7YQ9N/9K7hfMe1aZ9yoO6eypgI1Cc7UuYP6BkyWw==}
+    engines: {node: '>=24'}
     peerDependencies:
       '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+      pdfjs-dist: '*'
     peerDependenciesMeta:
       '@napi-rs/canvas':
+        optional: true
+      pdfjs-dist:
         optional: true
 
   unrs-resolver@1.12.2:
@@ -7929,7 +7932,7 @@ snapshots:
 
   undici@8.12.3: {}
 
-  unpdf@1.9.1: {}
+  unpdf@2.2.0: {}
 
   unrs-resolver@1.12.2:
     dependencies:
