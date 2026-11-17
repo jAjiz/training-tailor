@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FakeProvider } from "@/lib/ai/fake-provider";
-import { analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
+import { analyzeBlock, analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
 import { COUPLET_TEXT, component, coupletDraft, fixtureDomain } from "../fixtures/workouts";
 
 const domain = fixtureDomain();
@@ -114,5 +114,39 @@ describe("analyzeSituation", () => {
     });
     const s = await analyzeSituation(provider, "no puedo hacer hoist", domain);
     expect(s.restrictions[0].movements).toEqual(["Test Hoist", "Test Hang Hoist", "Test Dumbbell Hoist"]);
+  });
+});
+
+describe("analyzeBlock", () => {
+  const blockText = "Test Squat 5x3 @ 80%\nTest Row";
+  const draft = () => ({
+    name: null,
+    blocks: [{
+      ...coupletDraft().blocks[0], rawText: blockText,
+      components: [component("Test Squat", { percent1RM: 80 }), component("Test Row")],
+    }],
+  });
+
+  it("sends no situation", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    await analyzeBlock(provider, blockText, domain, null);
+    expect(provider.calls[0].prompt).not.toContain("SITUATION:");
+    expect(provider.calls[0].systemPrompt).not.toContain("SITUATION");
+    expect(provider.calls[0].prompt).toContain(blockText);
+  });
+
+  it("forces the barbell movement on percent components only", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    const { workout, analyzed } = await analyzeBlock(provider, blockText, domain, { movement: "Test Combo" });
+    expect(analyzed).toBe(true);
+    expect(workout.blocks[0].components.map((c) => c.canonical)).toEqual(["Test Combo", "Test Row"]);
+  });
+
+  it("degrades to a raw block on a model error", async () => {
+    const { workout, analyzed } = await analyzeBlock(new FakeProvider({ BlockAnalysis: new Error("garbage") }), blockText, domain, null);
+    expect(analyzed).toBe(false);
+    expect(workout.blocks).toHaveLength(1);
+    expect(workout.blocks[0].rawText).toBe(blockText);
+    expect(workout.blocks[0].components).toEqual([]);
   });
 });

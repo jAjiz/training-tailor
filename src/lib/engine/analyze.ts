@@ -4,7 +4,7 @@ import {
 } from "@/lib/domain/types";
 import { createMovementResolver, movementFamily } from "@/lib/domain/resolve";
 import {
-  PasteAnalysisSchema, SituationAnalysisSchema,
+  PasteAnalysisSchema, SituationAnalysisSchema, WorkoutDraftSchema,
   type DetectedCondition, type Restriction, type SituationAnalysis, type StructuredWorkout,
 } from "./types";
 import { resolveBlocks } from "./resolve-blocks";
@@ -39,19 +39,26 @@ const SITUATION_RULES = `From the SITUATION text (any language) report:
 
 const STIMULUS_RULES = `"stimulus" per block is the intended training effect, using only TAXONOMY keys: "quality", "energySystem" (null when not metabolic, e.g. skill work) and "loadIntensity" (null when unloaded), plus a one-sentence "rationale". Use null for the whole stimulus only for a pure rest block.`;
 
-const PASTE_SYSTEM = `You analyze a functional-fitness training session for a coaching engine. Return JSON only.
-
-WORKOUT
+const WORKOUT_RULES = `WORKOUT
 - A session often has several blocks with different formats (strength, conditioning, accessory). Split it into ordered "blocks".
 - "rawText" of each block is its exact slice of the input. Never paraphrase.
 - If the text spans several days ("Day 1", "Monday", ...), set "day" (1-based) on every block; otherwise null.
 - "format": amrap | for_time | emom | intervals | strength | skill | partner | rest | other. "scheme": the prescription as written. "timeDomainMinutes": estimated working time.
 - "components": one per movement, including accessory, activation and warm-up movements; never drop one. "movement": the MOVEMENT LIBRARY name only when it is the SAME movement (a spelling, abbreviation or translation of it); a related variant that is not in the library keeps its own name as written (a "snatch pull" is not a Hang Power Snatch, a "Bulgarian split squat" is not a Lunge). Mobility drills, stretches and technique drills (the Sots press, anything done with a PVC pipe) are not movements: leave them out. "load" as written (e.g. "61/43 kg"); "loadKg" male/female kilograms when explicit (convert lb); "percent1RM" when prescribed as a percentage.
 - Keep intensity cues, tempo, rest and scaling tiers (Rx+/Rx/Int, M/F) in "coachingNotes".
-- ${STIMULUS_RULES}
+- ${STIMULUS_RULES}`;
+
+const PASTE_SYSTEM = `You analyze a functional-fitness training session for a coaching engine. Return JSON only.
+
+${WORKOUT_RULES}
 
 SITUATION
 ${SITUATION_RULES}`;
+
+// A coach's block is read once for every athlete: no situation, only the workout.
+const BLOCK_SYSTEM = `You analyze one block of a coach's functional-fitness program for a coaching engine. Return JSON only.
+
+${WORKOUT_RULES}`;
 
 const SITUATION_SYSTEM = `You read an athlete's description of their situation for a coaching engine. Return JSON only.
 ${SITUATION_RULES}`;
@@ -157,5 +164,47 @@ export async function analyzePaste(
       ...s,
       analyzed: false,
     };
+  }
+}
+
+const rawBlock = (rawText: string): StructuredWorkout => ({
+  name: null, rawText, source: "paste",
+  blocks: [{
+    title: null, rawText, day: null, format: "other", scheme: null,
+    timeDomainMinutes: null, coachingNotes: null, stimulus: null, components: [],
+  }],
+});
+
+/**
+ * Reads one program block's workout, with no athlete situation. `forced` is a barbell block's movement: it
+ * overrides the canonical of every component that resolves to it or is prescribed as a percentage.
+ */
+export async function analyzeBlock(
+  provider: LlmProvider, text: string, ctx: AnalyzeContext, forced: { movement: string } | null,
+): Promise<{ workout: StructuredWorkout; analyzed: boolean }> {
+  const resolve = createMovementResolver(ctx.movements);
+  try {
+    const out = await provider.generateStructured({
+      systemPrompt: BLOCK_SYSTEM,
+      prompt: `${vocabularyText(ctx)}
+
+SESSION:
+"""
+${text}
+"""`,
+      schema: WorkoutDraftSchema,
+      schemaName: "BlockAnalysis",
+    });
+    const blocks = out.blocks.map((b) => (text.includes(b.rawText) ? b : { ...b, rawText: text }));
+    const resolved = resolveBlocks(blocks, resolve).map((b) => ({
+      ...b,
+      components: b.components.map((c) => (
+        forced && (c.canonical === forced.movement || c.percent1RM !== null) ? { ...c, canonical: forced.movement } : c
+      )),
+    }));
+    return { workout: { name: out.name, rawText: text, source: "paste", blocks: resolved }, analyzed: true };
+  } catch (e) {
+    console.error("analyzeBlock failed; degrading to a raw block", e);
+    return { workout: rawBlock(text), analyzed: false };
   }
 }
