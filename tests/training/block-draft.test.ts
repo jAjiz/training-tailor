@@ -23,6 +23,16 @@ describe("block drafts", () => {
     });
   });
 
+  it("accepts a comma as the decimal separator", () => {
+    const d = {
+      ...emptyDraft("barbell"), movement: "Test Lift",
+      sets: [{ reps: "5", mode: "percent" as const, value: "72,5" }, { reps: "3", mode: "kg" as const, value: " 62,5 " }],
+    };
+    expect(parse(BlockInput, draftToInput(d))).toMatchObject({
+      sets: [{ reps: 5, percent: 72.5, kg: null }, { reps: 3, percent: null, kg: 62.5 }],
+    });
+  });
+
   it("round-trips a stored block", () => {
     const stored = {
       kind: "barbell", title: "Strength", color: "blue", coachingTips: null, videoUrl: null, description: null,

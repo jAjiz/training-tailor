@@ -55,14 +55,20 @@ describe("formatScore", () => {
   });
 
   it("formats every scoring", () => {
-    expect(formatScore(custom("for_time"), { seconds: 572 })).toBe("9:32");
-    expect(formatScore(custom("for_time", 900), { capped: true, reps: 87 })).toBe("CAP · 87");
-    expect(formatScore(custom("amrap"), { rounds: 5, reps: 12 })).toBe("5 + 12");
-    expect(formatScore(custom("reps"), { reps: 150 })).toBe("150");
-    expect(formatScore(custom("load"), { kg: 102.5 })).toBe("102.5 kg");
-    expect(formatScore(custom("calories"), { calories: 45 })).toBe("45 cal");
-    expect(formatScore(custom("distance"), { meters: 1200 })).toBe("1200 m");
-    expect(formatScore(custom("max_time"), { seconds: 95 })).toBe("1:35");
-    expect(formatScore({ kind: "barbell" }, { sets: [{ kg: 100, reps: 5 }, { kg: 102.5, reps: 3 }] })).toBe("5×100 kg · 3×102.5 kg");
+    expect(formatScore(custom("for_time"), { seconds: 572 }, "en")).toBe("9:32");
+    expect(formatScore(custom("for_time", 900), { capped: true, reps: 87 }, "en")).toBe("CAP · 87");
+    expect(formatScore(custom("amrap"), { rounds: 5, reps: 12 }, "en")).toBe("5 + 12");
+    expect(formatScore(custom("reps"), { reps: 150 }, "en")).toBe("150");
+    expect(formatScore(custom("load"), { kg: 102.5 }, "en")).toBe("102.5 kg");
+    expect(formatScore(custom("calories"), { calories: 45 }, "en")).toBe("45 cal");
+    expect(formatScore(custom("distance"), { meters: 1200 }, "en")).toBe("1200 m");
+    expect(formatScore(custom("max_time"), { seconds: 95 }, "en")).toBe("1:35");
+    expect(formatScore({ kind: "barbell" }, { sets: [{ kg: 100, reps: 5 }, { kg: 102.5, reps: 3 }] }, "en")).toBe("5×100 kg · 3×102.5 kg");
+  });
+
+  it("writes decimals in the viewer's language, without thousands separators", () => {
+    expect(formatScore(custom("load"), { kg: 102.5 }, "es")).toBe("102,5 kg");
+    expect(formatScore(custom("distance"), { meters: 1200 }, "es")).toBe("1200 m");
+    expect(formatScore({ kind: "barbell" }, { sets: [{ kg: 102.5, reps: 3 }] }, "es")).toBe("3×102,5 kg");
   });
 });

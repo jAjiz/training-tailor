@@ -21,7 +21,7 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const t = await getTranslations();
   const locale = await getLocale();
-  const { block, entries, results } = await orNotFound(getCoachBlockResults(prisma, coach.id, id));
+  const { block, entries, results } = await orNotFound(getCoachBlockResults(prisma, coach.id, id, locale));
   const day = (iso: string) => formatDay(iso, locale, { day: "numeric", month: "short" });
   const back = (
     <div>

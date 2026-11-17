@@ -110,12 +110,12 @@ async function leaderboardBlock(db: Db, viewer: Viewer, blockId: string) {
 
 type BoardBlock = Awaited<ReturnType<typeof leaderboardBlock>>;
 
-export async function getLeaderboard(db: Db, viewer: Viewer, blockId: string) {
+export async function getLeaderboard(db: Db, viewer: Viewer, blockId: string, locale = "en") {
   const block = await leaderboardBlock(db, viewer, blockId);
-  return leaderboardOf(db, block, "athlete" in viewer ? viewer.athlete.id : null);
+  return leaderboardOf(db, block, "athlete" in viewer ? viewer.athlete.id : null, locale);
 }
 
-async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null) {
+async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null, locale: string) {
   if (!hasLeaderboard(block, block.program) || !block.program.startDate) throw new TrainingError("not_found");
   const results = await db.result.findMany({
     where: {
@@ -131,7 +131,7 @@ async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null)
   const target = scoreTarget(block);
   const entries: LeaderboardEntry[] = rank(results).map((r) => ({
     resultId: r.id, rank: r.rank, athleteId: r.athleteId, displayName: r.athlete.displayName, avatarUrl: r.athlete.avatarUrl,
-    division: r.division, capped: r.capped, formatted: formatScore(target, r.score), notes: r.notes,
+    division: r.division, capped: r.capped, formatted: formatScore(target, r.score, locale), notes: r.notes,
     bumps: r._count.fistBumps, bumpedByViewer: r.fistBumps.length > 0, own: r.athleteId === viewerId,
   }));
   return { block, date: addDays(fromDbDate(block.program.startDate), block.dayIndex), entries };
@@ -191,11 +191,11 @@ type ResultWithRefs = {
   block: { kind: string; scoring: string | null; timeCapSeconds: number | null; title: string | null; movement: string | null };
 };
 
-const toRow = (r: ResultWithRefs): CoachResultRow => ({
+const toRow = (locale: string) => (r: ResultWithRefs): CoachResultRow => ({
   id: r.id, athleteId: r.athleteId, displayName: r.athlete.displayName, blockId: r.blockId,
   blockTitle: r.block.title, blockMovement: r.block.movement, blockKind: r.block.kind, blockScoring: r.block.scoring,
   division: r.division,
-  formatted: formatScore(scoreTarget(r.block), r.score), notes: r.notes, performedOn: fromDbDate(r.performedOn),
+  formatted: formatScore(scoreTarget(r.block), r.score, locale), notes: r.notes, performedOn: fromDbDate(r.performedOn),
 });
 
 async function coachBlock(db: Db, coachId: string, blockId: string) {
@@ -205,26 +205,26 @@ async function coachBlock(db: Db, coachId: string, blockId: string) {
 }
 
 /** The coach's view of one block: its leaderboard when it has one, else the plain list. One block lookup either way. */
-export async function getCoachBlockResults(db: Db, coachId: string, blockId: string) {
+export async function getCoachBlockResults(db: Db, coachId: string, blockId: string, locale = "en") {
   const block = await coachBlock(db, coachId, blockId);
-  if (hasLeaderboard(block, block.program)) return { block, entries: (await leaderboardOf(db, block, null)).entries, results: null };
-  return { block, entries: null, results: await blockResultRows(db, blockId) };
+  if (hasLeaderboard(block, block.program)) return { block, entries: (await leaderboardOf(db, block, null, locale)).entries, results: null };
+  return { block, entries: null, results: await blockResultRows(db, blockId, locale) };
 }
 
-export async function listBlockResults(db: Db, coachId: string, blockId: string) {
+export async function listBlockResults(db: Db, coachId: string, blockId: string, locale = "en") {
   const block = await coachBlock(db, coachId, blockId);
-  return { block, results: await blockResultRows(db, blockId) };
+  return { block, results: await blockResultRows(db, blockId, locale) };
 }
 
-async function blockResultRows(db: Db, blockId: string) {
+async function blockResultRows(db: Db, blockId: string, locale: string) {
   const results = await db.result.findMany({
     where: { blockId, athlete: { disabledAt: null } }, include: { athlete: true, block: true },
     orderBy: [{ performedOn: "desc" }, { createdAt: "asc" }],
   });
-  return results.map(toRow);
+  return results.map(toRow(locale));
 }
 
-export async function listAthleteResults(db: Db, coachId: string, programId: string, athleteId: string) {
+export async function listAthleteResults(db: Db, coachId: string, programId: string, athleteId: string, locale = "en") {
   await getOwnedProgram(db, coachId, programId);
   const enrollment = await db.enrollment.findUnique({
     where: { programId_athleteId: { programId, athleteId } }, include: { athlete: true },
@@ -234,5 +234,5 @@ export async function listAthleteResults(db: Db, coachId: string, programId: str
     where: { athleteId, block: { programId }, athlete: { disabledAt: null } }, include: { athlete: true, block: true },
     orderBy: { performedOn: "desc" },
   });
-  return { athlete: enrollment.athlete, results: results.map(toRow) };
+  return { athlete: enrollment.athlete, results: results.map(toRow(locale)) };
 }

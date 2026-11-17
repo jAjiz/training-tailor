@@ -32,3 +32,8 @@ export function relativeTime(date: Date, now: Date, locale: string): string {
   if (seconds < 30 * 86_400) return rtf.format(-Math.floor(seconds / 86_400), "day");
   return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(date).replace(/\.$/, "");
 }
+
+/** A number with at most one decimal, in the viewer's language ("102,5" in Spanish) and without thousands separators. */
+export function formatDecimal(n: number, locale: string): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1, useGrouping: false }).format(n);
+}

@@ -1,4 +1,4 @@
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { ChevronDown, MessageSquareText, PlayCircle } from "lucide-react";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -23,6 +23,7 @@ export type CardBlock = {
 
 function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number | null; compact: boolean }) {
   const t = useTranslations("block");
+  const locale = useLocale();
   const text = compact ? "text-[13px] leading-snug" : "text-[15px] leading-relaxed";
   return (
     <>
@@ -39,10 +40,10 @@ function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number 
         <div className={text}>
           {block.title && block.movement && <p className="font-semibold">{block.movement}</p>}
           {compact ? (
-            <ul className="text-foreground/80">{describeSets(block.sets ?? [], oneRm).map((line, i) => <li key={i}>{line}</li>)}</ul>
+            <ul className="text-foreground/80">{describeSets(block.sets ?? [], oneRm, locale).map((line, i) => <li key={i}>{line}</li>)}</ul>
           ) : (
             <ul className="mt-1 flex flex-wrap gap-2 px-1 text-foreground/80">
-              {describeSets(block.sets ?? [], oneRm).map((line, i) => <li key={i} className="slant px-2 py-0.5 before:bg-surface-2">{line}</li>)}
+              {describeSets(block.sets ?? [], oneRm, locale).map((line, i) => <li key={i} className="slant px-2 py-0.5 before:bg-surface-2">{line}</li>)}
             </ul>
           )}
           {block.instructions && <p className="mt-1 whitespace-pre-wrap text-foreground/80">{block.instructions}</p>}
