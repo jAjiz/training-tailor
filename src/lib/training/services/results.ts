@@ -1,4 +1,6 @@
 import { toJson } from "@/lib/json";
+import { AdaptationSnapshot } from "../adaptation-types";
+import { workoutHash } from "../block-engine";
 import { intent, type NotificationIntent } from "@/lib/notifications/notify";
 import { activeAthleteIn, athleteTimeline, hasLeaderboard } from "../access";
 import { addDays, canLogDay, dateOfDay, fromDbDate, isDayVisible, toDbDate, todayIn, type IsoDate } from "../dates";
@@ -7,6 +9,7 @@ import { rank } from "../leaderboard";
 import { singleAbove } from "../prs";
 import type { ResultInputValue } from "../schemas";
 import { evaluateScore, formatScore, scoreTarget, type BarbellResult } from "../scoring";
+import { getAdaptation, snapshotOf } from "./adaptations";
 import { getOwnedProgram, publishedWeeks } from "./programs";
 import { oneRmMap } from "./prs";
 import type { Db } from "./types";
@@ -32,13 +35,30 @@ export async function getVisibleBlock(db: Db, athlete: AthleteRef, blockId: stri
 
 export type SinglePrompt = { movement: string; from: number | null; to: number };
 
+/**
+ * The snapshot a saved result carries, or null for an unadapted one. A result already tagged keeps its snapshot (sticky,
+ * even after the athlete discards the adaptation); otherwise an accepted adaptation that still matches the block tags it.
+ */
+export async function adaptationToKeep(db: Db, athleteId: string, block: { id: string }): Promise<AdaptationSnapshot | null> {
+  const existing = await db.result.findUnique({
+    where: { blockId_athleteId: { blockId: block.id, athleteId } }, select: { adaptation: true },
+  });
+  if (existing?.adaptation != null) return AdaptationSnapshot.parse(existing.adaptation);
+  const adaptation = await getAdaptation(db, athleteId, block.id);
+  if (!adaptation?.accepted) return null;
+  const row = await db.block.findUniqueOrThrow({ where: { id: block.id } });
+  if (adaptation.accepted.workoutHash !== workoutHash(row)) return null;
+  return snapshotOf(adaptation.accepted, adaptation.messages);
+}
+
 export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInputValue, now: Date = new Date()) {
   const { block, date, loggable } = await getVisibleBlock(db, athlete, input.blockId, now);
   if (!loggable) throw new TrainingError("not_loggable");
   const evaluated = evaluateScore(scoreTarget(block), input.score);
   if (!evaluated) throw new TrainingError("invalid_score");
+  const adaptation = await adaptationToKeep(db, athlete.id, block);
   const data = {
-    division: block.kind === "barbell" ? "rx" : input.division,
+    division: block.kind === "barbell" ? "rx" : adaptation ? "scaled" : input.division,
     score: toJson(evaluated.score),
     sortKey: evaluated.sortKey,
     capped: evaluated.capped,
@@ -47,12 +67,12 @@ export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInput
   };
   const result = await db.result.upsert({
     where: { blockId_athleteId: { blockId: block.id, athleteId: athlete.id } },
-    create: { blockId: block.id, athleteId: athlete.id, ...data },
-    update: data,
+    create: { blockId: block.id, athleteId: athlete.id, ...data, ...(adaptation && { adaptation: toJson(adaptation) }) },
+    update: { ...data, ...(adaptation && { adaptation: toJson(adaptation) }) },
   });
 
   let singlePrompt: SinglePrompt | null = null;
-  if (block.kind === "barbell" && block.movement) {
+  if (!adaptation && block.kind === "barbell" && block.movement) {
     const current = (await oneRmMap(db, athlete.id, [block.movement])).get(block.movement) ?? null;
     const top = singleAbove((evaluated.score as BarbellResult).sets, current);
     if (top !== null) singlePrompt = { movement: block.movement, from: current, to: top };
@@ -98,7 +118,7 @@ export async function getDayResults(db: Db, athleteId: string, programId: string
 export type LeaderboardEntry = {
   resultId: string; rank: number; athleteId: string; displayName: string; avatarUrl: string | null;
   division: string; capped: boolean; formatted: string; notes: string | null;
-  bumps: number; bumpedByViewer: boolean; own: boolean;
+  bumps: number; bumpedByViewer: boolean; own: boolean; adapted: boolean;
 };
 
 type Viewer = { athlete: AthleteRef } | { coachId: string };
@@ -133,6 +153,7 @@ async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null,
     resultId: r.id, rank: r.rank, athleteId: r.athleteId, displayName: r.athlete.displayName, avatarUrl: r.athlete.avatarUrl,
     division: r.division, capped: r.capped, formatted: formatScore(target, r.score, locale), notes: r.notes,
     bumps: r._count.fistBumps, bumpedByViewer: r.fistBumps.length > 0, own: r.athleteId === viewerId,
+    adapted: r.adaptation != null,
   }));
   return { block, date: addDays(fromDbDate(block.program.startDate), block.dayIndex), entries };
 }
@@ -182,11 +203,11 @@ export async function toggleFistBump(
 
 export type CoachResultRow = {
   id: string; athleteId: string; displayName: string; blockId: string; blockTitle: string | null; blockMovement: string | null; blockKind: string; blockScoring: string | null;
-  division: string; formatted: string; notes: string | null; performedOn: IsoDate;
+  division: string; formatted: string; notes: string | null; performedOn: IsoDate; adaptation: AdaptationSnapshot | null;
 };
 
 type ResultWithRefs = {
-  id: string; athleteId: string; blockId: string; division: string; score: unknown; notes: string | null; performedOn: Date;
+  id: string; athleteId: string; blockId: string; division: string; score: unknown; notes: string | null; performedOn: Date; adaptation: unknown;
   athlete: { displayName: string };
   block: { kind: string; scoring: string | null; timeCapSeconds: number | null; title: string | null; movement: string | null };
 };
@@ -196,6 +217,7 @@ const toRow = (locale: string) => (r: ResultWithRefs): CoachResultRow => ({
   blockTitle: r.block.title, blockMovement: r.block.movement, blockKind: r.block.kind, blockScoring: r.block.scoring,
   division: r.division,
   formatted: formatScore(scoreTarget(r.block), r.score, locale), notes: r.notes, performedOn: fromDbDate(r.performedOn),
+  adaptation: AdaptationSnapshot.nullable().catch(null).parse(r.adaptation ?? null),
 });
 
 async function coachBlock(db: Db, coachId: string, blockId: string) {

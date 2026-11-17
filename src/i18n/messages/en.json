@@ -339,6 +339,8 @@
     "division": "Division",
     "rx": "Rx",
     "scaled": "Scaled",
+    "adaptedScaled": "Adapted · Scaled",
+    "adapted": "Adapted",
     "minutes": "Minutes",
     "seconds": "Seconds",
     "capped": "I did not finish within the time cap",

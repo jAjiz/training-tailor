@@ -339,6 +339,8 @@
     "division": "Categoría",
     "rx": "Rx",
     "scaled": "Scaled",
+    "adaptedScaled": "Adaptado · Scaled",
+    "adapted": "Adaptado",
     "minutes": "Minutos",
     "seconds": "Segundos",
     "capped": "No terminé dentro del time cap",

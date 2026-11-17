@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Input, Textarea } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Field";
+import { Pill } from "@/components/ui/Pill";
 import { Segmented } from "@/components/ui/Segmented";
 import { formatDecimal } from "@/lib/format";
 import type { ErrorCode } from "@/lib/training/errors";
@@ -24,6 +25,7 @@ type Props = {
   initial: LogDraft;
   initialDivision: "rx" | "scaled";
   initialNotes: string;
+  divisionLocked: boolean;
   hasResult: boolean;
   titles: { new: string; edit: string };
   subtitle: string;
@@ -31,7 +33,7 @@ type Props = {
 
 type Prompt = { movement: string; from: number | null; to: number };
 
-export function LogForm({ blockId, target, date, backHref, initial, initialDivision, initialNotes, hasResult, titles, subtitle }: Props) {
+export function LogForm({ blockId, target, date, backHref, initial, initialDivision, initialNotes, divisionLocked, hasResult, titles, subtitle }: Props) {
   const cappedId = useId();
   const [title] = useState(hasResult ? titles.edit : titles.new);
   const t = useTranslations();
@@ -136,7 +138,9 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
     {header}
     <form onSubmit={save} className="flex flex-col gap-5">
       {target.kind === "barbell" ? (
-        d.sets.map((s, i) => (
+        <>
+        {divisionLocked && <div><Pill tone="inverted">{t("log.adapted")}</Pill></div>}
+        {d.sets.map((s, i) => (
           <div key={i} className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">{t("log.set", { n: i + 1 })}</span>
             <div className="grid grid-cols-2 gap-3">
@@ -150,7 +154,8 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
               </Field>
             </div>
           </div>
-        ))
+        ))}
+        </>
       ) : (
         <>
           {target.scoring === "for_time" && (
@@ -177,8 +182,10 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
           {target.scoring === "load" && single(t("log.kg"), true)}
           {target.scoring === "calories" && single(t("log.calories"))}
           {target.scoring === "distance" && single(t("log.meters"), true)}
-          <Segmented label={t("log.division")} value={division} onChange={setDivision}
-            options={[{ value: "rx", label: t("log.rx") }, { value: "scaled", label: t("log.scaled") }]} />
+          {divisionLocked
+            ? <div><Pill tone="inverted">{t("log.adaptedScaled")}</Pill></div>
+            : <Segmented label={t("log.division")} value={division} onChange={setDivision}
+                options={[{ value: "rx", label: t("log.rx") }, { value: "scaled", label: t("log.scaled") }]} />}
         </>
       )}
       <Field label={t("log.notes")}>
