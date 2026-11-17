@@ -139,8 +139,28 @@ describe("adaptation conversation", () => {
     expect((await say(p, athlete, block.id, "again please")).reanalyzed).toBe(true);
     const a = (await getAdaptation(tdb.prisma, athlete.id, block.id))!;
     expect(a.state!.last).toBeNull();
-    expect(a.state!.feedback).toBe("again please");
+    expect(a.state!.feedback).toBe("my shoulder hurts overhead\nagain please");
     expect(a.messages.map((m) => m.role)).toEqual(["athlete", "proposal", "athlete"]);
+  });
+
+  it("the restart keeps the athlete's restrictions and missing equipment, and they still bind the proposal", async () => {
+    const { athlete, block } = await proposed({
+      SituationAnalysis: { restrictions: [overheadToday], conditions: [], unavailableEquipment: ["box"] },
+    });
+    await tdb.prisma.block.update({ where: { id: block.id }, data: { description: "Test edited description" } });
+    const p = new FakeProvider({
+      BlockAnalysis: coupletDraft(), SituationAnalysis: situation(), TailoringResult: sequence(unsafeDraft(), unsafeDraft()),
+    });
+    await say(p, athlete, block.id, "again please");
+    const { state } = (await getAdaptation(tdb.prisma, athlete.id, block.id))!;
+    expect(state!.restrictions).toEqual([expect.objectContaining({ site: "shoulder", mechanisms: ["overhead"], replacements: [] })]);
+    expect(state!.unavailableEquipment).toEqual(["box"]);
+
+    // the kept overhead restriction still refuses a proposal with the overhead Test Combo
+    await expect(tailorNow(p, athlete, block.id)).rejects.toMatchObject({ name: "EngineUnsafeError" });
+    const prompt = p.calls.find((c) => c.schemaName === "TailoringResult")!.prompt;
+    expect(prompt).toContain("today_0: shoulder");
+    expect(prompt).toContain("my shoulder hurts overhead");
   });
 
   it("second message refines", async () => {

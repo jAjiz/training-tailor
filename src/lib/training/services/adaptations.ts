@@ -71,10 +71,13 @@ function athleteWords(messages: AdaptationMessage[]): string[] {
   });
 }
 
-/** The athlete's messages before the first proposal: the situation the session was tailored for. */
-function openingSituation(messages: AdaptationMessage[]): string {
-  const first = messages.findIndex((m) => m.role === "proposal");
-  return (first < 0 ? messages : messages.slice(0, first)).flatMap((m) => (m.role === "athlete" ? [m.text] : [])).join("\n");
+/**
+ * The athlete's messages before the latest proposal: the situation the current session was tailored for, including
+ * turns from before a restart (a coach edit), whose words the restarted session carries.
+ */
+function situationSoFar(messages: AdaptationMessage[]): string {
+  const latest = messages.findLastIndex((m) => m.role === "proposal");
+  return (latest < 0 ? messages : messages.slice(0, latest)).flatMap((m) => (m.role === "athlete" ? [m.text] : [])).join("\n");
 }
 
 const union = <T>(a: T[], b: T[]) => [...new Set([...a, ...b])];
@@ -93,6 +96,23 @@ function sessionOf(state: AdaptationState, restrictions: Restriction[]): Feedbac
 const freshState = (analysisHash: string, original: StructuredWorkout): AdaptationState => ({
   analysisHash, original, conditions: [], restrictions: [], unavailableEquipment: [], pendingQuestions: [], feedback: null, last: null,
 });
+
+/**
+ * A new engine session for the edited block that keeps what the athlete already said: their conditions, restrictions
+ * (without replacement picks, which point into the old workout), missing equipment and words, as the first turn.
+ */
+function restartedState(stored: AdaptationState, analysisHash: string, original: StructuredWorkout, messages: AdaptationMessage[]): AdaptationState {
+  const earlier = (stored.last?.conditions ?? []).flatMap((c): ConfirmedCondition[] =>
+    c.source === "today" ? [{ key: c.key, side: c.side, severity: c.severity, evidence: c.evidence }] : []);
+  const words = messages.flatMap((m) => (m.role === "athlete" ? [m.text] : [])).join("\n");
+  return {
+    ...freshState(analysisHash, original),
+    conditions: [...earlier, ...stored.conditions],
+    restrictions: [...(stored.last?.restrictions ?? []), ...stored.restrictions].map((r) => ({ ...r, replacements: [] })),
+    unavailableEquipment: union(stored.last?.unavailableEquipment ?? [], stored.unavailableEquipment),
+    feedback: words === "" ? null : words,
+  };
+}
 
 const answers = (q: ClarifyQuestion, a: ClarifyAnswer): boolean => {
   if (q.restriction !== a.restriction) return false;
@@ -115,8 +135,8 @@ function applyButtonAnswers(state: AdaptationState, given: ClarifyAnswer[]): Ada
 /**
  * One athlete message: a typed text (a new message, or a free-text answer to an open site question) or button answers.
  * Returns the questions still open; `reanalyzed` is true when the block itself had to be analyzed again.
- * A text on a block the coach changed since the conversation's analysis starts the engine session again (the
- * messages stay); button answers to questions about the older block are refused with `block_changed`.
+ * A text on a block the coach changed since the conversation's analysis starts the engine session again on the new
+ * analysis, carrying what the athlete already said (the messages stay); button answers to questions about the older block are refused with `block_changed`.
  */
 export async function adaptAnalyze(
   db: Db, provider: LlmProvider, athlete: AthleteRef, blockId: string, message: AdaptMessageInput, ctx: AdaptContext,
@@ -139,7 +159,8 @@ export async function adaptAnalyze(
   }
 
   const ensured = await ensureBlockAnalysis(db, provider, block, ctx.domain, ctx.libraryVersion, ctx.locale);
-  let state = stored && stored.analysisHash === hash ? stored : freshState(hash, ensured.workout);
+  let state = !stored ? freshState(hash, ensured.workout)
+    : stored.analysisHash === hash ? stored : restartedState(stored, hash, ensured.workout, messages);
   const { text } = message;
   const read = (restrictions: Restriction[]) => analyzeFeedback(provider, {
     feedback: text, session: sessionOf(state, restrictions), request: emptyRequest(), profile: ctx.profile, domain: ctx.domain,
@@ -224,7 +245,7 @@ export async function adaptTailor(
       ? await runTailorPipeline(provider, { ...common, original, request: { ...emptyRequest(), situation: state.feedback ?? "" } })
       : await runRefinePipeline(provider, {
         ...common, previous: { ...state.last, original }, feedback: state.feedback!,
-        request: { ...emptyRequest(), situation: openingSituation(messages) },
+        request: { ...emptyRequest(), situation: situationSoFar(messages) },
       });
   } catch (e) {
     await save(db, athlete.id, blockId, [...messages, { role: "error", at, code: errorCode(e) }], state)
