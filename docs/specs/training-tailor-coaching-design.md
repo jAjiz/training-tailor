@@ -11,8 +11,9 @@
 Coaches sell or share training programs (daily programming for a box, or closed cycles of a
 few weeks), and athletes need one place to follow them: see today's session, log what they
 did, see how others did, and keep their maxes. Existing coaching apps are the references.
-Training Tailor needs this base product before the AI tailoring can be offered as an extra
-(and later monetized).
+Training Tailor needs this base product before the AI tailoring can be offered as an extra.
+Using the app is free: the money that moves through it is what athletes pay their coaches
+(phase 5).
 
 ## Phasing
 
@@ -22,10 +23,33 @@ Training Tailor needs this base product before the AI tailoring can be offered a
 | **2. Results and competition** | Result logging, leaderboard with fist bumps, PRs (1RM) with % → kg, coach result views | This spec |
 | 3. AI tailoring in the day view | "Tailor" on a session, using the engine | Later, own spec |
 | 4. Coach controls over AI | Enable/disable per program, see what athletes tailored, intent notes for the engine | Later, own spec |
-| 5. Monetization | Paid programs (storefront), paid AI tier, payouts | Later, own spec |
+| 5. Coach payments | Coaches connect their own Stripe account and charge their athletes through the app (see "Phase 5 direction") | Later, own spec, after phases 3 and 4 |
 
 Phases 1 and 2 share this spec and one implementation plan, delivered as two PRs. Each phase
 ends with a browser verification of its main flows.
+
+### Phase 5 direction
+
+Not specced yet; work starts after phases 3 and 4. These choices are settled; the rest is for
+its own spec.
+
+| Area | Direction |
+|------|-----------|
+| Model | Training Tailor charges nobody for using the app. It is a **Stripe Connect** platform: each coach connects their own Stripe account, and athletes pay the coach through the app. |
+| Coach accounts | Standard-style connected accounts (full Stripe dashboard): the coach is the merchant and carries refunds, disputes, taxes and invoicing to athletes. |
+| Charges | **Direct charges** on the coach's account, through hosted Stripe Checkout; subscriptions through Stripe Billing on that account, managed by the athlete in the Customer Portal. |
+| Platform fee | Starts at 0. The code supports an application fee (`application_fee_amount` / `application_fee_percent`) so one can be turned on later without changing the flow. Turning it on needs the coach terms to say so, and a tax registration for the platform owner (to confirm with an accountant). |
+| State in the app | Connect webhooks keep in the database which athlete is paid up with which coach; the redirect back from Checkout is never the source of truth. |
+| Prerequisite | The platform's Stripe account is activated for Connect (identity, business type, bank account), even with a 0 fee. |
+| What coaches sell | A program is free or paid; the coach sets the price per program. **Continuous**: a monthly subscription. **Closed**: one fixed price, paid once. |
+| Access | Paying is what enrolls the athlete in a paid program. A closed program, once paid, stays open for good. A continuous one is open while its subscription is active; when a payment fails (subscription `past_due` or later), the athlete loses access to that program. |
+| Blocked athlete | On opening the app, the athlete cannot see that program's schedule and is asked to pay to get back in. No separate notification (no push or email). |
+| Free to paid | When a coach makes a free program paid, its enrolled athletes are blocked the same way as after a failed payment, until they subscribe or pay. |
+
+| Coach UI | **Connect embedded components** inside `/coach`: account onboarding, payments, payouts and account notifications, styled with the app's theme. The coach does not need to leave the app; the full Stripe dashboard stays available to them. |
+
+**Open for the phase 5 spec:** what a price change does to existing subscribers; whether any
+grace period applies while Stripe retries a failed payment.
 
 ## Decisions (locked)
 
@@ -56,7 +80,7 @@ calendar, and editing or deleting one's own results.
 **Out:** benchmarks and their library; Gym/Cardio/Benchmark PRs; comments; notifications;
 media upload (links only); a "Box" or "Notes" tab; athlete analytics for the coach (strength
 radar, evolution charts); an admin panel; coach moderation of results; account deletion; AI
-tailoring (phase 3); payments (phase 5).
+tailoring (phase 3); coach payments (phase 5).
 
 ## Data model
 
