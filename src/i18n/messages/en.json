@@ -904,6 +904,18 @@
       "kipping": "Kipping",
       "eccentric": "Lowering under load"
     },
+    "findings": {
+      "unrecognized_movement": "{movement} is not in our library, so it could not be checked.",
+      "caution_movement": "{movement}: do it with care, given what you told us.",
+      "contraindicated_movement": "{movement} may not suit what you told us.",
+      "equipment_unavailable": "{movement} needs equipment you don't have.",
+      "time_cap_exceeded": "The adapted session may take longer than the time cap.",
+      "stimulus_drift": "{block, select, none {The session} other {Block {block}}} may feel different from what your coach intended.",
+      "scoring_changed": "{block, select, none {The session} other {Block {block}}} may no longer fit the original scoring.",
+      "change_mismatch": "The list of changes may not match the adapted block exactly.",
+      "unaccounted_block": "{block, select, none {A block} other {Block {block}}} of the original may be missing.",
+      "other": "A check flagged this proposal."
+    },
     "errors": {
       "unauthorized": "Your session expired. Sign in again.",
       "forbidden": "You cannot adapt blocks while viewing someone else's account.",

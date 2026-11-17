@@ -904,6 +904,18 @@
       "kipping": "Kipping",
       "eccentric": "Bajar con carga"
     },
+    "findings": {
+      "unrecognized_movement": "{movement} no está en nuestra biblioteca, así que no se ha podido comprobar.",
+      "caution_movement": "{movement}: hazlo con cuidado, por lo que nos has contado.",
+      "contraindicated_movement": "{movement} puede no ser adecuado para lo que nos has contado.",
+      "equipment_unavailable": "{movement} necesita material que no tienes.",
+      "time_cap_exceeded": "La sesión adaptada puede durar más que el time cap.",
+      "stimulus_drift": "{block, select, none {La sesión puede sentirse distinta} other {El bloque {block} puede sentirse distinto}} de lo que buscaba tu coach.",
+      "scoring_changed": "{block, select, none {La sesión} other {El bloque {block}}} puede no encajar ya con la puntuación original.",
+      "change_mismatch": "La lista de cambios puede no coincidir exactamente con el bloque adaptado.",
+      "unaccounted_block": "Puede faltar {block, select, none {un bloque} other {el bloque {block}}} del original.",
+      "other": "Una comprobación ha señalado esta propuesta."
+    },
     "errors": {
       "unauthorized": "Tu sesión ha caducado. Vuelve a entrar.",
       "forbidden": "No puedes adaptar bloques mientras ves la cuenta de otra persona.",

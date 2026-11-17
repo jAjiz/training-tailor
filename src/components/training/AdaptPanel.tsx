@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import type { ClarifyAnswer } from "@/lib/engine/clarify";
 import type { ProgressStage } from "@/lib/engine/pipeline";
-import type { ClarifyQuestion } from "@/lib/engine/types";
+import type { ClarifyQuestion, Finding } from "@/lib/engine/types";
 import { readEngineOutcome } from "@/lib/engine-events";
 import type { AdaptationMessage } from "@/lib/training/adaptation-types";
 import { AdaptedBlock } from "./AdaptedBlock";
@@ -243,6 +243,7 @@ function Entry({ message: m, latest, busy, accepting, onAccept }: {
 }) {
   const t = useTranslations("adapt");
   const describe = useAnswerText();
+  const findingText = useFindingText();
   if (m.role === "question") return null; // open ones are asked below; answered ones show through their answer
   if (m.role === "athlete" || m.role === "answer") {
     const text = m.role === "athlete" ? m.text : "text" in m.answer ? m.answer.text : describe(m.answer as ClarifyAnswer);
@@ -270,7 +271,7 @@ function Entry({ message: m, latest, busy, accepting, onAccept }: {
       {m.findings.length > 0 && (
         <div data-color="yellow" className="flex flex-col gap-1 rounded-xl bg-(--block-fill) px-3 py-2 text-sm text-(--block-ink)">
           <p className="font-semibold">{t("warning")}</p>
-          <ul className="list-disc pl-5">{m.findings.map((f, i) => <li key={i}>{f.message}</li>)}</ul>
+          <ul className="list-disc pl-5">{m.findings.map((f, i) => <li key={i}>{findingText(f)}</li>)}</ul>
         </div>
       )}
       <Button type="button" variant="primary" size="sm" slanted className="self-start" disabled={busy} onClick={onAccept}>
@@ -278,6 +279,22 @@ function Entry({ message: m, latest, busy, accepting, onAccept }: {
       </Button>
     </section>
   );
+}
+
+const MOVEMENT_FINDINGS: Finding["kind"][] = ["unrecognized_movement", "caution_movement", "contraindicated_movement", "equipment_unavailable"];
+const BLOCK_FINDINGS: Finding["kind"][] = ["time_cap_exceeded", "stimulus_drift", "scoring_changed", "change_mismatch", "unaccounted_block"];
+
+/**
+ * A finding in the athlete's language, from its kind, movement and block. The validator's own message is internal
+ * English (kept for logs and the coach) and never shown here; a kind without copy gets a generic line.
+ */
+function useFindingText() {
+  const t = useTranslations("adapt.findings");
+  return (f: Finding): string => {
+    if (MOVEMENT_FINDINGS.includes(f.kind) && f.movement) return t(f.kind, { movement: f.movement });
+    if (BLOCK_FINDINGS.includes(f.kind)) return t(f.kind, { block: f.blockIndex === null ? "none" : String(f.blockIndex + 1) });
+    return t("other");
+  };
 }
 
 /** A button answer in the athlete's words, for the conversation. */

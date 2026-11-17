@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
+import es from "@/i18n/messages/es.json";
 import type { ClarifyQuestion, Finding, PipelineResult } from "@/lib/engine/types";
 import type { EngineEvent } from "@/lib/engine-events";
 import { couplet, identityResult } from "../fixtures/workouts";
@@ -66,10 +67,10 @@ function mockFetch(...responses: Response[]) {
   return calls;
 }
 
-function open(initialMessages: AdaptationMessage[] = []) {
+function open(initialMessages: AdaptationMessage[] = [], locale: "en" | "es" = "en") {
   const onClose = vi.fn();
   render(
-    <NextIntlClientProvider locale="en" messages={en}>
+    <NextIntlClientProvider locale={locale} messages={locale === "en" ? en : es}>
       <AdaptPanel blockId="b1" blockTitle="Test WOD" initialMessages={initialMessages} hasAccepted={false} open onClose={onClose} />
     </NextIntlClientProvider>,
   );
@@ -177,8 +178,29 @@ describe("AdaptPanel", () => {
     open();
     send("Test my knee hurts");
     expect(await screen.findByText(en.adapt.warning)).toBeInTheDocument();
-    expect(screen.getByText("Test drift")).toBeInTheDocument();
+    expect(screen.getByText("Block 1 may feel different from what your coach intended.")).toBeInTheDocument();
+    expect(screen.queryByText("Test drift")).toBeNull();
     expect(screen.getByRole("button", { name: en.adapt.accept })).toBeEnabled();
+  });
+
+  it("words the warnings in the athlete's language, never the validator's message", () => {
+    const at = "2026-11-17T10:00:00.000Z";
+    const findings: Finding[] = [
+      { kind: "caution_movement", severity: "warning", blockIndex: 0, movement: "Test Pull", message: "Test Pull: use caution (test reason)" },
+      { kind: "stimulus_drift", severity: "warning", blockIndex: null, movement: null, message: "Test English drift" },
+      { kind: "unrecognized_movement", severity: "warning", blockIndex: 0, movement: null, message: "Test English unknown" },
+    ];
+    open([
+      { role: "athlete", at, text: "Test me duele la rodilla" },
+      { role: "proposal", at, tailored: result().tailored, findings },
+    ], "es");
+    expect(screen.getByText(es.adapt.warning)).toBeInTheDocument();
+    expect(screen.getByText("Test Pull: hazlo con cuidado, por lo que nos has contado.")).toBeInTheDocument();
+    expect(screen.getByText("La sesión puede sentirse distinta de lo que buscaba tu coach.")).toBeInTheDocument();
+    // A finding without the detail its copy needs gets the generic line.
+    expect(screen.getByText(es.adapt.findings.other)).toBeInTheDocument();
+    for (const f of findings) expect(screen.queryByText(f.message)).toBeNull();
+    expect(screen.getByRole("button", { name: es.adapt.accept })).toBeEnabled();
   });
 
   it("clears the proposal when the coach changed the block", async () => {
