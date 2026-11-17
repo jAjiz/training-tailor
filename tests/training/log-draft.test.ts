@@ -26,6 +26,12 @@ describe("log drafts", () => {
     expect(evaluateScore({ kind: "barbell" }, buildScore({ kind: "barbell" }, d))).not.toBeNull();
   });
 
+  it("leaves an adapted block's rows empty: the coach's prescription is not what the athlete did", () => {
+    const prescribed = [{ reps: 5, percent: 80, kg: null }, { reps: 3, percent: null, kg: 110 }];
+    expect(logDraftFor({ kind: "barbell" }, null, prescribed, 125, true).sets).toEqual([{ kg: "", reps: "" }, { kg: "", reps: "" }]);
+    expect(logDraftFor({ kind: "barbell" }, { sets: [{ kg: 60, reps: 5 }] }, prescribed, 125, true).sets).toEqual([{ kg: "60", reps: "5" }]);
+  });
+
   it("leaves the kg empty for a percentage without a 1RM", () => {
     expect(logDraftFor({ kind: "barbell" }, null, [{ reps: 5, percent: 80, kg: null }], null).sets).toEqual([{ kg: "", reps: "5" }]);
   });

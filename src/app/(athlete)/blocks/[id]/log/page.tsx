@@ -43,7 +43,7 @@ export default async function LogPage({ params }: { params: Promise<{ id: string
         target={target}
         date={date}
         backHref={backHref}
-        initial={logDraftFor(target, mine?.score ?? null, prescribed, block.movement ? oneRms.get(block.movement) ?? null : null)}
+        initial={logDraftFor(target, mine?.score ?? null, prescribed, block.movement ? oneRms.get(block.movement) ?? null : null, adaptation !== null)}
         initialDivision={mine?.division === "scaled" ? "scaled" : "rx"}
         initialNotes={mine?.notes ?? ""}
         divisionLocked={adaptation !== null}

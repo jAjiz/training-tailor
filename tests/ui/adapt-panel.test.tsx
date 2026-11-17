@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
@@ -214,6 +214,17 @@ describe("AdaptPanel", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("clears a proposal the server no longer holds, as for a changed block", async () => {
+    mockFetch(json({ questions: [] }), stream([{ type: "result", result: result() }]));
+    actions.acceptAdaptationAction.mockResolvedValue({ ok: false, code: "invalid_state" });
+    const { onClose } = open();
+    send("Test my knee hurts");
+    fireEvent.click(await screen.findByRole("button", { name: en.adapt.accept }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(en.adapt.errors.block_changed);
+    expect(screen.queryByRole("button", { name: en.adapt.accept })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("resumes the questions a stored conversation left open", () => {
     const at = "2026-11-17T10:00:00.000Z";
     const site: ClarifyQuestion = {
@@ -289,5 +300,46 @@ describe("BlockCard adaptation", () => {
   it("labels the button Adjust when an adaptation is in force", () => {
     card({ adaptable: true, accepted: result().tailored });
     expect(screen.getByRole("button", { name: en.adapt.adjust, hidden: true })).toBeInTheDocument();
+  });
+
+  it("discards the adaptation in force after a confirmation", async () => {
+    actions.discardAdaptationAction.mockResolvedValue({ ok: true, value: undefined });
+    card({ accepted: result().tailored });
+    fireEvent.click(screen.getByRole("button", { name: en.adapt.menu, hidden: true }));
+    fireEvent.click(screen.getByRole("menuitem", { name: en.adapt.discard, hidden: true }));
+    const dialog = await screen.findByRole("dialog");
+    expect(actions.discardAdaptationAction).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: en.adapt.discard }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(actions.discardAdaptationAction).toHaveBeenCalledWith("b1");
+  });
+
+  it("keeps the adaptation when the confirmation is cancelled", async () => {
+    card({ accepted: result().tailored });
+    fireEvent.click(screen.getByRole("button", { name: en.adapt.menu, hidden: true }));
+    fireEvent.click(screen.getByRole("menuitem", { name: en.adapt.discard, hidden: true }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: en.common.cancel }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(actions.discardAdaptationAction).not.toHaveBeenCalled();
+  });
+
+  it("shows the error when the discard fails", async () => {
+    actions.discardAdaptationAction.mockResolvedValue({ ok: false, code: "not_found" });
+    card({ accepted: result().tailored });
+    fireEvent.click(screen.getByRole("button", { name: en.adapt.menu, hidden: true }));
+    fireEvent.click(screen.getByRole("menuitem", { name: en.adapt.discard, hidden: true }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: en.adapt.discard }));
+    expect(await screen.findByRole("alert", { hidden: true })).toHaveTextContent(en.errors.not_found);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("discards a stale adaptation from its notice, even on a block that is no longer adaptable", async () => {
+    actions.discardAdaptationAction.mockResolvedValue({ ok: true, value: undefined });
+    card({ accepted: result().tailored, stale: true, adaptable: false });
+    expect(screen.queryByRole("button", { name: en.adapt.again, hidden: true })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: en.adapt.discard, hidden: true }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: en.adapt.discard }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(actions.discardAdaptationAction).toHaveBeenCalledWith("b1");
   });
 });

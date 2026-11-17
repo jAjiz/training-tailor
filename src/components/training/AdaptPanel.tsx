@@ -190,6 +190,8 @@ export function AdaptPanel({ blockId, blockTitle, initialMessages, hasAccepted, 
       if (r.ok) {
         onClose();
         router.refresh();
+      } else if (r.code === "invalid_state") {
+        fail("block_changed"); // the server restarted the session (a coach edit or a library update): no proposal is left
       } else fail(asError(r.code));
     } catch {
       fail("internal");

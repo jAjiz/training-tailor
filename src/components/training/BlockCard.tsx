@@ -41,7 +41,7 @@ export type CardAdaptation = {
   adaptable: boolean;
   /** The accepted adaptation; shown even when tailoring is off. */
   accepted: TailoringResult | null;
-  /** The coach changed the block after the adaptation was accepted. */
+  /** The coach changed the block after the adaptation was accepted; it can still be discarded. */
   stale: boolean;
   messages: AdaptationMessage[];
 };
@@ -138,6 +138,7 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, adapt
                 <Button type="button" size="sm" aria-expanded={showPrevious} onClick={() => setShowPrevious((v) => !v)}>
                   {showPrevious ? ta("hidePrevious") : ta("seePrevious")}
                 </Button>
+                <DiscardButton blockId={adaptation!.blockId} />
               </div>
               {showPrevious && <div className="rounded-xl bg-surface p-3 text-foreground"><AdaptedBlock tailored={previous} /></div>}
             </div>
@@ -184,8 +185,8 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, adapt
   );
 }
 
-/** The adapted card's menu: discard the adaptation, after a confirmation. */
-function DiscardMenu({ blockId }: { blockId: string }) {
+/** Discards the adaptation after a confirmation; `feedback` renders its error and the dialog. */
+function useDiscard(blockId: string) {
   const t = useTranslations();
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
@@ -200,11 +201,35 @@ function DiscardMenu({ blockId }: { blockId: string }) {
     else setError(r.code);
   }
 
-  return (
+  const feedback = (
     <>
-      <Menu label={t("adapt.menu")} icon={<MoreHorizontal size={18} aria-hidden />} items={[{ label: t("adapt.discard"), danger: true, onSelect: () => void discard() }]} />
       {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
       {dialog}
+    </>
+  );
+  return { discard: () => void discard(), feedback };
+}
+
+/** The adapted card's menu: discard the adaptation, after a confirmation. */
+function DiscardMenu({ blockId }: { blockId: string }) {
+  const t = useTranslations("adapt");
+  const { discard, feedback } = useDiscard(blockId);
+  return (
+    <>
+      <Menu label={t("menu")} icon={<MoreHorizontal size={18} aria-hidden />} items={[{ label: t("discard"), danger: true, onSelect: discard }]} />
+      {feedback}
+    </>
+  );
+}
+
+/** The stale notice's discard button, offered even when the block can no longer be adapted. */
+function DiscardButton({ blockId }: { blockId: string }) {
+  const t = useTranslations("adapt");
+  const { discard, feedback } = useDiscard(blockId);
+  return (
+    <>
+      <Button type="button" size="sm" variant="ghost" onClick={discard}>{t("discard")}</Button>
+      {feedback}
     </>
   );
 }
