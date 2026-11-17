@@ -23,7 +23,6 @@ model User {
   sessions                Session[]
   accounts                Account[]
   profile                 AthleteProfile?
-  tailored                TailoredWorkout[]
   usage                   LlmUsage[]
   coachAccount            CoachAccount?
   athleteAccount          AthleteAccount?
@@ -91,24 +90,6 @@ model AthleteProfile {
   updatedAt DateTime @updatedAt
 }
 
-model TailoredWorkout {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  original        Json // StructuredWorkout
-  request         Json // TailorRequest
-  conditions      Json // ConditionRef[]
-  restrictions    Json     @default("[]") // Restriction[]: today's, answered
-  tailored        Json // TailoringResult
-  findings        Json // Finding[]
-  feedbackHistory Json     @default("[]") // string[]
-  model           String
-  libraryVersion  Int? // DomainLibraryVersion.number live when saved
-  createdAt       DateTime @default(now())
-
-  @@index([userId, createdAt])
-}
-
 // Quota ledger: one row per engine run.
 model LlmUsage {
   id        String   @id @default(cuid())
@@ -136,30 +117,32 @@ model UnrecognizedMovement {
 
 // ---- Coaching ----
 model CoachAccount {
-  id          String    @id @default(cuid())
-  userId      String    @unique
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  displayName String
-  status      String    @default("pending") // "pending" | "approved" | "rejected" | "suspended"
-  locale      String? // "es" | "en"
-  createdAt   DateTime  @default(now())
-  programs    Program[]
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName      String
+  status           String    @default("pending") // "pending" | "approved" | "rejected" | "suspended"
+  locale           String? // "es" | "en"
+  tailoringEnabled Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  programs         Program[]
 }
 
 model AthleteAccount {
-  id          String           @id @default(cuid())
-  userId      String           @unique
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String            @id @default(cuid())
+  userId      String            @unique
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   displayName String
   avatarUrl   String?
   timezone    String // IANA
   locale      String?
   disabledAt  DateTime?
-  createdAt   DateTime         @default(now())
+  createdAt   DateTime          @default(now())
   enrollments Enrollment[]
   results     Result[]
   fistBumps   FistBump[]
   records     PersonalRecord[]
+  adaptations BlockAdaptation[]
 }
 
 model Program {
@@ -176,6 +159,7 @@ model Program {
   inviteCode       String         @unique
   inviteDisabledAt DateTime?
   archivedAt       DateTime?
+  tailoringEnabled Boolean        @default(false)
   createdAt        DateTime       @default(now())
   weeksPublished   ProgramWeek[]
   blocks           Block[]
@@ -217,9 +201,9 @@ model WeekNote {
 }
 
 model Block {
-  id             String   @id @default(cuid())
+  id             String            @id @default(cuid())
   programId      String
-  program        Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program        Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
   dayIndex       Int
   position       Int
   kind           String // "custom" | "barbell"
@@ -233,10 +217,43 @@ model Block {
   movement       String? // barbell: canonical catalog name
   sets           Json? // barbell: BarbellSet[]
   instructions   String? // barbell
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime          @updatedAt
   results        Result[]
+  analysis       BlockAnalysis?
+  adaptations    BlockAdaptation[]
 
   @@index([programId, dayIndex, position])
+}
+
+// The engine's reading of a block's workout, cached by content hash.
+model BlockAnalysis {
+  blockId        String   @id
+  block          Block    @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  contentHash    String
+  libraryVersion Int
+  workout        Json // StructuredWorkout
+  analyzed       Boolean
+  model          String
+  updatedAt      DateTime @updatedAt
+}
+
+// An athlete's tailoring conversation for a block.
+model BlockAdaptation {
+  id             String         @id @default(cuid())
+  blockId        String
+  block          Block          @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  athleteId      String
+  athlete        AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  messages       Json           @default("[]")
+  state          Json?
+  accepted       Json?
+  model          String?
+  libraryVersion Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([blockId, athleteId])
+  @@index([athleteId])
 }
 
 model Enrollment {
@@ -265,6 +282,7 @@ model Result {
   sortKey     Float? // higher is better; null for barbell results
   capped      Boolean        @default(false)
   notes       String?
+  adaptation  Json? // the accepted tailoring the athlete performed
   performedOn DateTime       @db.Date // the date the block is scheduled for this athlete
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
