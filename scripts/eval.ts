@@ -33,6 +33,7 @@ async function main() {
         original: analysis.original, confirmed: analysis.suggested,
         restrictions: applyAnswers(analysis.restrictions, conservativeAnswers(analysis.questions)),
         unavailableEquipment: analysis.unavailableEquipment, profile, request, domain,
+        locale: "en", lockedFormats: null,
       });
       outcome = { kind: "result", result };
     } catch (e) {

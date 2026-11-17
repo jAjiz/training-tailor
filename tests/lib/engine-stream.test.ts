@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { engineStreamResponse } from "@/lib/engine-stream";
 import { readEngineOutcome, readEngineStream, type EngineEvent } from "@/lib/engine-events";
-import { EngineUnsafeError } from "@/lib/engine/pipeline";
+import { EngineEmptyError, EngineUnsafeError } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
 import { couplet, identityResult } from "../fixtures/workouts";
 
@@ -29,6 +29,13 @@ describe("engine stream", () => {
       { type: "progress", stage: "tailoring" },
       { type: "result", result },
     ]);
+  });
+
+  it("reports an empty proposal as engine_empty", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = engineStreamResponse(async () => { throw new EngineEmptyError(); });
+    expect(await events(res)).toEqual([{ type: "error", error: "engine_empty" }]);
+    warn.mockRestore();
   });
 
   it("reports a fail-closed engine as engine_unsafe", async () => {

@@ -29,6 +29,8 @@ function input(overrides: Partial<TailorInput> = {}): TailorInput {
     previousAttempt: null,
     violations: [],
     restrictions: [],
+    locale: "en",
+    lockedFormats: null,
     ...overrides,
   };
 }
@@ -101,6 +103,12 @@ describe("buildTailorPrompt", () => {
     expect(buildTailorPrompt(input({ equipment: ["dumbbell", "box"] }))).toContain("EQUIPMENT AVAILABLE: dumbbell, box");
   });
 
+  it("prompt marks locked formats", () => {
+    expect(buildTailorPrompt(input())).not.toContain("FORMAT LOCKED");
+    expect(buildTailorPrompt(input({ lockedFormats: ["for_time"] }))).toContain("[0] FORMAT LOCKED (for_time) {");
+    expect(buildTailorPrompt(input({ lockedFormats: ["amrap"] }))).not.toContain("FORMAT LOCKED");
+  });
+
   it("adds the refine section with the rejected attempt and the feedback history", () => {
     const p = buildTailorPrompt(input({
       previousAttempt: { result: identityResult(couplet()), feedbackHistory: ["too easy", "still hurts"] },
@@ -168,6 +176,15 @@ describe("tailor", () => {
     await tailor(provider, input());
     expect(provider.calls[0].systemPrompt).toMatch(/combines patterns/);
     expect(provider.calls[0].systemPrompt).toMatch(/\(removed\)/);
+  });
+
+  it("prompt asks for Spanish prose for locale es", async () => {
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(couplet()) });
+    await tailor(provider, input({ locale: "es" }));
+    await tailor(provider, input({ locale: "en" }));
+    expect(provider.calls[0].systemPrompt).toContain("Write prose in Spanish");
+    expect(provider.calls[1].systemPrompt).toContain("Write prose in English");
+    expect(provider.calls[0].systemPrompt).toContain("7. Keep each block's format when the input says FORMAT LOCKED");
   });
 
   it("rejects an invented movement instead of returning it", async () => {

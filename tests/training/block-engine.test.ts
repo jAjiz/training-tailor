@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyAthleteLoads, blockAnalysisText, contentHash, workoutHash, type BlockFields } from "@/lib/training/block-engine";
+import { applyAthleteLoads, blockAnalysisText, contentHash, lockedFormatsFor, workoutHash, type BlockFields } from "@/lib/training/block-engine";
 import type { StructuredWorkout } from "@/lib/engine/types";
 import { component, coupletDraft } from "../fixtures/workouts";
 
@@ -58,5 +58,14 @@ describe("applyAthleteLoads", () => {
   it("leaves loadKg null without a 1RM", () => {
     const out = applyAthleteLoads(workoutWith(80, "Test Squat"), new Map());
     expect(out.blocks[0].components[0].loadKg).toBeNull();
+  });
+});
+
+describe("lockedFormatsFor", () => {
+  it("locks the formats whose score depends on them", () => {
+    expect(lockedFormatsFor("for_time")).toEqual(["for_time"]);
+    expect(lockedFormatsFor("amrap")).toEqual(["amrap"]);
+    expect(lockedFormatsFor("load")).toBeNull();
+    expect(lockedFormatsFor(null)).toBeNull();
   });
 });

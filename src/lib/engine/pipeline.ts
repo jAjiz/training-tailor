@@ -12,7 +12,7 @@ import {
 import { tailor, type TailorInput } from "./tailor";
 import {
   REMOVED_MOVEMENT,
-  type AthleteProfile, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding,
+  type AthleteProfile, type BlockFormat, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding,
   type PipelineResult, type Restriction, type StructuredWorkout, type TailorRequest, type TailoringResult,
   type WorkoutAnalysisResult,
 } from "./types";
@@ -20,12 +20,26 @@ import { isViolation, validateTailoring } from "./validate";
 
 export type ProgressStage = "analyzing" | "tailoring" | "validating" | "retrying";
 
-/** A contraindicated movement survived the retry: nothing is returned to the athlete. */
+/** A contraindicated movement or a changed scoring survived the retry: nothing is returned to the athlete. */
 export class EngineUnsafeError extends Error {
   constructor(readonly findings: Finding[]) {
     super("engine_unsafe");
     this.name = "EngineUnsafeError";
   }
+}
+
+/** The proposal has nothing left to train (every block empty or dropped): nothing is returned to the athlete. */
+export class EngineEmptyError extends Error {
+  constructor() {
+    super("engine_empty");
+    this.name = "EngineEmptyError";
+  }
+}
+
+/** The athlete's app language and the formats each tailored block must keep. */
+interface TailorOptions {
+  locale: "es" | "en";
+  lockedFormats: BlockFormat[] | null;
 }
 
 export interface AnalyzeArgs {
@@ -52,7 +66,7 @@ export interface FeedbackArgs {
 }
 
 /** Phase 2 input: the phase-1 session, today's conditions and the answered restrictions. */
-export interface PipelineArgs {
+export interface PipelineArgs extends TailorOptions {
   original: StructuredWorkout;
   confirmed: ConfirmedCondition[]; // today's non-pain catalog conditions
   restrictions: Restriction[];
@@ -63,7 +77,7 @@ export interface PipelineArgs {
   onProgress?: (stage: ProgressStage) => void;
 }
 
-export interface RefineArgs {
+export interface RefineArgs extends TailorOptions {
   previous: PipelineResult;
   feedback: string;
   confirmed: ConfirmedCondition[]; // non-pain conditions the feedback added
@@ -75,7 +89,7 @@ export interface RefineArgs {
   onProgress?: (stage: ProgressStage) => void;
 }
 
-interface TailorStage {
+interface TailorStage extends TailorOptions {
   original: StructuredWorkout;
   refs: ConditionRef[];
   catalogActive: ActiveCondition[]; // profile and today's catalog conditions, index-aligned with refs
@@ -132,6 +146,12 @@ function removeUnavailable(result: TailoringResult, findings: Finding[]): Tailor
   };
 }
 
+/** Nothing to train: every tailored block lost its components, or every original block was dropped. */
+function isEmpty(original: StructuredWorkout, result: TailoringResult): boolean {
+  const dropped = new Set(result.droppedBlocks.map((d) => d.index));
+  return result.blocks.every((b) => b.components.length === 0) || original.blocks.every((_, i) => dropped.has(i));
+}
+
 async function tailorAndValidate(
   provider: LlmProvider, s: TailorStage,
 ): Promise<{ result: TailoringResult; findings: Finding[] }> {
@@ -145,10 +165,11 @@ async function tailorAndValidate(
     plan: forceReplacements(planComponents(s.original, planContext), s.restrictions, planContext),
     goal: goalFamily(s.request.targetMovement, planContext), equipment, movements: domain.movements,
     conversions: domain.conversions, previousAttempt: s.previousAttempt, violations: [],
+    locale: s.locale, lockedFormats: s.lockedFormats,
   };
   const validate = (result: TailoringResult) => validateTailoring({
     original: s.original, result, movements: domain.movements, active, equipment,
-    timeCapMinutes: s.request.timeCapMinutes,
+    timeCapMinutes: s.request.timeCapMinutes, lockedFormats: s.lockedFormats,
   });
 
   s.progress("tailoring");
@@ -165,9 +186,10 @@ async function tailorAndValidate(
     result = removeUnavailable(result, findings);
     findings = validate(result);
   }
-  if (findings.some((f) => f.kind === "contraindicated_movement" && isViolation(f))) {
+  if (findings.some((f) => (f.kind === "contraindicated_movement" || f.kind === "scoring_changed") && isViolation(f))) {
     throw new EngineUnsafeError(findings);
   }
+  if (isEmpty(s.original, result)) throw new EngineEmptyError();
   return { result, findings };
 }
 
@@ -213,7 +235,7 @@ export async function runTailorPipeline(provider: LlmProvider, args: PipelineArg
   const { result, findings } = await tailorAndValidate(provider, {
     original: args.original, refs, catalogActive: active, restrictions: args.restrictions,
     unavailable: args.unavailableEquipment, profile: args.profile, request: args.request, domain: args.domain,
-    previousAttempt: null, progress,
+    previousAttempt: null, progress, locale: args.locale, lockedFormats: args.lockedFormats,
   });
   return {
     original: args.original, conditions: refs, restrictions: args.restrictions, unavailableEquipment: args.unavailableEquipment,
@@ -235,6 +257,7 @@ export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs)
   const { result, findings } = await tailorAndValidate(provider, {
     original: args.previous.original, refs, catalogActive: active, restrictions, unavailable, profile: args.profile,
     request: args.request, domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
+    locale: args.locale, lockedFormats: args.lockedFormats,
   });
   return {
     original: args.previous.original, conditions: refs, restrictions, unavailableEquipment: unavailable,

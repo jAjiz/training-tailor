@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { StructuredWorkout } from "@/lib/engine/types";
+import type { BlockFormat, StructuredWorkout } from "@/lib/engine/types";
 import { describeSets, percentToKg } from "./barbell";
 import type { BarbellSet } from "./schemas";
 
@@ -39,6 +39,13 @@ export function blockAnalysisText(b: BlockFields, locale: string): string {
       b.timeCapSeconds !== null ? `Time cap: ${Math.round(b.timeCapSeconds / 60)} min` : null,
     ];
   return lines.filter((l): l is string => !!l).join("\n");
+}
+
+/** The formats an adaptation must keep so the block's scoring still applies; null when any format fits. */
+export function lockedFormatsFor(scoring: string | null): BlockFormat[] | null {
+  if (scoring === "for_time") return ["for_time"];
+  if (scoring === "amrap") return ["amrap"];
+  return null;
 }
 
 /** Fills each percentage component's loadKg from the athlete's 1RMs, keyed by canonical movement name. */
