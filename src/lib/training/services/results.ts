@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { toJson } from "@/lib/json";
 import { AdaptationSnapshot } from "../adaptation-types";
 import { workoutHash } from "../block-engine";
@@ -36,19 +37,25 @@ export async function getVisibleBlock(db: Db, athlete: AthleteRef, blockId: stri
 export type SinglePrompt = { movement: string; from: number | null; to: number };
 
 /**
- * The snapshot a saved result carries, or null for an unadapted one. A result already tagged keeps its snapshot (sticky,
- * even after the athlete discards the adaptation); otherwise an accepted adaptation that still matches the block tags it.
+ * The snapshot a saved result carries, as stored JSON, or null for an unadapted one. A result already tagged keeps its
+ * snapshot as it is (sticky, even after the athlete discards the adaptation, and even when the schema no longer accepts
+ * it); otherwise an accepted adaptation that still matches the block tags it.
  */
-export async function adaptationToKeep(db: Db, athleteId: string, block: { id: string }): Promise<AdaptationSnapshot | null> {
+export async function adaptationToKeep(db: Db, athleteId: string, block: { id: string }): Promise<Prisma.InputJsonValue | null> {
   const existing = await db.result.findUnique({
-    where: { blockId_athleteId: { blockId: block.id, athleteId } }, select: { adaptation: true },
+    where: { blockId_athleteId: { blockId: block.id, athleteId } }, select: { id: true, adaptation: true },
   });
-  if (existing?.adaptation != null) return AdaptationSnapshot.parse(existing.adaptation);
+  if (existing?.adaptation != null) {
+    if (!AdaptationSnapshot.safeParse(existing.adaptation).success) {
+      console.error(`result ${existing.id}: stored adaptation snapshot no longer parses; kept as stored`);
+    }
+    return existing.adaptation as Prisma.InputJsonValue;
+  }
   const adaptation = await getAdaptation(db, athleteId, block.id);
   if (!adaptation?.accepted) return null;
   const row = await db.block.findUniqueOrThrow({ where: { id: block.id } });
   if (adaptation.accepted.workoutHash !== workoutHash(row)) return null;
-  return snapshotOf(adaptation.accepted, adaptation.messages);
+  return toJson(snapshotOf(adaptation.accepted, adaptation.messages));
 }
 
 export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInputValue, now: Date = new Date()) {
@@ -58,7 +65,7 @@ export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInput
   if (!evaluated) throw new TrainingError("invalid_score");
   const adaptation = await adaptationToKeep(db, athlete.id, block);
   const data = {
-    division: block.kind === "barbell" ? "rx" : adaptation ? "scaled" : input.division,
+    division: block.kind === "barbell" ? "rx" : adaptation !== null ? "scaled" : input.division,
     score: toJson(evaluated.score),
     sortKey: evaluated.sortKey,
     capped: evaluated.capped,
@@ -67,12 +74,12 @@ export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInput
   };
   const result = await db.result.upsert({
     where: { blockId_athleteId: { blockId: block.id, athleteId: athlete.id } },
-    create: { blockId: block.id, athleteId: athlete.id, ...data, ...(adaptation && { adaptation: toJson(adaptation) }) },
-    update: { ...data, ...(adaptation && { adaptation: toJson(adaptation) }) },
+    create: { blockId: block.id, athleteId: athlete.id, ...data, ...(adaptation !== null && { adaptation }) },
+    update: { ...data, ...(adaptation !== null && { adaptation }) },
   });
 
   let singlePrompt: SinglePrompt | null = null;
-  if (!adaptation && block.kind === "barbell" && block.movement) {
+  if (adaptation === null && block.kind === "barbell" && block.movement) {
     const current = (await oneRmMap(db, athlete.id, [block.movement])).get(block.movement) ?? null;
     const top = singleAbove((evaluated.score as BarbellResult).sets, current);
     if (top !== null) singlePrompt = { movement: block.movement, from: current, to: top };

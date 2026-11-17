@@ -1,14 +1,15 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { makeBarbellBlock, makeCoach, makeContinuous, makeCustomBlock } from "../../helpers/factories";
 import { coupletDraft, fixtureDomain } from "../../fixtures/workouts";
-import { FakeProvider } from "@/lib/ai/fake-provider";
+import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
 import { ensureBlockAnalysis } from "@/lib/training/services/block-analysis";
 
 let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 const domain = fixtureDomain();
 const provider = () => new FakeProvider({ BlockAnalysis: coupletDraft() });
@@ -79,5 +80,26 @@ describe("ensureBlockAnalysis", () => {
     const p = new FakeProvider({ BlockAnalysis: draft });
     const { workout } = await ensure(p, barbell.id);
     expect(workout.blocks[0].components[0].canonical).toBe("Test Back Squat");
+  });
+
+  it("retries a degraded analysis on the next call", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { block } = await setup();
+    const p = new FakeProvider({ BlockAnalysis: sequence(new Error("Test outage"), coupletDraft()) });
+    expect(await ensure(p, block.id)).toMatchObject({ analyzed: false, fresh: true });
+    const retried = await ensure(p, block.id);
+    expect(retried).toMatchObject({ analyzed: true, fresh: true });
+    expect(p.calls).toHaveLength(2);
+    expect((await tdb.prisma.blockAnalysis.findUniqueOrThrow({ where: { blockId: block.id } })).analyzed).toBe(true);
+  });
+
+  it("keeps the scoring's format on a degraded analysis", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { program } = await setup();
+    const forTime = await makeCustomBlock(tdb.prisma, program.id, 1, { scoring: "for_time" });
+    const reps = await makeCustomBlock(tdb.prisma, program.id, 2, { scoring: "reps" });
+    const p = new FakeProvider({ BlockAnalysis: new Error("Test outage") });
+    expect((await ensure(p, forTime.id)).workout.blocks[0].format).toBe("for_time");
+    expect((await ensure(p, reps.id)).workout.blocks[0].format).toBe("other");
   });
 });

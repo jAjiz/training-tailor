@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import {
   enroll, makeAthlete, makeBarbellBlock, makeCoach, makeContinuous, makeCustomBlock, makeResult, publishWeek,
@@ -8,13 +8,14 @@ import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
 import { workoutHash } from "@/lib/training/block-engine";
 import { RestrictionDraftSchema, emptyProfile, type Restriction, type TailoringDraft, type WorkoutDraft } from "@/lib/engine/types";
 import {
-  acceptAdaptation, adaptAnalyze, adaptTailor, discardAdaptation, getAdaptation, snapshotOf,
+  acceptAdaptation, adaptAnalyze, adaptTailor, discardAdaptation, getAdaptation, listAdaptations, snapshotOf,
 } from "@/lib/training/services/adaptations";
 
 let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 const NOW = new Date("2026-10-05T10:00:00Z"); // Monday, day 0 of the program
 const domain = fixtureDomain();
@@ -288,5 +289,75 @@ describe("adaptation conversation", () => {
     expect(a.messages[1]).toMatchObject({ role: "error", code: "engine_unsafe" });
     expect(a.state!.last).toBeNull();
     expect(a.state!.feedback).toBe("my shoulder hurts overhead"); // the turn is kept, so it can be retried
+  });
+
+  it("a coach edit after the analyze step refuses the tailoring run and appends no proposal", async () => {
+    const { athlete, block } = await setup();
+    const p = new FakeProvider({ BlockAnalysis: coupletDraft(), SituationAnalysis: situation([overheadToday]), TailoringResult: safeDraft() });
+    await say(p, athlete, block.id, "my shoulder hurts overhead");
+    await tdb.prisma.block.update({ where: { id: block.id }, data: { description: "Test edited description" } });
+    await expect(tailorNow(p, athlete, block.id)).rejects.toMatchObject({ code: "block_changed" });
+    expect(p.calls.some((c) => c.schemaName === "TailoringResult")).toBe(false);
+    const a = (await getAdaptation(tdb.prisma, athlete.id, block.id))!;
+    expect(a.messages.map((m) => m.role)).toEqual(["athlete"]);
+    expect(a.state!.last).toBeNull();
+  });
+
+  it("a message after a library republish starts the session again on the new analysis", async () => {
+    const { athlete, block } = await proposed();
+    const republished = coupletDraft();
+    republished.blocks[0].components = [component("Test Goblet", { reps: "21-15-9" }), component("Test Row", { reps: "21-15-9" })];
+    const p = new FakeProvider({ BlockAnalysis: republished, SituationAnalysis: situation() });
+    const r = await adaptAnalyze(tdb.prisma, p, athlete, block.id, { text: "again please" }, { ...ctx, libraryVersion: 2 }, NOW);
+    expect(r.reanalyzed).toBe(true);
+    const a = (await getAdaptation(tdb.prisma, athlete.id, block.id))!;
+    expect(a.state!.last).toBeNull();
+    expect(a.state!.original.blocks[0].components.map((c) => c.movement)).toEqual(["Test Goblet", "Test Row"]);
+    expect(a.state!.feedback).toBe("my shoulder hurts overhead\nagain please");
+    expect(a.messages.map((m) => m.role)).toEqual(["athlete", "proposal", "athlete"]);
+  });
+
+  it("a message after a degraded analysis retries it and restarts the session on the new one", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { athlete, block } = await setup();
+    const p = new FakeProvider({
+      BlockAnalysis: sequence(new Error("Test outage"), coupletDraft()), SituationAnalysis: situation(),
+    });
+    await say(p, athlete, block.id, "my shoulder hurts overhead");
+    expect((await getAdaptation(tdb.prisma, athlete.id, block.id))!.state!.original.blocks[0].components).toEqual([]);
+    expect((await say(p, athlete, block.id, "again please")).reanalyzed).toBe(true);
+    const { state } = (await getAdaptation(tdb.prisma, athlete.id, block.id))!;
+    expect(state!.original.blocks[0].components.map((c) => c.movement)).toEqual(["Test Combo", "Test Pull"]);
+    expect(state!.feedback).toBe("my shoulder hurts overhead\nagain please");
+  });
+
+  it("a degraded analysis of a for_time block still refuses a proposal that changes its format", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { athlete, block } = await setup();
+    const amrap = () => {
+      const d = safeDraft();
+      d.blocks[0].format = "amrap";
+      return d;
+    };
+    const p = new FakeProvider({
+      BlockAnalysis: new Error("Test outage"), SituationAnalysis: situation([overheadToday]), TailoringResult: sequence(amrap(), amrap()),
+    });
+    await say(p, athlete, block.id, "my shoulder hurts overhead");
+    const error = await tailorNow(p, athlete, block.id).catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: "EngineUnsafeError" });
+    expect((error as { findings: unknown[] }).findings).toContainEqual(expect.objectContaining({ kind: "scoring_changed" }));
+  });
+});
+
+describe("stored rows the schemas no longer accept", () => {
+  it("are left out of the day view and read as absent", async () => {
+    const { athlete, block } = await proposed();
+    const other = await makeCustomBlock(tdb.prisma, (await tdb.prisma.block.findUniqueOrThrow({ where: { id: block.id } })).programId, 1);
+    await tdb.prisma.blockAdaptation.create({ data: { blockId: other.id, athleteId: athlete.id, state: { bogus: true } } });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const map = await listAdaptations(tdb.prisma, athlete.id, [block.id, other.id]);
+    expect([...map.keys()]).toEqual([block.id]);
+    expect(await getAdaptation(tdb.prisma, athlete.id, other.id)).toBeNull();
+    expect(logged).toHaveBeenCalled();
   });
 });

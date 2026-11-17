@@ -37,15 +37,25 @@ export interface Adaptation {
   messages: AdaptationMessage[];
   state: AdaptationState | null;
   accepted: AcceptedAdaptation | null;
+  /** The library version of the conversation's last analyzed message. */
+  libraryVersion: number | null;
 }
 
-const Messages = z.array(AdaptationMessage);
-
-const parseRow = (row: BlockAdaptation): Adaptation => ({
-  messages: Messages.parse(row.messages),
-  state: row.state === null ? null : AdaptationState.parse(row.state),
-  accepted: row.accepted === null ? null : AcceptedAdaptation.parse(row.accepted),
+const StoredAdaptation = z.object({
+  messages: z.array(AdaptationMessage),
+  state: AdaptationState.nullable(),
+  accepted: AcceptedAdaptation.nullable(),
 });
+
+/** The stored row, or null (logged) when the schemas no longer accept it: it reads as no adaptation. */
+function parseRow(row: BlockAdaptation): Adaptation | null {
+  const parsed = StoredAdaptation.safeParse(row);
+  if (!parsed.success) {
+    console.error(`adaptation ${row.id} no longer parses; read as absent`, parsed.error);
+    return null;
+  }
+  return { ...parsed.data, libraryVersion: row.libraryVersion };
+}
 
 const key = (athleteId: string, blockId: string) => ({ blockId_athleteId: { blockId, athleteId } });
 
@@ -54,10 +64,13 @@ export async function getAdaptation(db: Db, athleteId: string, blockId: string):
   return row ? parseRow(row) : null;
 }
 
-/** The athlete's adaptations of the given blocks, by block id, in one query. */
+/** The athlete's adaptations of the given blocks, by block id, in one query. Rows that no longer parse are left out. */
 export async function listAdaptations(db: Db, athleteId: string, blockIds: string[]): Promise<Map<string, Adaptation>> {
   const rows = await db.blockAdaptation.findMany({ where: { athleteId, blockId: { in: blockIds } } });
-  return new Map(rows.map((row) => [row.blockId, parseRow(row)]));
+  return new Map(rows.flatMap((row) => {
+    const adaptation = parseRow(row);
+    return adaptation ? [[row.blockId, adaptation] as const] : [];
+  }));
 }
 
 async function save(
@@ -141,8 +154,9 @@ function applyButtonAnswers(state: AdaptationState, given: ClarifyAnswer[]): Ada
 /**
  * One athlete message: a typed text (a new message, or a free-text answer to an open site question) or button answers.
  * Returns the questions still open; `reanalyzed` is true when the block itself had to be analyzed again.
- * A text on a block the coach changed since the conversation's analysis starts the engine session again on the new
- * analysis, carrying what the athlete already said (the messages stay); button answers to questions about the older block are refused with `block_changed`.
+ * A text on a block the coach changed, or under a library version republished, since the conversation's analysis (or
+ * that retries a degraded analysis) starts the engine session again on the new analysis, carrying what the athlete
+ * already said (the messages stay); button answers to questions about the older block are refused with `block_changed`.
  */
 export async function adaptAnalyze(
   db: Db, provider: LlmProvider, athlete: AthleteRef, blockId: string, message: AdaptMessageInput, ctx: AdaptContext,
@@ -165,8 +179,10 @@ export async function adaptAnalyze(
   }
 
   const ensured = await ensureBlockAnalysis(db, provider, block, ctx.domain, ctx.libraryVersion, ctx.locale);
+  // A new analysis (a coach edit, a library republish, a retry of a degraded one) restarts the session on it.
+  const upToDate = stored && !ensured.fresh && stored.analysisHash === hash && current?.libraryVersion === ctx.libraryVersion;
   let state = !stored ? freshState(hash, ensured.workout)
-    : stored.analysisHash === hash ? stored : restartedState(stored, hash, ensured.workout, messages);
+    : upToDate ? stored : restartedState(stored, hash, ensured.workout, messages);
   const { text } = message;
   const read = (restrictions: Restriction[]) => analyzeFeedback(provider, {
     feedback: text, session: sessionOf(state, restrictions), request: emptyRequest(), profile: ctx.profile, domain: ctx.domain,

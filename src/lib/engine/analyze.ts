@@ -5,7 +5,7 @@ import {
 import { createMovementResolver, movementFamily } from "@/lib/domain/resolve";
 import {
   PasteAnalysisSchema, SituationAnalysisSchema, WorkoutDraftSchema,
-  type DetectedCondition, type Restriction, type SituationAnalysis, type StructuredWorkout,
+  type BlockFormat, type DetectedCondition, type Restriction, type SituationAnalysis, type StructuredWorkout,
 } from "./types";
 import { resolveBlocks } from "./resolve-blocks";
 
@@ -167,20 +167,22 @@ export async function analyzePaste(
   }
 }
 
-const rawBlock = (rawText: string): StructuredWorkout => ({
+const rawBlock = (rawText: string, format: BlockFormat): StructuredWorkout => ({
   name: null, rawText, source: "paste",
   blocks: [{
-    title: null, rawText, day: null, format: "other", scheme: null,
+    title: null, rawText, day: null, format, scheme: null,
     timeDomainMinutes: null, coachingNotes: null, stimulus: null, components: [],
   }],
 });
 
 /**
  * Reads one program block's workout, with no athlete situation. `forced` is a barbell block's movement: it
- * overrides the canonical of every component that resolves to it or is prescribed as a percentage.
+ * overrides the canonical of every component that resolves to it or is prescribed as a percentage. `degradedFormat` is
+ * the raw block's format when the model fails: the format the block's scoring needs, so validation still guards it.
  */
 export async function analyzeBlock(
   provider: LlmProvider, text: string, ctx: AnalyzeContext, forced: { movement: string } | null,
+  degradedFormat: BlockFormat = "other",
 ): Promise<{ workout: StructuredWorkout; analyzed: boolean }> {
   const resolve = createMovementResolver(ctx.movements);
   try {
@@ -205,6 +207,6 @@ ${text}
     return { workout: { name: out.name, rawText: text, source: "paste", blocks: resolved }, analyzed: true };
   } catch (e) {
     console.error("analyzeBlock failed; degrading to a raw block", e);
-    return { workout: rawBlock(text), analyzed: false };
+    return { workout: rawBlock(text, degradedFormat), analyzed: false };
   }
 }

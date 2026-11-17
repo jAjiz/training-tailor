@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { fakePush } from "../../helpers/fake-push";
 import {
   enroll, makeAthlete, makeBarbellBlock, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makeSubscription, publishWeek,
 } from "../../helpers/factories";
 import {
-  deleteResult, getCoachBlockResults, getDayResults, getLeaderboard, getMyResult, listAthleteResults, listBlockResults, saveResult, toggleFistBump,
+  adaptationToKeep, deleteResult, getCoachBlockResults, getDayResults, getLeaderboard, getMyResult, listAthleteResults, listBlockResults, saveResult, toggleFistBump,
 } from "@/lib/training/services/results";
 import { deliver } from "@/lib/notifications/notify";
 import { component, coupletDraft, fixtureDomain, toTailoringDraft, couplet } from "../../fixtures/workouts";
@@ -17,6 +17,7 @@ let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 const NOW = new Date("2026-10-07T18:00:00Z"); // Wednesday of week 0 (program starts Monday 2026-10-05)
 
@@ -301,6 +302,20 @@ describe("results with adaptations", () => {
     expect(after.division).toBe("scaled");
     expect(after.adaptation).toEqual(before.adaptation);
     expect(after.adaptation).not.toBeNull();
+  });
+
+  it("sticky: a stored snapshot the schema no longer accepts is kept as stored, and the result stays scaled", async () => {
+    const { ana, wod } = await setup();
+    await log(ana, wod.id, { seconds: 600 });
+    const legacy = { text: "Test legacy snapshot" };
+    await tdb.prisma.result.updateMany({ where: { blockId: wod.id, athleteId: ana.id }, data: { adaptation: legacy, division: "scaled" } });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await adaptationToKeep(tdb.prisma, ana.id, wod)).toEqual(legacy);
+    await log(ana, wod.id, { seconds: 590 }, "rx");
+    const row = await tdb.prisma.result.findUniqueOrThrow({ where: { blockId_athleteId: { blockId: wod.id, athleteId: ana.id } } });
+    expect(row.division).toBe("scaled");
+    expect(row.adaptation).toEqual(legacy);
+    expect(logged).toHaveBeenCalled();
   });
 
   it("stale adaptation does not tag a new result", async () => {
