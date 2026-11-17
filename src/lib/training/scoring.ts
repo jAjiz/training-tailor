@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formatDecimal } from "@/lib/format";
 import type { Scoring } from "./schemas";
 
 const Count = z.number().int().min(0).max(100_000);
@@ -67,10 +68,9 @@ export function formatDuration(seconds: number): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
-const num = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
-
-/** Language-neutral score text ("9:32", "5 + 12", "CAP · 87", "100 kg"). */
-export function formatScore(target: ScoreTarget, score: unknown): string {
+/** Score text with decimals in the viewer's language ("9:32", "5 + 12", "CAP · 87", "102,5 kg"). */
+export function formatScore(target: ScoreTarget, score: unknown, locale: string): string {
+  const num = (n: number) => formatDecimal(n, locale);
   const s = score as Record<string, number> & { sets?: { kg: number; reps: number }[]; capped?: boolean };
   if (target.kind === "barbell") return (s.sets ?? []).map((x) => `${x.reps}×${num(x.kg)} kg`).join(" · ");
   switch (target.scoring) {

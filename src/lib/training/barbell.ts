@@ -1,4 +1,5 @@
 import type { Movement } from "@/lib/domain/types";
+import { formatDecimal } from "@/lib/format";
 import type { BarbellSet } from "./schemas";
 
 export type LiftGroup = { pattern: string; movements: string[] };
@@ -28,11 +29,11 @@ export function percentToKg(percent: number, oneRm: number): number {
   return Math.round((percent / 100) * oneRm * 2) / 2;
 }
 
-const num = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const sameSet = (a: BarbellSet, b: BarbellSet) => a.reps === b.reps && a.percent === b.percent && a.kg === b.kg;
 
 /** "3 × 5 @ 80 % (100 kg)" lines, collapsing identical consecutive sets. */
-export function describeSets(sets: readonly BarbellSet[], oneRm: number | null): string[] {
+export function describeSets(sets: readonly BarbellSet[], oneRm: number | null, locale: string): string[] {
+  const num = (n: number) => formatDecimal(n, locale);
   const lines: string[] = [];
   for (let i = 0; i < sets.length;) {
     let j = i;

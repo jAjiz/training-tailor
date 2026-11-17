@@ -18,3 +18,8 @@ export function athleteTimeline(
 export function hasLeaderboard(block: { kind: string; scoring: string | null }, program: { kind: string }): boolean {
   return program.kind === "continuous" && block.kind === "custom" && block.scoring !== null && block.scoring !== "none";
 }
+
+/** Prisma filter for an athlete still in the program: account enabled, enrollment neither removed nor left. */
+export function activeAthleteIn(programId: string) {
+  return { disabledAt: null, enrollments: { some: { programId, removedAt: null, leftAt: null } } };
+}

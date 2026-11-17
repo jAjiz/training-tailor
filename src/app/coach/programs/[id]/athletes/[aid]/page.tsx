@@ -18,9 +18,9 @@ const td = "px-4 py-3";
 export default async function AthleteResultsPage({ params }: { params: Promise<{ id: string; aid: string }> }) {
   const coach = await requireCoachPage();
   const { id, aid } = await params;
-  const { athlete, results } = await orNotFound(listAthleteResults(prisma, coach.id, id, aid));
   const t = await getTranslations();
   const locale = await getLocale();
+  const { athlete, results } = await orNotFound(listAthleteResults(prisma, coach.id, id, aid, locale));
   return (
     <section className="flex flex-col gap-6">
       <div>

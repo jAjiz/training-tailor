@@ -39,16 +39,21 @@ describe("percentToKg", () => {
 
 describe("describeSets", () => {
   it("collapses identical consecutive sets", () => {
-    expect(describeSets([{ reps: 5, percent: 80, kg: null }, { reps: 5, percent: 80, kg: null }, { reps: 5, percent: 80, kg: null }], null))
+    expect(describeSets([{ reps: 5, percent: 80, kg: null }, { reps: 5, percent: 80, kg: null }, { reps: 5, percent: 80, kg: null }], null, "en"))
       .toEqual(["3 × 5 @ 80 %"]);
   });
 
   it("shows kg next to percentages when a 1RM is known", () => {
-    expect(describeSets([{ reps: 3, percent: 85, kg: null }], 120)).toEqual(["3 @ 85 % (102 kg)"]);
+    expect(describeSets([{ reps: 3, percent: 85, kg: null }], 120, "en")).toEqual(["3 @ 85 % (102 kg)"]);
   });
 
   it("keeps different sets on their own lines and prints fixed loads", () => {
-    expect(describeSets([{ reps: 5, percent: null, kg: 60 }, { reps: 3, percent: null, kg: 70 }], null))
+    expect(describeSets([{ reps: 5, percent: null, kg: 60 }, { reps: 3, percent: null, kg: 70 }], null, "en"))
       .toEqual(["5 @ 60 kg", "3 @ 70 kg"]);
+  });
+
+  it("writes decimal loads in the viewer's language", () => {
+    expect(describeSets([{ reps: 5, percent: 72.5, kg: null }], 101, "es")).toEqual(["5 @ 72,5 % (73 kg)"]);
+    expect(describeSets([{ reps: 3, percent: null, kg: 62.5 }], null, "es")).toEqual(["3 @ 62,5 kg"]);
   });
 });

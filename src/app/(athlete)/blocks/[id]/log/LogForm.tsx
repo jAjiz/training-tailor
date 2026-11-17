@@ -2,13 +2,14 @@
 
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Input, Textarea } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Field";
 import { Segmented } from "@/components/ui/Segmented";
+import { formatDecimal } from "@/lib/format";
 import type { ErrorCode } from "@/lib/training/errors";
 import { buildScore, hasInvalidNumber, type LogDraft } from "@/lib/training/log-draft";
 import type { ScoreTarget } from "@/lib/training/scoring";
@@ -34,6 +35,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
   const cappedId = useId();
   const [title] = useState(hasResult ? titles.edit : titles.new);
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
   const [d, setD] = useState(initial);
@@ -101,8 +103,8 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
       {header}
       <Card className="flex flex-col gap-4 p-5">
         <p className="text-[15px]">{prompt.from === null
-          ? t("log.singlePromptFirst", { movement: prompt.movement, to: prompt.to })
-          : t("log.singlePrompt", { movement: prompt.movement, from: prompt.from, to: prompt.to })}</p>
+          ? t("log.singlePromptFirst", { movement: prompt.movement, to: formatDecimal(prompt.to, locale) })
+          : t("log.singlePrompt", { movement: prompt.movement, from: formatDecimal(prompt.from, locale), to: formatDecimal(prompt.to, locale) })}</p>
         <div className="flex gap-3">
           <Button type="button" variant="primary" slanted onClick={acceptPrompt} disabled={pending}>{t("log.yes")}</Button>
           <Button type="button" variant="ghost" onClick={done} disabled={pending}>{t("log.no")}</Button>

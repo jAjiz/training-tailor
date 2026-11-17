@@ -126,19 +126,25 @@ describe("blocks", () => {
     expect((await listWeekBlocks(tdb.prisma, program.id, 2)).length).toBe(7);
   });
 
-  it("listWeekBlocks keeps the full count and reports visible results without disabled athletes", async () => {
+  it("listWeekBlocks keeps the full count and reports visible results only for athletes still in the program", async () => {
     const { program } = await setup();
     const block = await makeCustomBlock(tdb.prisma, program.id, 0);
-    const active = await makeAthlete(tdb.prisma);
-    const disabled = await makeAthlete(tdb.prisma);
-    await makeResult(tdb.prisma, block.id, active.id);
-    await makeResult(tdb.prisma, block.id, disabled.id);
+    const [active, disabled, removed, left] = [
+      await makeAthlete(tdb.prisma), await makeAthlete(tdb.prisma), await makeAthlete(tdb.prisma), await makeAthlete(tdb.prisma),
+    ];
+    for (const a of [active, disabled, removed, left]) {
+      await enroll(tdb.prisma, program.id, a.id);
+      await makeResult(tdb.prisma, block.id, a.id);
+    }
     const before = (await listWeekBlocks(tdb.prisma, program.id, 0))[0];
-    expect([before._count.results, before.visibleResultCount]).toEqual([2, 2]);
+    expect([before._count.results, before.visibleResultCount]).toEqual([4, 4]);
 
     await tdb.prisma.athleteAccount.update({ where: { id: disabled.id }, data: { disabledAt: new Date() } });
+    const enrollment = (athleteId: string) => ({ programId_athleteId: { programId: program.id, athleteId } });
+    await tdb.prisma.enrollment.update({ where: enrollment(removed.id), data: { removedAt: new Date() } });
+    await tdb.prisma.enrollment.update({ where: enrollment(left.id), data: { leftAt: new Date() } });
     const after = (await listWeekBlocks(tdb.prisma, program.id, 0))[0];
-    expect([after._count.results, after.visibleResultCount]).toEqual([2, 1]);
+    expect([after._count.results, after.visibleResultCount]).toEqual([4, 1]);
   });
 
   it("refuses to duplicate or move past the end of a closed program", async () => {

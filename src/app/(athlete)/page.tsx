@@ -99,7 +99,7 @@ export default async function TodayPage({ searchParams }: Props) {
           const board = hasLeaderboard(b, day.program);
           return (
             <BlockCard key={b.id} block={{ ...b, sets: b.sets as BarbellSet[] | null }} oneRm={b.movement ? oneRms.get(b.movement) ?? null : null}
-              summary={mine ? formatScore(scoreTarget(b), mine.score) : null}>
+              summary={mine ? formatScore(scoreTarget(b), mine.score, locale) : null}>
               {b.kind === "barbell" && b.movement && !oneRms.has(b.movement) && (b.sets as BarbellSet[] | null)?.some((s) => s.percent !== null) && (
                 <Link href={`/prs/${encodeURIComponent(b.movement)}`} className="text-xs text-muted underline">{t("addOneRm", { movement: b.movement })}</Link>
               )}

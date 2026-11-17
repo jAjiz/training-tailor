@@ -24,9 +24,9 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ id
   if (enrollment?.status === "left" || enrollment?.status === "removed") {
     return <NotInProgram />;
   }
-  const { block, date, entries } = await orNotFound(getLeaderboard(prisma, { athlete }, id));
   const [t, tc, tl, tb] = await Promise.all([getTranslations("leaderboard"), getTranslations("common"), getTranslations("log"), getTranslations()]);
   const locale = await getLocale();
+  const { block, date, entries } = await orNotFound(getLeaderboard(prisma, { athlete }, id, locale));
   return (
     <section className="flex flex-col gap-5 pt-4">
       <div>

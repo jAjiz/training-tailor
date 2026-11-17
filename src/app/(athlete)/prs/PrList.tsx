@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/controls";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { formatDecimal } from "@/lib/format";
 
 type Group = { pattern: string; label: string; movements: { name: string; kg: number | null }[] };
 
 export function PrList({ groups }: { groups: Group[] }) {
   const t = useTranslations("prs");
+  const locale = useLocale();
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const visible = groups
@@ -30,7 +32,7 @@ export function PrList({ groups }: { groups: Group[] }) {
                   <Link href={`/prs/${encodeURIComponent(m.name)}`}
                     className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-foreground">
                     <span className="min-w-0 truncate text-[15px]">{m.name}</span>
-                    <span className="shrink-0 text-right font-semibold tabular-nums">{m.kg !== null ? `${m.kg} ${t("kg")}` : ""}</span>
+                    <span className="shrink-0 text-right font-semibold tabular-nums">{m.kg !== null ? `${formatDecimal(m.kg, locale)} ${t("kg")}` : ""}</span>
                   </Link>
                 </li>
               ))}

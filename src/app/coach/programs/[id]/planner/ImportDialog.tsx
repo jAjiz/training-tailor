@@ -45,8 +45,8 @@ function toErrorCode(code: unknown): ErrorCode {
   return ERROR_CODES.includes(code as ErrorCode) ? (code as ErrorCode) : "internal";
 }
 
-function summary(block: BlockInputValue): string {
-  if (block.kind === "barbell") return describeSets(block.sets, null).join(", ");
+function summary(block: BlockInputValue, locale: string): string {
+  if (block.kind === "barbell") return describeSets(block.sets, null, locale).join(", ");
   return block.description.split("\n").find((line) => line.trim() !== "") ?? "";
 }
 
@@ -318,7 +318,7 @@ export function ImportDialog({ ctx, publishedWeeks, filledWeeks, onClose }: Prop
                             ? <span className="line-clamp-4 min-w-0 whitespace-pre-line text-xs leading-snug">{noteText(block)}</span>
                             : <span className="type-display min-w-0 text-sm leading-snug">{heading}</span>}
                         </span>
-                        {!note && <span className="truncate text-xs text-foreground/80">{summary(block)}</span>}
+                        {!note && <span className="truncate text-xs text-foreground/80">{summary(block, locale)}</span>}
                         <span className="flex flex-wrap items-center gap-1.5">
                           {!note && <Pill className="w-fit">{t(`editor.kinds.${block.kind}`)}</Pill>}
                           <Select compact className="w-full" aria-label={t("import.roleFor", { heading })} value={role} disabled={!importable}

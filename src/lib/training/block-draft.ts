@@ -50,7 +50,7 @@ export function draftFromBlock(b: DraftSource): BlockDraft {
   };
 }
 
-const toNumber = (s: string) => (s.trim() === "" ? NaN : Number(s));
+const toNumber = (s: string) => (s.trim() === "" ? NaN : Number(s.trim().replace(",", ".")));
 
 /** The object sent to the block actions; the server validates it with `BlockInput`. */
 export function draftToInput(d: BlockDraft): unknown {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/controls";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field } from "@/components/ui/Field";
+import { formatDecimal } from "@/lib/format";
 import type { IsoDate } from "@/lib/training/dates";
 import { parseDecimal } from "@/lib/training/log-draft";
 import type { ErrorCode } from "@/lib/training/errors";
@@ -19,6 +20,7 @@ type Entry = { id: string; kg: number; label: string };
 
 export function PrHistory({ movement, today, entries }: { movement: string; today: IsoDate; entries: Entry[] }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
   const [kg, setKg] = useState("");
@@ -87,7 +89,7 @@ export function PrHistory({ movement, today, entries }: { movement: string; toda
                 <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <span className="text-[15px]">{e.label}</span>
                   <span className="flex items-center gap-2">
-                    <span className="font-semibold tabular-nums">{e.kg} {t("prs.kg")}</span>
+                    <span className="font-semibold tabular-nums">{formatDecimal(e.kg, locale)} {t("prs.kg")}</span>
                     <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => remove(e.id)}>{t("common.delete")}</Button>
                   </span>
                 </li>
