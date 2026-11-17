@@ -121,6 +121,9 @@ export type LeaderboardEntry = {
   bumps: number; bumpedByViewer: boolean; own: boolean; adapted: boolean;
 };
 
+/** The coach's leaderboard row: the entry plus the adaptation snapshot (athlete entries never carry it). */
+export type CoachLeaderboardEntry = LeaderboardEntry & { adaptation: AdaptationSnapshot | null };
+
 type Viewer = { athlete: AthleteRef } | { coachId: string };
 
 async function leaderboardBlock(db: Db, viewer: Viewer, blockId: string) {
@@ -132,7 +135,8 @@ type BoardBlock = Awaited<ReturnType<typeof leaderboardBlock>>;
 
 export async function getLeaderboard(db: Db, viewer: Viewer, blockId: string, locale = "en") {
   const block = await leaderboardBlock(db, viewer, blockId);
-  return leaderboardOf(db, block, "athlete" in viewer ? viewer.athlete.id : null, locale);
+  const { date, entries } = await leaderboardOf(db, block, "athlete" in viewer ? viewer.athlete.id : null, locale);
+  return { block, date, entries };
 }
 
 async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null, locale: string) {
@@ -155,7 +159,9 @@ async function leaderboardOf(db: Db, block: BoardBlock, viewerId: string | null,
     bumps: r._count.fistBumps, bumpedByViewer: r.fistBumps.length > 0, own: r.athleteId === viewerId,
     adapted: r.adaptation != null,
   }));
-  return { block, date: addDays(fromDbDate(block.program.startDate), block.dayIndex), entries };
+  // Snapshots stay out of the entries: only the coach path reads them (athletes never see each other's adaptations).
+  const snapshots = new Map(results.map((r) => [r.id, parseSnapshot(r.adaptation)]));
+  return { block, date: addDays(fromDbDate(block.program.startDate), block.dayIndex), entries, snapshots };
 }
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
@@ -212,12 +218,14 @@ type ResultWithRefs = {
   block: { kind: string; scoring: string | null; timeCapSeconds: number | null; title: string | null; movement: string | null };
 };
 
+const parseSnapshot = (value: unknown) => AdaptationSnapshot.nullable().catch(null).parse(value ?? null);
+
 const toRow = (locale: string) => (r: ResultWithRefs): CoachResultRow => ({
   id: r.id, athleteId: r.athleteId, displayName: r.athlete.displayName, blockId: r.blockId,
   blockTitle: r.block.title, blockMovement: r.block.movement, blockKind: r.block.kind, blockScoring: r.block.scoring,
   division: r.division,
   formatted: formatScore(scoreTarget(r.block), r.score, locale), notes: r.notes, performedOn: fromDbDate(r.performedOn),
-  adaptation: AdaptationSnapshot.nullable().catch(null).parse(r.adaptation ?? null),
+  adaptation: parseSnapshot(r.adaptation),
 });
 
 async function coachBlock(db: Db, coachId: string, blockId: string) {
@@ -229,7 +237,11 @@ async function coachBlock(db: Db, coachId: string, blockId: string) {
 /** The coach's view of one block: its leaderboard when it has one, else the plain list. One block lookup either way. */
 export async function getCoachBlockResults(db: Db, coachId: string, blockId: string, locale = "en") {
   const block = await coachBlock(db, coachId, blockId);
-  if (hasLeaderboard(block, block.program)) return { block, entries: (await leaderboardOf(db, block, null, locale)).entries, results: null };
+  if (hasLeaderboard(block, block.program)) {
+    const { entries, snapshots } = await leaderboardOf(db, block, null, locale);
+    const withSnapshot: CoachLeaderboardEntry[] = entries.map((e) => ({ ...e, adaptation: snapshots.get(e.resultId) ?? null }));
+    return { block, entries: withSnapshot, results: null };
+  }
   return { block, entries: null, results: await blockResultRows(db, block, locale) };
 }
 

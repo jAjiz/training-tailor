@@ -412,7 +412,8 @@
     "title": "Leaderboard",
     "empty": "Nobody has logged this block yet.",
     "you": "You",
-    "fistBump": "Fist bump"
+    "fistBump": "Fist bump",
+    "adapted": "Adapted"
   },
   "calendar": {
     "title": "Calendar",
@@ -460,7 +461,12 @@
     "notes": "Notes",
     "rank": "#",
     "bumps": "Fist bumps",
-    "view": "View results"
+    "view": "View results",
+    "adapted": "Adapted",
+    "adaptedDetails": "Adaptation details",
+    "adaptedChanges": "What changed",
+    "adaptedRemoved": "removed",
+    "adaptedSituation": "What the athlete wrote"
   },
   "impersonation": {
     "viewing": "You are viewing {name}'s account",

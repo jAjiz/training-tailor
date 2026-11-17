@@ -328,7 +328,7 @@ describe("results with adaptations", () => {
     expect(row.adaptation).not.toBeNull();
   });
 
-  it("leaderboard marks adapted entries", async () => {
+  it("coach rows expose the snapshot; athlete leaderboard entries do not", async () => {
     const { coach, program, ana, ben, wod } = await setup();
     await enableTailoring(coach.id, program.id);
     await adapt(ana, wod.id);
@@ -340,5 +340,9 @@ describe("results with adaptations", () => {
     const { results } = await listBlockResults(tdb.prisma, coach.id, wod.id);
     expect(results.find((x) => x.athleteId === ana.id)?.adaptation?.situation).toEqual(["my shoulder hurts overhead"]);
     expect(results.find((x) => x.athleteId === ben.id)?.adaptation).toBeNull();
+    // The coach's leaderboard path carries the snapshot too (wod has a leaderboard).
+    const coachView = await getCoachBlockResults(tdb.prisma, coach.id, wod.id);
+    expect(coachView.entries?.find((e) => e.athleteId === ana.id)?.adaptation?.situation).toEqual(["my shoulder hurts overhead"]);
+    expect(coachView.entries?.find((e) => e.athleteId === ben.id)?.adaptation).toBeNull();
   });
 });

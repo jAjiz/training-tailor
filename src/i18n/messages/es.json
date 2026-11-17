@@ -412,7 +412,8 @@
     "title": "Leaderboard",
     "empty": "Todavía nadie ha registrado este bloque.",
     "you": "Tú",
-    "fistBump": "Choque de puño"
+    "fistBump": "Choque de puño",
+    "adapted": "Adaptado"
   },
   "calendar": {
     "title": "Calendario",
@@ -460,7 +461,12 @@
     "notes": "Notas",
     "rank": "#",
     "bumps": "Choques de puño",
-    "view": "Ver resultados"
+    "view": "Ver resultados",
+    "adapted": "Adaptado",
+    "adaptedDetails": "Detalles de la adaptación",
+    "adaptedChanges": "Qué cambió",
+    "adaptedRemoved": "eliminado",
+    "adaptedSituation": "Lo que escribió el atleta"
   },
   "impersonation": {
     "viewing": "Estás viendo la cuenta de {name}",

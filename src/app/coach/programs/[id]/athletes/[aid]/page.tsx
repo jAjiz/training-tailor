@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Pill } from "@/components/ui/Pill";
+import { AdaptationDetails } from "@/components/training/AdaptationDetails";
 import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
@@ -45,7 +46,15 @@ export default async function AthleteResultsPage({ params }: { params: Promise<{
                   <td className={`${td} tabular-nums`}>{formatDay(r.performedOn, locale, { day: "numeric", month: "short" })}</td>
                   <td className={td}><Link href={`/coach/blocks/${r.blockId}/results`} className="font-medium underline">{blockLabel({ title: r.blockTitle, movement: r.blockMovement, kind: r.blockKind, scoring: r.blockScoring }, t)}</Link></td>
                   <td className={`${td} tabular-nums`}>{r.formatted}</td>
-                  <td className={td}><Pill>{t(`log.${r.division as "rx" | "scaled"}`)}</Pill></td>
+                  <td className={td}>
+                    <div className="flex flex-col items-start gap-2">
+                      <span className="flex items-center gap-2">
+                        <Pill>{t(`log.${r.division as "rx" | "scaled"}`)}</Pill>
+                        {r.adaptation && <Pill tone="success">{t("coachResults.adapted")}</Pill>}
+                      </span>
+                      {r.adaptation && <AdaptationDetails adaptation={r.adaptation} />}
+                    </div>
+                  </td>
                   <td className={`${td} text-muted`}>{r.notes}</td>
                 </tr>
               ))}
