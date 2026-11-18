@@ -15,12 +15,19 @@ export type LogDraft = {
 
 const str = (n: unknown) => (typeof n === "number" ? String(n) : "");
 
-export function logDraftFor(target: ScoreTarget, existing: unknown | null, prescribed: BarbellSet[], oneRm: number | null): LogDraft {
+/**
+ * The form's starting state: the existing result, else (barbell) the prescription with kg from the 1RM. With an
+ * `adapted` block the athlete did not follow the coach's prescription: its rows start empty.
+ */
+export function logDraftFor(
+  target: ScoreTarget, existing: unknown | null, prescribed: BarbellSet[], oneRm: number | null, adapted = false,
+): LogDraft {
   const s = (existing ?? {}) as Record<string, number> & { capped?: boolean; sets?: { kg: number; reps: number }[] };
   const draft: LogDraft = { minutes: "", seconds: "", capped: false, rounds: "", reps: "", value: "", sets: [] };
   if (target.kind === "barbell") {
     draft.sets = s.sets
       ? s.sets.map((x) => ({ kg: String(x.kg), reps: String(x.reps) }))
+      : adapted ? prescribed.map(() => ({ kg: "", reps: "" }))
       : prescribed.map((p) => ({
         kg: p.kg !== null ? String(p.kg) : p.percent !== null && oneRm !== null ? String(percentToKg(p.percent, oneRm)) : "",
         reps: String(p.reps),

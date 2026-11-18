@@ -229,7 +229,7 @@ export function emptyRequest(): TailorRequest {
 // ---- findings and results ----
 export const FindingKind = z.enum([
   "contraindicated_movement", "equipment_unavailable", "unrecognized_movement", "caution_movement",
-  "time_cap_exceeded", "stimulus_drift", "unaccounted_block", "change_mismatch",
+  "time_cap_exceeded", "stimulus_drift", "unaccounted_block", "change_mismatch", "scoring_changed", "percent_load_dropped",
 ]);
 export type FindingKind = z.infer<typeof FindingKind>;
 

@@ -20,7 +20,14 @@ export async function PUT(req: Request) {
   const { userId } = user;
   const parsed = AthleteProfileSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return jsonError("invalid_request", 400);
-  const profile = sanitizeProfile(parsed.data, await getDomainData());
+  // The form edits neither availability nor 1RMs (those come from PRs): what is stored stays as it is.
+  const stored = await loadProfile(userId);
+  const merged = {
+    ...parsed.data,
+    availability: stored.availability,
+    benchmarks: [...parsed.data.benchmarks.filter((b) => b.kind !== "1rm"), ...stored.benchmarks.filter((b) => b.kind === "1rm")],
+  };
+  const profile = sanitizeProfile(merged, await getDomainData());
   await prisma.athleteProfile.upsert({
     where: { userId },
     create: { userId, data: toJson(profile) },

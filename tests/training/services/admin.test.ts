@@ -7,7 +7,7 @@ import {
 } from "../../helpers/factories";
 import { ensureCoachAccount, getCoachByUserId } from "@/lib/training/services/accounts";
 import {
-  approveCoach, changeCoachStatus, deleteAthlete, deleteCoach, adminRegenerateInvite, grantAdmin, previewAthleteDeletion, previewCoachDeletion, setAthleteDisabled, setInviteDisabled,
+  approveCoach, changeCoachStatus, deleteAthlete, deleteCoach, adminRegenerateInvite, grantAdmin, previewAthleteDeletion, previewCoachDeletion, setAthleteDisabled, setCoachTailoring, setInviteDisabled,
   type CoachTransition,
 } from "@/lib/training/services/admin";
 
@@ -422,5 +422,22 @@ describe("program invitation controls", () => {
     });
     await expect(setInviteDisabled(db, admin.id, "nope", true)).rejects.toMatchObject({ code: "not_found" });
     await expect(adminRegenerateInvite(db, admin.id, "nope")).rejects.toMatchObject({ code: "not_found" });
+  });
+});
+
+describe("setCoachTailoring", () => {
+  it("writes an audit row", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    const coach = await makeCoach(tdb.prisma);
+    await setCoachTailoring(tdb.prisma, admin.id, coach.id, true);
+    expect((await tdb.prisma.coachAccount.findUniqueOrThrow({ where: { id: coach.id } })).tailoringEnabled).toBe(true);
+    await setCoachTailoring(tdb.prisma, admin.id, coach.id, false);
+    expect((await tdb.prisma.coachAccount.findUniqueOrThrow({ where: { id: coach.id } })).tailoringEnabled).toBe(false);
+    const rows = await tdb.prisma.adminAuditLog.findMany({ orderBy: { createdAt: "asc" } });
+    expect(rows).toMatchObject([
+      { actorUserId: admin.id, action: "coach.tailoring_on", targetType: "coach", targetId: coach.id },
+      { actorUserId: admin.id, action: "coach.tailoring_off", targetType: "coach", targetId: coach.id },
+    ]);
+    await expect(setCoachTailoring(tdb.prisma, admin.id, "missing", true)).rejects.toMatchObject({ code: "not_found" });
   });
 });

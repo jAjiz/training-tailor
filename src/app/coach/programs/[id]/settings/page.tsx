@@ -27,6 +27,7 @@ export default async function ProgramSettingsPage({ params }: { params: Promise<
           }}
           startDateLocked={locked}
           archived={program.archivedAt !== null}
+          tailoring={{ available: coach.tailoringEnabled, enabled: program.tailoringEnabled }}
         />
       </Card>
     </section>

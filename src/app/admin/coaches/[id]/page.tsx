@@ -18,7 +18,7 @@ export default async function AdminCoachPage({ params }: { params: Promise<{ id:
   return (
     <section className="flex flex-col gap-6">
       <PageHeader title={coach.displayName} back={{ href: "/admin/coaches", label: t("coach.back") }}>
-        <CoachActions coach={{ id: coach.id, userId: coach.userId, name: coach.displayName, email: coach.email, status: coach.status }} />
+        <CoachActions coach={{ id: coach.id, userId: coach.userId, name: coach.displayName, email: coach.email, status: coach.status, tailoringEnabled: coach.tailoringEnabled }} />
       </PageHeader>
       <Card>
         <Facts items={[

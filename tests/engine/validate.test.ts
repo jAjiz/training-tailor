@@ -16,7 +16,7 @@ const identity = (original = couplet()): TailoringResult => identityResult(origi
 function run(overrides: Partial<ValidateArgs> = {}) {
   return validateTailoring({
     original: couplet(), result: identity(), movements: domain.movements, active: [], equipment: null, timeCapMinutes: null,
-    ...overrides,
+    lockedFormats: null, ...overrides,
   });
 }
 
@@ -107,5 +107,21 @@ describe("validateTailoring", () => {
     const r = identity(original);
     r.blocks = [{ ...r.blocks[1], sourceBlocks: [0, 1] }];
     expect(run({ original, result: r }).filter((x) => x.kind === "stimulus_drift")).toEqual([]);
+  });
+
+  it("flags a for_time block tailored into an amrap", () => {
+    const r = identity();
+    r.blocks[0].format = "amrap";
+    expect(run({ result: r, lockedFormats: ["for_time"] })).toEqual([
+      expect.objectContaining({ kind: "scoring_changed", severity: "violation", blockIndex: 0 }),
+    ]);
+    expect(run({ lockedFormats: ["for_time"] })).toEqual([]);
+  });
+
+  it("ignores formats when nothing is locked", () => {
+    const r = identity();
+    r.blocks[0].format = "amrap";
+    expect(run({ result: r, lockedFormats: null })).toEqual([]);
+    expect(run({ result: r, lockedFormats: ["amrap"] })).toEqual([]);
   });
 });

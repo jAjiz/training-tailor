@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FakeProvider } from "@/lib/ai/fake-provider";
-import { analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
+import { analyzeBlock, analyzePaste, analyzeSituation } from "@/lib/engine/analyze";
 import { COUPLET_TEXT, component, coupletDraft, fixtureDomain } from "../fixtures/workouts";
 
 const domain = fixtureDomain();
@@ -93,6 +93,13 @@ describe("analyzePaste", () => {
 });
 
 describe("analyzeSituation", () => {
+  it("tells the model that only one kind of equipment means every other one is missing", async () => {
+    const provider = new FakeProvider({ SituationAnalysis: { restrictions: [], conditions: [], unavailableEquipment: [] } });
+    await analyzeSituation(provider, "solo tengo mancuernas", domain);
+    expect(provider.calls[0].systemPrompt).toMatch(/"only X" \/ "solo X"[^\n]*every other equipment[^\n]*unavailable/);
+  });
+
+
   it("returns nothing for an empty situation without calling the model", async () => {
     const provider = new FakeProvider({});
     expect(await analyzeSituation(provider, "", domain)).toEqual({ restrictions: [], conditions: [], unavailableEquipment: [] });
@@ -114,5 +121,58 @@ describe("analyzeSituation", () => {
     });
     const s = await analyzeSituation(provider, "no puedo hacer hoist", domain);
     expect(s.restrictions[0].movements).toEqual(["Test Hoist", "Test Hang Hoist", "Test Dumbbell Hoist"]);
+  });
+});
+
+describe("analyzeBlock", () => {
+  const blockText = "Test Squat 5x3 @ 80%\nTest Row";
+  const draft = () => ({
+    name: null,
+    blocks: [{
+      ...coupletDraft().blocks[0], rawText: blockText,
+      components: [component("Test Squat", { percent1RM: 80 }), component("Test Row")],
+    }],
+  });
+
+  it("sends no situation", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    await analyzeBlock(provider, blockText, domain, null);
+    expect(provider.calls[0].prompt).not.toContain("SITUATION:");
+    expect(provider.calls[0].systemPrompt).not.toContain("SITUATION");
+    expect(provider.calls[0].prompt).toContain(blockText);
+  });
+
+  it("sends the coach metadata as context outside the SESSION", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    await analyzeBlock(provider, blockText, domain, null, "for_time", { title: "Test Strength", scoring: "for_time", timeCapMinutes: 10 });
+    const { prompt, systemPrompt } = provider.calls[0];
+    const metadata = prompt.indexOf("COACH METADATA");
+    const session = prompt.indexOf("SESSION:");
+    expect(metadata).toBeGreaterThan(-1);
+    expect(metadata).toBeLessThan(session);
+    expect(prompt.slice(metadata, session)).toMatch(/Test Strength[\s\S]*for_time[\s\S]*10 min/);
+    expect(prompt.slice(session)).not.toMatch(/Test Strength|for_time|10 min/);
+    expect(systemPrompt).toMatch(/COACH METADATA[^\n]*never part of any "rawText"/);
+  });
+
+  it("sends no metadata section when there is none", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    await analyzeBlock(provider, blockText, domain, null);
+    expect(provider.calls[0].prompt).not.toContain("COACH METADATA:");
+  });
+
+  it("forces the barbell movement on percent components only", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    const { workout, analyzed } = await analyzeBlock(provider, blockText, domain, { movement: "Test Combo" });
+    expect(analyzed).toBe(true);
+    expect(workout.blocks[0].components.map((c) => c.canonical)).toEqual(["Test Combo", "Test Row"]);
+  });
+
+  it("degrades to a raw block on a model error", async () => {
+    const { workout, analyzed } = await analyzeBlock(new FakeProvider({ BlockAnalysis: new Error("garbage") }), blockText, domain, null);
+    expect(analyzed).toBe(false);
+    expect(workout.blocks).toHaveLength(1);
+    expect(workout.blocks[0].rawText).toBe(blockText);
+    expect(workout.blocks[0].components).toEqual([]);
   });
 });

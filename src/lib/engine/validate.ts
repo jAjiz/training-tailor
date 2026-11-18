@@ -2,7 +2,7 @@ import { assessMovement, type ActiveCondition, type AssessmentReason } from "@/l
 import { createMovementResolver, normalizeMovementName } from "@/lib/domain/resolve";
 import type { Equipment, Movement } from "@/lib/domain/types";
 import { missingEquipment } from "./plan";
-import { REMOVED_MOVEMENT, type Finding, type LoadIntensity, type StructuredWorkout, type TailoringResult } from "./types";
+import { REMOVED_MOVEMENT, type BlockFormat, type Finding, type LoadIntensity, type StructuredWorkout, type TailoringResult } from "./types";
 
 export interface ValidateArgs {
   original: StructuredWorkout;
@@ -11,6 +11,7 @@ export interface ValidateArgs {
   active: ActiveCondition[];
   equipment: Equipment[] | null;
   timeCapMinutes: number | null;
+  lockedFormats: BlockFormat[] | null; // formats a tailored block must keep (the block's score depends on them)
 }
 
 export const isViolation = (f: Finding) => f.severity === "violation";
@@ -97,6 +98,20 @@ export function validateTailoring(a: ValidateArgs): Finding[] {
       });
     }
   });
+
+  if (a.lockedFormats !== null) {
+    const locked = a.lockedFormats;
+    a.result.blocks.forEach((block, blockIndex) => {
+      const lost = block.sourceBlocks
+        .map((i) => a.original.blocks[i]?.format)
+        .find((f) => f !== undefined && locked.includes(f) && f !== block.format);
+      if (!lost) return;
+      findings.push({
+        kind: "scoring_changed", severity: "violation", blockIndex, movement: null,
+        message: `Block ${blockIndex + 1} changed its format from ${lost} to ${block.format}; its score needs ${lost}.`,
+      });
+    });
+  }
 
   // The change summary is what the athlete reads: it must name what the session actually prescribes.
   const prescribed = (blocks: TailoringResult["blocks"]) =>

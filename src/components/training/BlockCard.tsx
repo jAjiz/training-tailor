@@ -1,10 +1,23 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { ChevronDown, MessageSquareText, PlayCircle } from "lucide-react";
+import { ChevronDown, MessageSquareText, MoreHorizontal, PlayCircle, Sparkles } from "lucide-react";
+import { discardAdaptationAction } from "@/app/(athlete)/adapt-actions";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { cx } from "@/components/ui/cx";
+import { Menu } from "@/components/ui/Menu";
+import { Pill } from "@/components/ui/Pill";
+import type { TailoringResult } from "@/lib/engine/types";
+import type { AdaptationMessage } from "@/lib/training/adaptation-types";
 import { describeSets } from "@/lib/training/barbell";
+import type { ErrorCode } from "@/lib/training/errors";
 import type { BarbellSet } from "@/lib/training/schemas";
+import { AdaptPanel } from "./AdaptPanel";
+import { AdaptedBlock } from "./AdaptedBlock";
 import { blockColor } from "./colors";
 
 export type CardBlock = {
@@ -19,6 +32,20 @@ export type CardBlock = {
   instructions: string | null;
   coachingTips: string | null;
   videoUrl: string | null;
+};
+
+/** The athlete's adaptation of the block, on the day view. */
+export type CardAdaptation = {
+  blockId: string;
+  /** Tailoring is on and the day has not passed: the Adapt button and panel are offered. */
+  adaptable: boolean;
+  /** The accepted adaptation; shown even when tailoring is off. */
+  accepted: TailoringResult | null;
+  /** The coach changed the block after the adaptation was accepted; it can still be discarded. */
+  stale: boolean;
+  /** The athlete's own result for the block was logged with an adaptation snapshot. */
+  resultAdapted: boolean;
+  messages: AdaptationMessage[];
 };
 
 function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number | null; compact: boolean }) {
@@ -62,10 +89,20 @@ function collapsedTitle(block: CardBlock): string | null {
  * One block: the athlete's card (stripe, tips and video as buttons) or, compact, the coach's planner tile.
  * The athlete's card starts collapsed to its title and `summary` (e.g. their result); tapping the title opens it.
  */
-export function BlockCard({ block, oneRm = null, compact = false, summary, children }: {
-  block: CardBlock; oneRm?: number | null; compact?: boolean; summary?: React.ReactNode; children?: React.ReactNode;
+export function BlockCard({ block, oneRm = null, compact = false, summary, adaptation, children }: {
+  block: CardBlock; oneRm?: number | null; compact?: boolean; summary?: React.ReactNode;
+  adaptation?: CardAdaptation; children?: React.ReactNode;
 }) {
   const t = useTranslations("block");
+  const ta = useTranslations("adapt");
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [showPrevious, setShowPrevious] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const accepted = adaptation?.accepted ?? null;
+  // The coach changed the block after acceptance: the card keeps the coach's block and offers the old adaptation.
+  const previous = adaptation?.stale ? accepted : null;
+  // The adaptation in force: the card shows it instead of the coach's block (tips and video stay the coach's).
+  const active = adaptation?.stale ? null : accepted;
   const heading = block.title ?? (block.kind === "barbell" ? block.movement : null);
 
   if (compact) {
@@ -90,11 +127,36 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, child
         <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 focus-visible:outline-2 focus-visible:outline-foreground [&::-webkit-details-marker]:hidden">
           {/* A title taken from the text is cut to one line; a real title wraps. */}
           <h3 className={cx("min-w-0 flex-1 text-lg leading-snug", !heading && "truncate normal-case")}>{collapsedTitle(block) ?? t("untitled")}</h3>
+          {/* Anything adapted is marked: the adaptation in force or the athlete's adapted result; else an older one. */}
+          {active || adaptation?.resultAdapted
+            ? <Pill tone="inverted" className="shrink-0">{ta("adapted")}</Pill>
+            : previous && <Pill className="shrink-0">{ta("previousAdaptation")}</Pill>}
           {summary && <span className="shrink-0 text-sm font-semibold text-(--block-ink)">{summary}</span>}
           <ChevronDown size={20} aria-hidden className="shrink-0 text-muted transition group-open/block:rotate-180" />
         </summary>
         <div className="flex flex-col gap-3 px-5 pb-5">
-          <BlockBody block={block} oneRm={oneRm} compact={false} />
+          {previous && (
+            <div data-color="yellow" className="flex flex-col gap-2 rounded-xl bg-(--block-fill) px-3 py-2 text-(--block-ink)">
+              <p className="text-sm">{ta("stale")}</p>
+              <div className="flex flex-wrap gap-2">
+                {adaptation!.adaptable && <Button type="button" size="sm" variant="primary" onClick={() => setPanelOpen(true)}>{ta("again")}</Button>}
+                <Button type="button" size="sm" aria-expanded={showPrevious} onClick={() => setShowPrevious((v) => !v)}>
+                  {showPrevious ? ta("hidePrevious") : ta("seePrevious")}
+                </Button>
+                <DiscardButton blockId={adaptation!.blockId} />
+              </div>
+              {showPrevious && <div className="rounded-xl bg-surface p-3 text-foreground"><AdaptedBlock tailored={previous} /></div>}
+            </div>
+          )}
+          {active && !showOriginal ? <AdaptedBlock tailored={active} /> : <BlockBody block={block} oneRm={oneRm} compact={false} />}
+          {active && (
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="ghost" aria-pressed={showOriginal} onClick={() => setShowOriginal((v) => !v)}>
+                {showOriginal ? ta("seeAdapted") : ta("seeOriginal")}
+              </Button>
+              <DiscardMenu blockId={adaptation!.blockId} />
+            </div>
+          )}
           {block.coachingTips && (
             <details>
               <summary className={cx(buttonClasses({ variant: "tinted", slanted: true, block: true }), "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
@@ -110,9 +172,69 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, child
               {t("video")}
             </Button>
           )}
+          {adaptation?.adaptable && !previous && (
+            <Button type="button" variant="tinted" size="sm" block slanted onClick={() => setPanelOpen(true)}>
+              <Sparkles size={16} aria-hidden />
+              {active ? ta("adjust") : ta("open")}
+            </Button>
+          )}
           {children}
         </div>
       </details>
+      {/* Mounted while closed too, so a conversation in progress survives closing the panel. */}
+      {adaptation?.adaptable && (
+        <AdaptPanel blockId={adaptation.blockId} blockTitle={collapsedTitle(block) ?? t("untitled")} initialMessages={adaptation.messages}
+          hasAccepted={active !== null} open={panelOpen} onClose={() => setPanelOpen(false)} />
+      )}
     </Card>
+  );
+}
+
+/** Discards the adaptation after a confirmation; `feedback` renders its error and the dialog. */
+function useDiscard(blockId: string) {
+  const t = useTranslations();
+  const router = useRouter();
+  const { confirm, dialog } = useConfirm();
+  const [error, setError] = useState<ErrorCode | null>(null);
+
+  async function discard() {
+    const yes = await confirm({ title: t("adapt.discardTitle"), message: t("adapt.discardMessage"), confirmLabel: t("adapt.discard") });
+    if (!yes) return;
+    setError(null);
+    const r = await discardAdaptationAction(blockId);
+    if (r.ok) router.refresh();
+    else setError(r.code);
+  }
+
+  const feedback = (
+    <>
+      {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
+      {dialog}
+    </>
+  );
+  return { discard: () => void discard(), feedback };
+}
+
+/** The adapted card's menu: discard the adaptation, after a confirmation. */
+function DiscardMenu({ blockId }: { blockId: string }) {
+  const t = useTranslations("adapt");
+  const { discard, feedback } = useDiscard(blockId);
+  return (
+    <>
+      <Menu label={t("menu")} icon={<MoreHorizontal size={18} aria-hidden />} items={[{ label: t("discard"), danger: true, onSelect: discard }]} />
+      {feedback}
+    </>
+  );
+}
+
+/** The stale notice's discard button, offered even when the block can no longer be adapted. */
+function DiscardButton({ blockId }: { blockId: string }) {
+  const t = useTranslations("adapt");
+  const { discard, feedback } = useDiscard(blockId);
+  return (
+    <>
+      <Button type="button" size="sm" variant="ghost" onClick={discard}>{t("discard")}</Button>
+      {feedback}
+    </>
   );
 }

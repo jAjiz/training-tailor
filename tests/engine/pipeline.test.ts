@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { FakeProvider, sequence } from "@/lib/ai/fake-provider";
 import {
-  EngineUnsafeError, analyzeFeedback, analyzeWorkout, runRefinePipeline, runTailorPipeline,
+  EngineEmptyError, EngineUnsafeError, analyzeFeedback, analyzeWorkout, runRefinePipeline, runTailorPipeline,
   type PipelineArgs, type ProgressStage,
 } from "@/lib/engine/pipeline";
 import {
   RestrictionDraftSchema, WorkoutDraftSchema, emptyProfile, emptyRequest, type Restriction, type TailoringDraft,
 } from "@/lib/engine/types";
-import { COUPLET_TEXT, HOIST_TEXT, component, couplet, coupletDraft, fixtureDomain, hoistSession, toTailoringDraft } from "../fixtures/workouts";
+import { COUPLET_TEXT, HOIST_TEXT, component, couplet, coupletDraft, fixtureDomain, hoistSession, split, toTailoringDraft } from "../fixtures/workouts";
 
 const domain = fixtureDomain();
 
@@ -44,6 +44,8 @@ const run = (provider: FakeProvider, stages: ProgressStage[] = [], overrides: Pa
     profile: emptyProfile(),
     request: { ...emptyRequest(), situation: overheadToday.evidence },
     domain,
+    locale: "en",
+    lockedFormats: null,
     onProgress: (s) => stages.push(s),
     ...overrides,
   });
@@ -192,6 +194,62 @@ describe("runTailorPipeline", () => {
     expect(r.findings.filter((f) => f.kind === "equipment_unavailable")).toEqual([]);
   });
 
+  it("refuses an empty proposal", async () => {
+    const empty = safeDraft();
+    empty.blocks[0].components = [];
+    empty.changes = [];
+    await expect(run(new FakeProvider({ TailoringResult: empty }))).rejects.toBeInstanceOf(EngineEmptyError);
+  });
+
+  it("refuses a proposal that drops every block", async () => {
+    const dropped = safeDraft();
+    dropped.droppedBlocks = [{ index: 0, reason: "Rest today." }];
+    await expect(run(new FakeProvider({ TailoringResult: dropped }))).rejects.toBeInstanceOf(EngineEmptyError);
+  });
+
+  it("retries then refuses a changed scoring", async () => {
+    const amrap = () => {
+      const d = safeDraft();
+      d.blocks[0].format = "amrap";
+      return d;
+    };
+    const provider = new FakeProvider({ TailoringResult: sequence(amrap(), amrap()) });
+    const stages: ProgressStage[] = [];
+    const error = await run(provider, stages, { lockedFormats: ["for_time"] }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(EngineUnsafeError);
+    expect((error as EngineUnsafeError).findings).toContainEqual(expect.objectContaining({ kind: "scoring_changed" }));
+    expect(stages).toEqual(["tailoring", "validating", "retrying", "validating"]);
+    expect(provider.calls[1].prompt).toContain("[scoring_changed]");
+  });
+
+  it("other findings stay warnings", async () => {
+    const drifted = safeDraft();
+    drifted.blocks[0].stimulus = { ...drifted.blocks[0].stimulus!, energySystem: "oxidative" };
+    const r = await run(new FakeProvider({ TailoringResult: drifted }), [], { lockedFormats: ["for_time"] });
+    expect(r.findings).toEqual([expect.objectContaining({ kind: "stimulus_drift", severity: "warning" })]);
+  });
+
+  it("drops the percentage of a replaced lift: the original's 1RM says nothing about the replacement", async () => {
+    const swapped = toTailoringDraft(split());
+    swapped.blocks[0].components = [component("Test Dumbbell Squat", { reps: "5x3", percent1RM: 85 })];
+    swapped.changes = [{ blockIndex: 0, original: "Test Squat", modified: "Test Dumbbell Squat", reason: "No barbell." }];
+    const r = await run(new FakeProvider({ TailoringResult: swapped }), [], {
+      original: split(), restrictions: [], unavailableEquipment: ["barbell"], request: emptyRequest(),
+    });
+    expect(r.tailored.blocks[0].components[0]).toMatchObject({ canonical: "Test Dumbbell Squat", percent1RM: null });
+    expect(r.findings).toContainEqual(expect.objectContaining({
+      kind: "percent_load_dropped", severity: "warning", blockIndex: 0, movement: "Test Dumbbell Squat",
+    }));
+  });
+
+  it("keeps the percentage of a lift that stays", async () => {
+    const r = await run(new FakeProvider({ TailoringResult: toTailoringDraft(split()) }), [], {
+      original: split(), restrictions: [], request: emptyRequest(),
+    });
+    expect(r.tailored.blocks[0].components[0]).toMatchObject({ canonical: "Test Squat", percent1RM: 85 });
+    expect(r.findings.filter((f) => f.kind === "percent_load_dropped")).toEqual([]);
+  });
+
   it("applies profile injuries even with nothing today", async () => {
     const profile = { ...emptyProfile(), injuries: [{ key: "test_no_hanging", side: null, severity: "moderate" as const, notes: "cast", since: null }] };
     await expect(run(new FakeProvider({ TailoringResult: sequence(unsafeDraft(), unsafeDraft()) }), [], {
@@ -216,7 +274,7 @@ describe("runRefinePipeline", () => {
       previous: first, feedback: "too heavy, and my knee hurts too", confirmed: [],
       restrictions: [restriction({ site: "knee", side: "left", movements: ["Test Jump"], evidence: "my knee hurts too" })],
       unavailableEquipment: ["kettlebell"],
-      profile: emptyProfile(), request: emptyRequest(), domain, onProgress: (s) => stages.push(s),
+      profile: emptyProfile(), request: emptyRequest(), domain, locale: "en", lockedFormats: null, onProgress: (s) => stages.push(s),
     });
     expect(stages).toEqual(["tailoring", "validating"]);
     expect(provider.calls).toHaveLength(1);
@@ -235,7 +293,7 @@ describe("runRefinePipeline", () => {
     const profile = { ...emptyProfile(), injuries: [{ key: "test_hand", side: null, severity: "moderate" as const, notes: null, since: null }] };
     const r = await runRefinePipeline(new FakeProvider({ TailoringResult: safeDraft() }), {
       previous: tampered, feedback: "more volume", confirmed: [], restrictions: [], unavailableEquipment: [],
-      profile, request: emptyRequest(), domain,
+      profile, request: emptyRequest(), domain, locale: "en", lockedFormats: null,
     });
     expect(r.conditions.map((c) => c.key)).toEqual(["test_hand"]);
   });

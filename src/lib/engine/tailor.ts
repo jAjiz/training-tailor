@@ -6,7 +6,7 @@ import type { Candidate, ComponentPlan } from "./plan";
 import { resolveBlocks } from "./resolve-blocks";
 import {
   REMOVED_MOVEMENT, tailoringDraftSchemaFor,
-  type AthleteProfile, type ConditionRef, type Finding, type Restriction, type StructuredWorkout, type TailorRequest, type TailoringResult,
+  type AthleteProfile, type BlockFormat, type ConditionRef, type Finding, type Restriction, type StructuredWorkout, type TailorRequest, type TailoringResult,
 } from "./types";
 
 export interface TailorInput {
@@ -23,9 +23,13 @@ export interface TailorInput {
   previousAttempt: { result: TailoringResult; feedbackHistory: string[] } | null;
   violations: Finding[];
   restrictions: Restriction[]; // today's, keyed today_<index> in the plan
+  locale: "es" | "en"; // the athlete's app language: prose is written in it
+  lockedFormats: BlockFormat[] | null; // original block formats the tailored blocks must keep
 }
 
-const SYSTEM = `You are an expert functional fitness coach. Modify ONE athlete's training session for today so it fits their situation WHILE PRESERVING EACH BLOCK'S STIMULUS (quality, energy system, load intensity, time domain). Return JSON only.
+const LANGUAGE: Record<TailorInput["locale"], string> = { es: "Spanish", en: "English" };
+
+const systemPrompt = (locale: TailorInput["locale"]) => `You are an expert functional fitness coach. Modify ONE athlete's training session for today so it fits their situation WHILE PRESERVING EACH BLOCK'S STIMULUS (quality, energy system, load intensity, time domain). Return JSON only.
 
 Hard rules (code checks the output and rejects violations):
 1. Never prescribe a movement marked AVOID, nor one that needs MISSING equipment. Replace every component marked MUST CHANGE, preferring its candidates in order; one marked "no candidate" is removed (nothing in the library fits today): say why in "changes" and keep the block's stimulus with its other movements. The plan already weighs each condition's severity: a reason marked "= caution" limits load or range, it does not ban that stress, and a candidate marked (ok) is safe as is.
@@ -34,6 +38,7 @@ Hard rules (code checks the output and rejects violations):
 4. With a time cap, the sum of "timeDomainMinutes" over the tailored blocks must not exceed it.
 5. Keep each block's "stimulus" unless a change is unavoidable; then explain it in "changes".
 6. "changes" lists movement swaps only: "modified" is the library name you actually prescribe in that block, exactly as in its components, or "(removed)" when the movement is dropped without a replacement. Time, format or block changes go in "rationale" or "droppedBlocks".
+7. Keep each block's format when the input says FORMAT LOCKED: the block's score depends on it.
 
 Coaching rules:
 - What changes for pain is already decided: the plan marks it from the ACTIVE CONDITIONS and TODAY'S RESTRICTIONS, and a restriction bans exactly what the athlete named, nothing else. Never change, drop or scale down a movement for pain the plan does not mark (a snatch ban leaves toes-to-bar as programmed); a restriction marked "context only" changes nothing.
@@ -41,11 +46,12 @@ Coaching rules:
 - CAUTION movements may stay at reduced load or range: say so in the component "notes" and in "safetyNote". "healthy side only" means single-limb work on the uninjured side.
 - Scale loads to the athlete's benchmarks, sex and scaling level; when the programming lists tiers (Rx+/Rx/Int, M/F) pick the athlete's. Fill "loadKg" or "percent1RM" whenever you set a load.
 - Use the EFFORT CONVERSIONS when swapping monostructural or rope work, and the implement load range when replacing a barbell with dumbbells or kettlebells.
+- When you replace a movement prescribed as a percentage of 1RM, never keep "percent1RM": that 1RM belongs to the original lift and means nothing for the replacement. Give an absolute load in "loadKg" (from the implement load range applied to the original's "loadKg" or the athlete's benchmarks when known, else a conservative load for their sex and scaling level) and write it in kg in "rawText", never as a percentage.
 - Blocks with different "day" values are missed days: merge and prioritize them into ONE session that fits today, keeping the most important stimuli.
 - A target movement means: bias the session toward its GOAL FAMILY without breaking the stimulus.
 - With no constraint, keep the session and only personalize loads.
 - Be conservative with pain among what the plan allows: when unsure choose the lower-risk candidate, and recommend consulting a professional in "safetyNote".
-- "rawText" (session and each block) is clean text of the MODIFIED workout. "rationale" explains how the stimulus is preserved; "changes" lists original/modified/reason with the tailored "blockIndex". Write prose in the language of the athlete's situation (English if none).`;
+- "rawText" (session and each block) is clean text of the MODIFIED workout. "rationale" explains how the stimulus is preserved; "changes" lists original/modified/reason with the tailored "blockIndex". Write prose in ${LANGUAGE[locale]}.`;
 
 function annotate(m: Movement): string {
   const stresses = m.stresses
@@ -91,8 +97,10 @@ export function buildTailorPrompt(input: TailorInput): string {
     .map((n) => byName.get(n))
     .filter((m): m is Movement => m !== undefined);
 
+  const formatLock = (f: BlockFormat) => (input.lockedFormats?.includes(f) ? `FORMAT LOCKED (${f}) ` : "");
+
   const parts = [
-    `ORIGINAL SESSION (block index in brackets):\n${input.original.blocks.map((b, i) => `[${i}] ${JSON.stringify({
+    `ORIGINAL SESSION (block index in brackets):\n${input.original.blocks.map((b, i) => `[${i}] ${formatLock(b.format)}${JSON.stringify({
       title: b.title, day: b.day, format: b.format, scheme: b.scheme, timeDomainMinutes: b.timeDomainMinutes,
       stimulus: b.stimulus, coachingNotes: b.coachingNotes, rawText: b.rawText, components: b.components,
     })}`).join("\n")}`,
@@ -144,7 +152,7 @@ export function allowedMovementNames(original: StructuredWorkout, movements: Mov
 
 export async function tailor(provider: LlmProvider, input: TailorInput): Promise<TailoringResult> {
   const draft = await provider.generateStructured({
-    systemPrompt: SYSTEM,
+    systemPrompt: systemPrompt(input.locale),
     prompt: buildTailorPrompt(input),
     schema: tailoringDraftSchemaFor(allowedMovementNames(input.original, input.movements)),
     schemaName: "TailoringResult",

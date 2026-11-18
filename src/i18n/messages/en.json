@@ -67,6 +67,11 @@
     "import_quota": "You reached today's import limit. Try again tomorrow.",
     "import_empty": "No training blocks were found in the PDF.",
     "import_failed": "The PDF could not be read. Try again.",
+    "tailoring_off": "Tailoring is not enabled for this program.",
+    "tailoring_not_allowed": "Ask the administrator to enable AI tailoring for your account first.",
+    "day_passed": "That day has passed and can no longer be adapted.",
+    "block_changed": "The coach changed this block. Start the adaptation again.",
+    "invalid_state": "That step is not possible right now. Reload and try again.",
     "note_too_long": "The text for {target} would exceed 2000 characters."
   },
   "onboarding": {
@@ -88,6 +93,94 @@
       "es": "Español",
       "en": "English"
     }
+  },
+  "profile": {
+    "title": "Training profile",
+    "intro": "What the engine knows about you when it adapts a block. Your 1RMs come from your PRs.",
+    "back": "Back to Me",
+    "link": "Training profile",
+    "linkHint": "Injuries, equipment, benchmarks and goals for block adaptation.",
+    "about": "About you",
+    "sex": "Loads",
+    "level": "Level",
+    "notSet": "Not set",
+    "sexes": {
+      "male": "Male",
+      "female": "Female"
+    },
+    "levels": {
+      "scaled": "Scaled",
+      "intermediate": "Intermediate",
+      "rx": "Rx",
+      "rx_plus": "Rx+"
+    },
+    "injuries": "Injuries and limitations",
+    "noSide": "No side",
+    "side": "Side",
+    "severity": "Severity",
+    "sides": {
+      "left": "Left",
+      "right": "Right",
+      "both": "Both"
+    },
+    "severities": {
+      "mild": "Mild",
+      "moderate": "Moderate",
+      "acute": "Acute"
+    },
+    "alwaysApplies": "Always applies",
+    "notes": "Notes",
+    "remove": "Remove",
+    "addInjury": "Add an injury or limitation…",
+    "add": "Add",
+    "equipment": "Equipment",
+    "fullBox": "I train in a fully equipped box",
+    "equipmentItems": {
+      "barbell": "Barbell",
+      "dumbbell": "Dumbbell",
+      "kettlebell": "Kettlebell",
+      "pullup_bar": "Pull-up bar",
+      "rings": "Rings",
+      "box": "Box",
+      "ramp": "Ramp",
+      "bench": "Bench",
+      "ghd": "GHD",
+      "band": "Band",
+      "rope": "Climbing rope",
+      "jump_rope": "Jump rope",
+      "rower": "Rower",
+      "ski_erg": "SkiErg",
+      "bike": "Bike erg",
+      "air_bike": "Air bike",
+      "wall_ball": "Wall ball",
+      "sandbag": "Sandbag",
+      "d_ball": "Dead ball"
+    },
+    "benchmarks": "Benchmarks",
+    "benchmarksHint": "Max reps and best times. 1RMs are read from your PRs.",
+    "prsLink": "Manage your PRs",
+    "movement": "Movement",
+    "kind": "Type",
+    "value": "Value",
+    "unit": "Unit",
+    "kinds": {
+      "max_reps": "Max reps",
+      "time": "Time"
+    },
+    "units": {
+      "kg": "kg",
+      "lb": "lb",
+      "reps": "reps",
+      "seconds": "seconds"
+    },
+    "addBenchmark": "Add benchmark",
+    "goals": "Goals",
+    "goalPlaceholder": "e.g. first strict muscle-up",
+    "goalMovement": "Movement (optional)",
+    "addGoal": "Add goal",
+    "save": "Save profile",
+    "saved": "Saved",
+    "saveFailed": "Could not save. Check the values and try again."
   },
   "coachPending": {
     "titles": {
@@ -130,7 +223,9 @@
     "board": "Board",
     "archive": "Archive program",
     "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
-    "startDateLockedHint": "The start date cannot change because some weeks are already published."
+    "startDateLockedHint": "The start date cannot change because some weeks are already published.",
+    "tailoring": "AI tailoring",
+    "tailoringHint": "Athletes see an \"Adapt\" button on each block to adjust it to their own situation. It is available because the administrator enabled it for you."
   },
   "block": {
     "untitled": "Block",
@@ -317,7 +412,8 @@
     "title": "Leaderboard",
     "empty": "Nobody has logged this block yet.",
     "you": "You",
-    "fistBump": "Fist bump"
+    "fistBump": "Fist bump",
+    "adapted": "Adapted"
   },
   "calendar": {
     "title": "Calendar",
@@ -332,6 +428,8 @@
     "division": "Division",
     "rx": "Rx",
     "scaled": "Scaled",
+    "adaptedScaled": "Adapted · Scaled",
+    "adapted": "Adapted",
     "minutes": "Minutes",
     "seconds": "Seconds",
     "capped": "I did not finish within the time cap",
@@ -363,7 +461,12 @@
     "notes": "Notes",
     "rank": "#",
     "bumps": "Fist bumps",
-    "view": "View results"
+    "view": "View results",
+    "adapted": "Adapted",
+    "adaptedDetails": "Adaptation details",
+    "adaptedChanges": "What changed",
+    "adaptedRemoved": "removed",
+    "adaptedSituation": "What the athlete wrote"
   },
   "impersonation": {
     "viewing": "You are viewing {name}'s account",
@@ -416,6 +519,15 @@
       "title": "Coaches",
       "empty": "No coach matches.",
       "programs": "Programs",
+      "tailoring": "AI tailoring",
+      "tailoringOn": "On",
+      "tailoringOff": "Off",
+      "tailoringOnTitle": "Turn on AI tailoring for {name}",
+      "tailoringOnConfirm": "Their athletes will be able to adapt blocks to their own situation, within the programs where the coach also turns it on.",
+      "tailoringOffTitle": "Turn off AI tailoring for {name}",
+      "tailoringOffConfirm": "Athletes lose the Adapt option in all their programs.",
+      "tailoringTurnOn": "Turn on",
+      "tailoringTurnOff": "Turn off",
       "all": "All",
       "filter": "Filter by status",
       "statuses": {
@@ -791,5 +903,132 @@
     "roleDayNote": "Day goal",
     "roleWeekNote": "Week notes",
     "weekDay": "{week}, {day}"
+  },
+  "adapt": {
+    "open": "Adapt",
+    "adjust": "Adjust adaptation",
+    "panelTitle": "{action} · {block}",
+    "intro": "Tell us how you are today: pain, fatigue, missing equipment… The block is adjusted to you and keeps its stimulus.",
+    "privacy": "Your coach can see what you write here.",
+    "notMedical": "Not medical advice. Training Tailor suggests workout modifications; it does not diagnose or treat injuries. When in doubt, consult a qualified professional.",
+    "inputLabel": "Your message",
+    "placeholder": "e.g. my right knee hurts when I squat",
+    "answerPlaceholder": "Or answer in your own words",
+    "pickAbove": "Choose an option above to continue.",
+    "send": "Send",
+    "you": "You",
+    "continue": "Continue",
+    "retry": "Try again",
+    "accept": "Accept",
+    "accepting": "Accepting…",
+    "proposal": "Proposal",
+    "earlierProposal": "Earlier proposal",
+    "warning": "Review before accepting: some checks flagged this proposal.",
+    "changes": "What changed",
+    "removed": "removed",
+    "adapted": "Adapted",
+    "seeOriginal": "See original",
+    "seeAdapted": "See adaptation",
+    "menu": "Adaptation options",
+    "discard": "Discard adaptation",
+    "discardTitle": "Discard the adaptation?",
+    "discardMessage": "The card shows the coach's block again. Your conversation is kept, so you can adapt it again.",
+    "stale": "Your coach changed this block after you adapted it. Your adaptation was made for an earlier version.",
+    "again": "Adapt again",
+    "seePrevious": "See previous adaptation",
+    "previousAdaptation": "Previous adaptation",
+    "hidePrevious": "Hide previous adaptation",
+    "questionsTitle": "One question before we adapt",
+    "stage": {
+      "analyzing": "Reading your message…",
+      "tailoring": "Adapting the block…",
+      "validating": "Checking it against your conditions and equipment…",
+      "retrying": "Fixing what the check found…"
+    },
+    "site": {
+      "question": "What bothers your {where} today?",
+      "all": "Everything that loads my {where}",
+      "none": "I can do everything"
+    },
+    "replacement": {
+      "question": "Instead of {movement}?",
+      "hint": "The closest alternative also loads your {where}.",
+      "alsoLoads": "also loads your {where}: {loads}"
+    },
+    "answer": {
+      "all": "Everything that loads it",
+      "none": "I can do everything",
+      "replacement": "Instead: {name}"
+    },
+    "where": "{site} ({side})",
+    "sides": {
+      "left": "left",
+      "right": "right",
+      "both": "both sides"
+    },
+    "sites": {
+      "shoulder": "shoulder",
+      "elbow": "elbow",
+      "wrist": "wrist",
+      "neck": "neck",
+      "lumbar": "lower back",
+      "hip": "hip",
+      "knee": "knee",
+      "ankle": "ankle",
+      "quads": "quads",
+      "hamstrings": "hamstrings",
+      "calves": "calves",
+      "hip_flexors": "hip flexors",
+      "chest": "chest",
+      "biceps": "biceps",
+      "lats": "lats",
+      "triceps": "triceps",
+      "abdominals": "abs",
+      "grip": "grip"
+    },
+    "mechanisms": {
+      "compression": "Heavy loading",
+      "flexion": "Bending",
+      "deep_flexion": "Deep bending",
+      "extension": "Holding it extended under load",
+      "deep_extension": "Full extension",
+      "overhead": "Arms overhead",
+      "ballistic": "Explosive",
+      "impact": "Impact (jumping, landing)",
+      "traction": "Hanging from a bar",
+      "kipping": "Kipping",
+      "eccentric": "Lowering under load"
+    },
+    "findings": {
+      "unrecognized_movement": "{movement} is not in our library, so it could not be checked.",
+      "caution_movement": "{movement}: do it with care, given what you told us.",
+      "contraindicated_movement": "{movement} may not suit what you told us.",
+      "equipment_unavailable": "{movement} needs equipment you don't have.",
+      "time_cap_exceeded": "The adapted session may take longer than the time cap.",
+      "stimulus_drift": "{block, select, none {The session} other {Block {block}}} may feel different from what your coach intended.",
+      "scoring_changed": "{block, select, none {The session} other {Block {block}}} may no longer fit the original scoring.",
+      "change_mismatch": "The list of changes may not match the adapted block exactly.",
+      "unaccounted_block": "{block, select, none {A block} other {Block {block}}} of the original may be missing.",
+      "percent_load_dropped": "{movement}: the original percentage of 1RM does not apply to it. Pick a load you can move with good form.",
+      "other": "A check flagged this proposal."
+    },
+    "errors": {
+      "unauthorized": "Your session expired. Sign in again.",
+      "forbidden": "You cannot adapt blocks while viewing someone else's account.",
+      "account_disabled": "Your account is disabled.",
+      "tailoring_off": "Adapting is not enabled for this program.",
+      "day_passed": "That day has passed and can no longer be adapted.",
+      "not_found": "This block is no longer available.",
+      "invalid_request": "The message is not valid. Shorten it and try again.",
+      "payload_too_large": "The message is too long. Shorten it and try again.",
+      "block_changed": "The coach changed this block; start again.",
+      "invalid_state": "That step is not possible right now. Close the panel, reload and try again.",
+      "quota_exceeded": "You reached today's limit. Try again tomorrow.",
+      "engine_unsafe": "This block can't be adapted safely for what you described. Talk to your coach, or describe your situation differently.",
+      "engine_empty": "Adapting it would leave nothing to do. Talk to your coach.",
+      "engine_failed": "The adaptation failed. Try again.",
+      "engine_unavailable": "Adapting is not available right now. Try again later.",
+      "internal": "Something went wrong. Try again."
+    }
   }
 }

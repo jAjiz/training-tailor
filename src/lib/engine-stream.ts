@@ -1,4 +1,4 @@
-import { EngineUnsafeError, type ProgressStage } from "@/lib/engine/pipeline";
+import { EngineEmptyError, EngineUnsafeError, type ProgressStage } from "@/lib/engine/pipeline";
 import type { PipelineResult } from "@/lib/engine/types";
 import type { EngineEvent } from "@/lib/engine-events";
 
@@ -22,6 +22,9 @@ export function engineStreamResponse(
         if (e instanceof EngineUnsafeError) {
           console.warn("engine failed closed", e.findings);
           send({ type: "error", error: "engine_unsafe" });
+        } else if (e instanceof EngineEmptyError) {
+          console.warn("engine proposed an empty session");
+          send({ type: "error", error: "engine_empty" });
         } else {
           console.error("engine failed", e);
           send({ type: "error", error: "engine_failed" });

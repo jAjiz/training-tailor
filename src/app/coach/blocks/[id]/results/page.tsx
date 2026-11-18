@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Pill } from "@/components/ui/Pill";
+import { AdaptationDetails } from "@/components/training/AdaptationDetails";
 import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
@@ -53,7 +54,15 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
                     <td className={`${td} tabular-nums`}>{e.rank}</td>
                     <td className={`${td} font-medium`}>{e.displayName}</td>
                     <td className={`${td} tabular-nums`}>{e.formatted}</td>
-                    <td className={td}><Pill>{t(`log.${e.division as "rx" | "scaled"}`)}</Pill></td>
+                    <td className={td}>
+                      <div className="flex flex-col items-start gap-2">
+                        <span className="flex items-center gap-2">
+                          <Pill>{t(`log.${e.division as "rx" | "scaled"}`)}</Pill>
+                          {e.adapted && <Pill tone="success">{t("leaderboard.adapted")}</Pill>}
+                        </span>
+                        {e.adaptation && <AdaptationDetails adaptation={e.adaptation} />}
+                      </div>
+                    </td>
                     <td className={`${td} tabular-nums`}>{e.bumps}</td>
                     <td className={`${td} text-muted`}>{e.notes}</td>
                   </tr>
@@ -83,7 +92,15 @@ export default async function BlockResultsPage({ params }: { params: Promise<{ i
               {results.map((r) => (
                 <tr key={r.id} className={row}>
                   <td className={`${td} tabular-nums`}>{day(r.performedOn)}</td>
-                  <td className={`${td} font-medium`}>{r.displayName}</td>
+                  <td className={`${td} font-medium`}>
+                    {r.displayName}
+                    {r.adaptation && (
+                      <div className="mt-1 flex flex-col items-start gap-2 font-normal">
+                        <Pill tone="success">{t("coachResults.adapted")}</Pill>
+                        <AdaptationDetails adaptation={r.adaptation} />
+                      </div>
+                    )}
+                  </td>
                   <td className={`${td} tabular-nums`}>{r.formatted}</td>
                   <td className={`${td} text-muted`}>{r.notes}</td>
                 </tr>

@@ -8,7 +8,7 @@ import { ConfirmDialog, useConfirm } from "@/components/ui/ConfirmDialog";
 import type { ActionResult, ErrorCode } from "@/lib/training/errors";
 import {
   adminRegenerateInviteAction, changeCoachStatusAction, deleteAthleteAction, deleteCoachAction, impersonateAction,
-  previewAthleteDeletionAction, previewCoachDeletionAction, setAthleteDisabledAction, setInviteDisabledAction,
+  previewAthleteDeletionAction, previewCoachDeletionAction, setAthleteDisabledAction, setCoachTailoringAction, setInviteDisabledAction,
 } from "./actions";
 
 /** Runs an admin action: one at a time, its refusal shown as a translated message, the page refreshed on success. */
@@ -81,10 +81,11 @@ function EnterButton({ label, userId, zone }: { label: string; userId: string; z
   );
 }
 
-type Coach = { id: string; userId: string; name: string; email: string; status: string };
+type Coach = { id: string; userId: string; name: string; email: string; status: string; tailoringEnabled: boolean };
 
 export function CoachActions({ coach }: { coach: Coach }) {
   const t = useTranslations("admin.coach");
+  const tc = useTranslations("admin.coaches");
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const { pending, error, run } = useAdminAction();
@@ -107,9 +108,24 @@ export function CoachActions({ coach }: { coach: Coach }) {
     run(() => changeCoachStatusAction(coach.id, to));
   }
 
+  async function toggleTailoring(enabled: boolean) {
+    const on = enabled;
+    if (!(await confirm({
+      title: tc(on ? "tailoringOnTitle" : "tailoringOffTitle", { name: coach.name }),
+      message: tc(on ? "tailoringOnConfirm" : "tailoringOffConfirm"),
+      confirmLabel: tc(on ? "tailoringTurnOn" : "tailoringTurnOff"),
+    }))) return;
+    run(() => setCoachTailoringAction(coach.id, enabled));
+  }
+
   const busy = pending || remove.pending;
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input type="checkbox" role="switch" checked={coach.tailoringEnabled} disabled={busy}
+          onChange={(e) => void toggleTailoring(e.target.checked)} className="size-5 shrink-0 accent-primary" />
+        {tc("tailoring")}
+      </label>
       {(coach.status === "pending" || coach.status === "rejected") &&
         <Button type="button" variant="primary" size="sm" disabled={busy} onClick={() => change("approve")}>{t("approve")}</Button>}
       {coach.status === "pending" && <Button type="button" variant="danger" size="sm" disabled={busy} onClick={() => change("reject")}>{t("reject")}</Button>}

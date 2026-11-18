@@ -33,6 +33,11 @@ export const ERROR_CODES = [
   "import_empty",
   "import_failed",
   "note_too_long",
+  "tailoring_off",
+  "tailoring_not_allowed",
+  "day_passed",
+  "block_changed",
+  "invalid_state",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

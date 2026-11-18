@@ -49,6 +49,7 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ id
                   <span className="flex items-center gap-2 text-sm">
                     {e.formatted}
                     <Pill tone={e.division === "rx" ? "inverted" : "neutral"}>{tl(e.division as "rx" | "scaled")}</Pill>
+                    {e.adapted && <Pill tone="success">{t("adapted")}</Pill>}
                   </span>
                   {e.notes && <span className="truncate text-xs text-muted">{e.notes}</span>}
                 </div>

@@ -9,7 +9,7 @@ export async function isEngineDisabled(userId: string): Promise<boolean> {
 }
 
 /**
- * Engine routes (/api/tailor/*, /api/profile): a session is required, an impersonation session never acts,
+ * Engine routes (/api/profile and the block tailoring routes): a session is required, an impersonation session never acts,
  * and a disabled athlete is refused.
  */
 export async function engineUserId(): Promise<{ ok: true; userId: string } | { ok: false; response: Response }> {

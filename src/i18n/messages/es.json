@@ -67,6 +67,11 @@
     "import_quota": "Has alcanzado el límite de importaciones de hoy. Inténtalo mañana.",
     "import_empty": "No se encontró ningún bloque de entrenamiento en el PDF.",
     "import_failed": "No se pudo leer el PDF. Inténtalo de nuevo.",
+    "tailoring_off": "La adaptación no está activada para este programa.",
+    "tailoring_not_allowed": "Pide al administrador que active la adaptación con IA en tu cuenta antes.",
+    "day_passed": "Ese día ya pasó y no se puede adaptar.",
+    "block_changed": "El coach ha cambiado este bloque. Vuelve a empezar la adaptación.",
+    "invalid_state": "Ese paso no es posible ahora. Recarga e inténtalo de nuevo.",
     "note_too_long": "El texto de {target} superaría los 2000 caracteres."
   },
   "onboarding": {
@@ -88,6 +93,94 @@
       "es": "Español",
       "en": "English"
     }
+  },
+  "profile": {
+    "title": "Perfil de entrenamiento",
+    "intro": "Lo que el motor sabe de ti al adaptar un bloque. Tus 1RM salen de tus PRs.",
+    "back": "Volver a Perfil",
+    "link": "Perfil de entrenamiento",
+    "linkHint": "Lesiones, material, marcas y objetivos para adaptar bloques.",
+    "about": "Sobre ti",
+    "sex": "Cargas",
+    "level": "Nivel",
+    "notSet": "Sin indicar",
+    "sexes": {
+      "male": "Hombre",
+      "female": "Mujer"
+    },
+    "levels": {
+      "scaled": "Scaled",
+      "intermediate": "Intermedio",
+      "rx": "Rx",
+      "rx_plus": "Rx+"
+    },
+    "injuries": "Lesiones y limitaciones",
+    "noSide": "Sin lado",
+    "side": "Lado",
+    "severity": "Gravedad",
+    "sides": {
+      "left": "Izquierdo",
+      "right": "Derecho",
+      "both": "Ambos"
+    },
+    "severities": {
+      "mild": "Leve",
+      "moderate": "Moderada",
+      "acute": "Aguda"
+    },
+    "alwaysApplies": "Siempre se aplica",
+    "notes": "Notas",
+    "remove": "Quitar",
+    "addInjury": "Añadir una lesión o limitación…",
+    "add": "Añadir",
+    "equipment": "Material",
+    "fullBox": "Entreno en un box completo",
+    "equipmentItems": {
+      "barbell": "Barra",
+      "dumbbell": "Mancuerna",
+      "kettlebell": "Kettlebell",
+      "pullup_bar": "Barra de dominadas",
+      "rings": "Anillas",
+      "box": "Cajón",
+      "ramp": "Rampa",
+      "bench": "Banco",
+      "ghd": "GHD",
+      "band": "Banda",
+      "rope": "Cuerda de trepa",
+      "jump_rope": "Comba",
+      "rower": "Remo",
+      "ski_erg": "SkiErg",
+      "bike": "Bike erg",
+      "air_bike": "Air bike",
+      "wall_ball": "Wall ball",
+      "sandbag": "Saco de arena",
+      "d_ball": "Balón medicinal sin bote"
+    },
+    "benchmarks": "Marcas",
+    "benchmarksHint": "Repeticiones máximas y mejores tiempos. Los 1RM se leen de tus PRs.",
+    "prsLink": "Gestionar tus PRs",
+    "movement": "Movimiento",
+    "kind": "Tipo",
+    "value": "Valor",
+    "unit": "Unidad",
+    "kinds": {
+      "max_reps": "Reps máximas",
+      "time": "Tiempo"
+    },
+    "units": {
+      "kg": "kg",
+      "lb": "lb",
+      "reps": "reps",
+      "seconds": "segundos"
+    },
+    "addBenchmark": "Añadir marca",
+    "goals": "Objetivos",
+    "goalPlaceholder": "p. ej. primer muscle-up estricto",
+    "goalMovement": "Movimiento (opcional)",
+    "addGoal": "Añadir objetivo",
+    "save": "Guardar perfil",
+    "saved": "Guardado",
+    "saveFailed": "No se pudo guardar. Revisa los valores e inténtalo de nuevo."
   },
   "coachPending": {
     "titles": {
@@ -130,7 +223,9 @@
     "board": "Tablón",
     "archive": "Archivar programa",
     "archiveConfirm": "¿Archivar este programa? Desaparecerá para tus atletas y el enlace dejará de funcionar.",
-    "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas."
+    "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas.",
+    "tailoring": "Adaptación con IA",
+    "tailoringHint": "Tus atletas verán un botón «Adaptar» en cada bloque para ajustarlo a su situación. Está disponible porque el administrador la activó para ti."
   },
   "block": {
     "untitled": "Bloque",
@@ -317,7 +412,8 @@
     "title": "Leaderboard",
     "empty": "Todavía nadie ha registrado este bloque.",
     "you": "Tú",
-    "fistBump": "Choque de puño"
+    "fistBump": "Choque de puño",
+    "adapted": "Adaptado"
   },
   "calendar": {
     "title": "Calendario",
@@ -332,6 +428,8 @@
     "division": "Categoría",
     "rx": "Rx",
     "scaled": "Scaled",
+    "adaptedScaled": "Adaptado · Scaled",
+    "adapted": "Adaptado",
     "minutes": "Minutos",
     "seconds": "Segundos",
     "capped": "No terminé dentro del time cap",
@@ -363,7 +461,12 @@
     "notes": "Notas",
     "rank": "#",
     "bumps": "Choques de puño",
-    "view": "Ver resultados"
+    "view": "Ver resultados",
+    "adapted": "Adaptado",
+    "adaptedDetails": "Detalles de la adaptación",
+    "adaptedChanges": "Qué cambió",
+    "adaptedRemoved": "eliminado",
+    "adaptedSituation": "Lo que escribió el atleta"
   },
   "impersonation": {
     "viewing": "Estás viendo la cuenta de {name}",
@@ -416,6 +519,15 @@
       "title": "Coaches",
       "empty": "Ningún coach coincide.",
       "programs": "Programas",
+      "tailoring": "Adaptación con IA",
+      "tailoringOn": "Activada",
+      "tailoringOff": "Desactivada",
+      "tailoringOnTitle": "Activar la adaptación con IA de {name}",
+      "tailoringOnConfirm": "Sus atletas podrán adaptar los bloques a su situación, en los programas donde el coach también la active.",
+      "tailoringOffTitle": "Desactivar la adaptación con IA de {name}",
+      "tailoringOffConfirm": "Los atletas pierden la opción Adaptar en todos sus programas.",
+      "tailoringTurnOn": "Activar",
+      "tailoringTurnOff": "Desactivar",
       "all": "Todos",
       "filter": "Filtrar por estado",
       "statuses": {
@@ -791,5 +903,132 @@
     "roleDayNote": "Objetivo del día",
     "roleWeekNote": "Texto de la semana",
     "weekDay": "{week}, {day}"
+  },
+  "adapt": {
+    "open": "Adaptar",
+    "adjust": "Ajustar adaptación",
+    "panelTitle": "{action} · {block}",
+    "intro": "Cuéntanos cómo estás hoy: dolor, cansancio, material que te falta… El bloque se ajusta a ti y mantiene su estímulo.",
+    "privacy": "Tu coach podrá ver lo que escribas aquí.",
+    "notMedical": "No es consejo médico. Training Tailor sugiere modificaciones del entrenamiento; no diagnostica ni trata lesiones. Ante la duda, consulta a un profesional cualificado.",
+    "inputLabel": "Tu mensaje",
+    "placeholder": "p. ej. me duele la rodilla derecha al hacer sentadillas",
+    "answerPlaceholder": "O responde con tus palabras",
+    "pickAbove": "Elige una opción arriba para continuar.",
+    "send": "Enviar",
+    "you": "Tú",
+    "continue": "Continuar",
+    "retry": "Reintentar",
+    "accept": "Aceptar",
+    "accepting": "Aceptando…",
+    "proposal": "Propuesta",
+    "earlierProposal": "Propuesta anterior",
+    "warning": "Revísala antes de aceptar: algunas comprobaciones han señalado esta propuesta.",
+    "changes": "Qué ha cambiado",
+    "removed": "quitado",
+    "adapted": "Adaptado",
+    "seeOriginal": "Ver original",
+    "seeAdapted": "Ver adaptación",
+    "menu": "Opciones de la adaptación",
+    "discard": "Descartar adaptación",
+    "discardTitle": "¿Descartar la adaptación?",
+    "discardMessage": "La tarjeta vuelve a mostrar el bloque del coach. La conversación se conserva, así que puedes volver a adaptarlo.",
+    "stale": "Tu coach cambió este bloque después de que lo adaptaras. Tu adaptación se hizo para una versión anterior.",
+    "again": "Adaptar de nuevo",
+    "seePrevious": "Ver adaptación anterior",
+    "previousAdaptation": "Adaptación anterior",
+    "hidePrevious": "Ocultar adaptación anterior",
+    "questionsTitle": "Una pregunta antes de adaptar",
+    "stage": {
+      "analyzing": "Leyendo tu mensaje…",
+      "tailoring": "Adaptando el bloque…",
+      "validating": "Comprobándolo con tus condiciones y tu material…",
+      "retrying": "Corrigiendo lo que ha encontrado la comprobación…"
+    },
+    "site": {
+      "question": "¿Qué te molesta hoy? Zona: {where}",
+      "all": "Todo lo que carga esta zona ({where})",
+      "none": "Puedo hacerlo todo"
+    },
+    "replacement": {
+      "question": "¿En lugar de {movement}?",
+      "hint": "La alternativa más parecida también carga esta zona ({where}).",
+      "alsoLoads": "también carga esta zona ({where}): {loads}"
+    },
+    "answer": {
+      "all": "Todo lo que carga la zona",
+      "none": "Puedo hacerlo todo",
+      "replacement": "En su lugar: {name}"
+    },
+    "where": "{site} ({side})",
+    "sides": {
+      "left": "izquierda",
+      "right": "derecha",
+      "both": "ambos lados"
+    },
+    "sites": {
+      "shoulder": "hombro",
+      "elbow": "codo",
+      "wrist": "muñeca",
+      "neck": "cuello",
+      "lumbar": "zona lumbar",
+      "hip": "cadera",
+      "knee": "rodilla",
+      "ankle": "tobillo",
+      "quads": "cuádriceps",
+      "hamstrings": "isquiotibiales",
+      "calves": "gemelos",
+      "hip_flexors": "flexores de cadera",
+      "chest": "pecho",
+      "biceps": "bíceps",
+      "lats": "dorsales",
+      "triceps": "tríceps",
+      "abdominals": "abdominales",
+      "grip": "agarre"
+    },
+    "mechanisms": {
+      "compression": "Carga pesada",
+      "flexion": "Flexión",
+      "deep_flexion": "Flexión profunda",
+      "extension": "Mantenerla extendida con carga",
+      "deep_extension": "Extensión completa",
+      "overhead": "Brazos por encima de la cabeza",
+      "ballistic": "Movimientos explosivos",
+      "impact": "Impacto (saltos, aterrizajes)",
+      "traction": "Colgarse de una barra",
+      "kipping": "Kipping",
+      "eccentric": "Bajar con carga"
+    },
+    "findings": {
+      "unrecognized_movement": "{movement} no está en nuestra biblioteca, así que no se ha podido comprobar.",
+      "caution_movement": "{movement}: hazlo con cuidado, por lo que nos has contado.",
+      "contraindicated_movement": "{movement} puede no ser adecuado para lo que nos has contado.",
+      "equipment_unavailable": "{movement} necesita material que no tienes.",
+      "time_cap_exceeded": "La sesión adaptada puede durar más que el time cap.",
+      "stimulus_drift": "{block, select, none {La sesión puede sentirse distinta} other {El bloque {block} puede sentirse distinto}} de lo que buscaba tu coach.",
+      "scoring_changed": "{block, select, none {La sesión} other {El bloque {block}}} puede no encajar ya con la puntuación original.",
+      "change_mismatch": "La lista de cambios puede no coincidir exactamente con el bloque adaptado.",
+      "unaccounted_block": "Puede faltar {block, select, none {un bloque} other {el bloque {block}}} del original.",
+      "percent_load_dropped": "{movement}: el porcentaje del 1RM original no se aplica a este movimiento. Elige una carga que puedas mover con buena técnica.",
+      "other": "Una comprobación ha señalado esta propuesta."
+    },
+    "errors": {
+      "unauthorized": "Tu sesión ha caducado. Vuelve a entrar.",
+      "forbidden": "No puedes adaptar bloques mientras ves la cuenta de otra persona.",
+      "account_disabled": "Tu cuenta está deshabilitada.",
+      "tailoring_off": "La adaptación no está activada para este programa.",
+      "day_passed": "Ese día ya pasó y no se puede adaptar.",
+      "not_found": "Este bloque ya no está disponible.",
+      "invalid_request": "El mensaje no es válido. Acórtalo e inténtalo de nuevo.",
+      "payload_too_large": "El mensaje es demasiado largo. Acórtalo e inténtalo de nuevo.",
+      "block_changed": "El coach ha cambiado este bloque; vuelve a empezar.",
+      "invalid_state": "Ese paso no es posible ahora. Cierra el panel, recarga e inténtalo de nuevo.",
+      "quota_exceeded": "Has llegado al límite de hoy. Vuelve a intentarlo mañana.",
+      "engine_unsafe": "Este bloque no se puede adaptar de forma segura para lo que describes. Habla con tu coach o cuéntalo de otra manera.",
+      "engine_empty": "Adaptarlo dejaría el bloque sin nada que hacer. Habla con tu coach.",
+      "engine_failed": "La adaptación ha fallado. Inténtalo de nuevo.",
+      "engine_unavailable": "La adaptación no está disponible ahora. Inténtalo más tarde.",
+      "internal": "Algo ha fallado. Inténtalo de nuevo."
+    }
   }
 }

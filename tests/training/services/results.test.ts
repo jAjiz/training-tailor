@@ -1,18 +1,23 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { fakePush } from "../../helpers/fake-push";
 import {
   enroll, makeAthlete, makeBarbellBlock, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makeSubscription, publishWeek,
 } from "../../helpers/factories";
 import {
-  deleteResult, getCoachBlockResults, getDayResults, getLeaderboard, getMyResult, listAthleteResults, listBlockResults, saveResult, toggleFistBump,
+  adaptationToKeep, deleteResult, getCoachBlockResults, getDayResults, getLeaderboard, getMyResult, listAthleteResults, listBlockResults, saveResult, toggleFistBump,
 } from "@/lib/training/services/results";
 import { deliver } from "@/lib/notifications/notify";
+import { component, coupletDraft, fixtureDomain, toTailoringDraft, couplet } from "../../fixtures/workouts";
+import { FakeProvider } from "@/lib/ai/fake-provider";
+import { RestrictionDraftSchema, emptyProfile } from "@/lib/engine/types";
+import { acceptAdaptation, adaptAnalyze, adaptTailor, discardAdaptation, getAdaptation, snapshotOf } from "@/lib/training/services/adaptations";
 
 let tdb: TestDb;
 beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 const NOW = new Date("2026-10-07T18:00:00Z"); // Wednesday of week 0 (program starts Monday 2026-10-05)
 
@@ -244,5 +249,115 @@ describe("fist bump notifications", () => {
     expect(await tdb.prisma.notification.count()).toBe(1);
     await deleteResult(tdb.prisma, ana, wod.id, NOW);
     expect(await tdb.prisma.notification.count()).toBe(0);
+  });
+});
+
+describe("results with adaptations", () => {
+  const ctx = { profile: emptyProfile(), domain: fixtureDomain(), libraryVersion: 1, locale: "en" as const };
+  const overhead = RestrictionDraftSchema.parse({
+    site: "shoulder", side: "right", movements: [], mechanisms: ["overhead"], positions: [], evidence: "my shoulder hurts overhead",
+  });
+
+  /** Runs the conversation to an accepted adaptation for a custom block (barbell blocks reuse the same draft). */
+  async function adapt(athlete: { id: string; timezone: string }, blockId: string) {
+    const draft = toTailoringDraft(couplet());
+    draft.blocks[0].components = [component("Test Goblet", { reps: "21-15-9" }), component("Test Row", { reps: "21-15-9" })];
+    draft.changes = [{ blockIndex: 0, original: "Test Combo", modified: "Test Goblet", reason: "No overhead." }];
+    draft.rawText = "Test Workout\n21-15-9 for time\nTest Goblet\nTest Row";
+    const p = new FakeProvider({
+      BlockAnalysis: coupletDraft(),
+      SituationAnalysis: { restrictions: [overhead], conditions: [], unavailableEquipment: [] },
+      TailoringResult: draft,
+    });
+    await adaptAnalyze(tdb.prisma, p, athlete, blockId, { text: "my shoulder hurts overhead" }, ctx, NOW);
+    await adaptTailor(tdb.prisma, p, athlete, blockId, { ...ctx, onProgress: () => {} }, NOW);
+    return acceptAdaptation(tdb.prisma, athlete, blockId, NOW);
+  }
+  async function enableTailoring(coachId: string, programId: string) {
+    await tdb.prisma.coachAccount.update({ where: { id: coachId }, data: { tailoringEnabled: true } });
+    await tdb.prisma.program.update({ where: { id: programId }, data: { tailoringEnabled: true } });
+  }
+
+  it("saving with an active adaptation stores scaled and the snapshot", async () => {
+    const { coach, program, ana, wod } = await setup();
+    await enableTailoring(coach.id, program.id);
+    const accepted = await adapt(ana, wod.id);
+    const { messages } = (await getAdaptation(tdb.prisma, ana.id, wod.id))!;
+    const r = await log(ana, wod.id, { seconds: 600 }, "rx");
+    expect(r.singlePrompt).toBeNull();
+    const row = await getMyResult(tdb.prisma, ana.id, wod.id);
+    expect(row?.division).toBe("scaled");
+    expect(row?.adaptation).toEqual(snapshotOf(accepted, messages));
+  });
+
+  it("sticky: after discard, saving rx stays scaled", async () => {
+    const { coach, program, ana, wod } = await setup();
+    await enableTailoring(coach.id, program.id);
+    await adapt(ana, wod.id);
+    await log(ana, wod.id, { seconds: 600 });
+    const before = (await getMyResult(tdb.prisma, ana.id, wod.id))!;
+    await discardAdaptation(tdb.prisma, ana.id, wod.id);
+    await log(ana, wod.id, { seconds: 590 }, "rx");
+    const after = (await getMyResult(tdb.prisma, ana.id, wod.id))!;
+    expect(after.division).toBe("scaled");
+    expect(after.adaptation).toEqual(before.adaptation);
+    expect(after.adaptation).not.toBeNull();
+  });
+
+  it("sticky: a stored snapshot the schema no longer accepts is kept as stored, and the result stays scaled", async () => {
+    const { ana, wod } = await setup();
+    await log(ana, wod.id, { seconds: 600 });
+    const legacy = { text: "Test legacy snapshot" };
+    await tdb.prisma.result.updateMany({ where: { blockId: wod.id, athleteId: ana.id }, data: { adaptation: legacy, division: "scaled" } });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await adaptationToKeep(tdb.prisma, ana.id, wod)).toEqual(legacy);
+    await log(ana, wod.id, { seconds: 590 }, "rx");
+    const row = await tdb.prisma.result.findUniqueOrThrow({ where: { blockId_athleteId: { blockId: wod.id, athleteId: ana.id } } });
+    expect(row.division).toBe("scaled");
+    expect(row.adaptation).toEqual(legacy);
+    expect(logged).toHaveBeenCalled();
+  });
+
+  it("stale adaptation does not tag a new result", async () => {
+    const { coach, program, ana, wod } = await setup();
+    await enableTailoring(coach.id, program.id);
+    await adapt(ana, wod.id);
+    await tdb.prisma.block.update({ where: { id: wod.id }, data: { description: "Test edited description" } });
+    await log(ana, wod.id, { seconds: 600 }, "rx");
+    const row = (await getMyResult(tdb.prisma, ana.id, wod.id))!;
+    expect(row.adaptation).toBeNull();
+    expect(row.division).toBe("rx");
+  });
+
+  it("barbell with adaptation: rx, snapshot, no 1RM prompt", async () => {
+    const { coach, program, ana } = await setup();
+    await enableTailoring(coach.id, program.id);
+    const bar = await makeBarbellBlock(tdb.prisma, program.id, 2);
+    await adapt(ana, bar.id);
+    const r = await saveResult(tdb.prisma, ana, {
+      blockId: bar.id, division: "rx", score: { sets: [{ kg: 400, reps: 1 }] }, notes: null,
+    }, NOW);
+    expect(r.singlePrompt).toBeNull();
+    const row = (await getMyResult(tdb.prisma, ana.id, bar.id))!;
+    expect(row.division).toBe("rx");
+    expect(row.adaptation).not.toBeNull();
+  });
+
+  it("coach rows expose the snapshot; athlete leaderboard entries do not", async () => {
+    const { coach, program, ana, ben, wod } = await setup();
+    await enableTailoring(coach.id, program.id);
+    await adapt(ana, wod.id);
+    await log(ana, wod.id, { seconds: 600 });
+    await log(ben, wod.id, { seconds: 610 });
+    const board = await getLeaderboard(tdb.prisma, { athlete: ben }, wod.id);
+    expect(board.entries.map((e) => [e.athleteId === ana.id, e.adapted])).toEqual([[false, false], [true, true]]); // scaled ranks below rx
+    expect(board.entries.every((e) => !("adaptation" in e))).toBe(true);
+    const { results } = await listBlockResults(tdb.prisma, coach.id, wod.id);
+    expect(results.find((x) => x.athleteId === ana.id)?.adaptation?.situation).toEqual(["my shoulder hurts overhead"]);
+    expect(results.find((x) => x.athleteId === ben.id)?.adaptation).toBeNull();
+    // The coach's leaderboard path carries the snapshot too (wod has a leaderboard).
+    const coachView = await getCoachBlockResults(tdb.prisma, coach.id, wod.id);
+    expect(coachView.entries?.find((e) => e.athleteId === ana.id)?.adaptation?.situation).toEqual(["my shoulder hurts overhead"]);
+    expect(coachView.entries?.find((e) => e.athleteId === ben.id)?.adaptation).toBeNull();
   });
 });

@@ -42,6 +42,40 @@ describe("coaching schema", () => {
   });
 });
 
+describe("block tailoring schema", () => {
+  it("keeps one adaptation per athlete and block", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    const block = await makeCustomBlock(tdb.prisma, program.id, 0);
+    await tdb.prisma.blockAdaptation.create({ data: { blockId: block.id, athleteId: athlete.id } });
+    await expect(
+      tdb.prisma.blockAdaptation.create({ data: { blockId: block.id, athleteId: athlete.id } }),
+    ).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("cascades a block's deletion to its analysis and adaptations", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    const block = await makeCustomBlock(tdb.prisma, program.id, 0);
+    await tdb.prisma.blockAnalysis.create({
+      data: { blockId: block.id, contentHash: "h", libraryVersion: 1, workout: {}, analyzed: true, model: "test" },
+    });
+    await tdb.prisma.blockAdaptation.create({ data: { blockId: block.id, athleteId: athlete.id } });
+    await tdb.prisma.block.delete({ where: { id: block.id } });
+    expect(await tdb.prisma.blockAnalysis.count()).toBe(0);
+    expect(await tdb.prisma.blockAdaptation.count()).toBe(0);
+  });
+
+  it("defaults tailoring switches to off", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    expect(coach.tailoringEnabled).toBe(false);
+    expect(program.tailoringEnabled).toBe(false);
+  });
+});
+
 describe("admin schema", () => {
   it("sets a program's coach to null when the coach is deleted", async () => {
     const coach = await makeCoach(tdb.prisma);

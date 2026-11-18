@@ -34,7 +34,7 @@ function searchFilter(search: string | undefined) {
 }
 
 export type AdminCoachRow = {
-  id: string; userId: string; email: string; displayName: string; status: string; createdAt: Date; programs: number;
+  id: string; userId: string; email: string; displayName: string; status: string; createdAt: Date; programs: number; tailoringEnabled: boolean;
 };
 
 /** Pending coaches first, then the rest; each group newest first. */
@@ -68,7 +68,7 @@ export async function listCoaches(
   return {
     rows: found.slice(0, PAGE_SIZE).map((c) => ({
       id: c.id, userId: c.userId, email: c.user.email, displayName: c.displayName, status: c.status,
-      createdAt: c.createdAt, programs: c._count.programs,
+      createdAt: c.createdAt, programs: c._count.programs, tailoringEnabled: c.tailoringEnabled,
     })),
     hasMore: found.length > PAGE_SIZE,
   };
@@ -132,7 +132,7 @@ export async function getCoachDetail(db: Db, coachId: string): Promise<AdminCoac
   if (!coach) throw new TrainingError("not_found");
   return {
     id: coach.id, userId: coach.userId, email: coach.user.email, displayName: coach.displayName, status: coach.status,
-    createdAt: coach.createdAt, locale: coach.locale, athleteId: coach.user.athleteAccount?.id ?? null,
+    createdAt: coach.createdAt, tailoringEnabled: coach.tailoringEnabled, locale: coach.locale, athleteId: coach.user.athleteAccount?.id ?? null,
     programs: coach.programs.map((p) => ({
       id: p.id, name: p.name, kind: p.kind, athletes: p._count.enrollments,
       lastPublishedWeek: lastPublishedWeek(p.kind, p.weeksPublished), publishedAt: p.publishedAt, archivedAt: p.archivedAt,

@@ -1,36 +1,29 @@
-import { NextResponse } from "next/server";
+import { getLocale } from "next-intl/server";
 import type { z } from "zod";
+import type { AthleteAccount } from "@/generated/prisma/client";
+import { DEFAULT_LOCALE, isLocale } from "@/i18n/locale";
 import { getProvider } from "@/lib/ai";
 import type { LlmProvider } from "@/lib/ai/provider";
-import { getDomainData, type DomainData } from "@/lib/domain/repository";
-import type { ProgressStage } from "@/lib/engine/pipeline";
-import type { AthleteProfile, PipelineResult } from "@/lib/engine/types";
+import { prisma } from "@/lib/db";
+import { getDomainData, getPublishedLibraryVersion } from "@/lib/domain/repository";
 import { engineUserId } from "@/lib/engine-access";
-import { engineStreamResponse } from "@/lib/engine-stream";
 import { jsonError, readJsonBody } from "@/lib/http";
 import { consumeQuota, dailyLimit, type UsageKind } from "@/lib/quota";
 import { prismaQuotaStore } from "@/lib/quota-store";
-import { loadProfile } from "@/lib/tailor-service";
-import { recordUnrecognized } from "@/lib/unrecognized";
-import { prismaUnrecognizedStore } from "@/lib/unrecognized-store";
-
-export interface EngineContext {
-  provider: LlmProvider;
-  profile: AthleteProfile;
-  domain: DomainData;
-  onProgress: (stage: ProgressStage) => void;
-}
+import { loadEngineProfile } from "@/lib/tailor-service";
+import { TrainingError } from "@/lib/training/errors";
+import { getAthleteByUserId } from "@/lib/training/services/accounts";
+import type { AdaptContext } from "@/lib/training/services/adaptations";
 
 interface RouteCheck<T> {
   schema: z.ZodType<T>;
   maxBodyChars: number;
-  kind: UsageKind;
 }
 
 type Prepared<T> = { ok: true; userId: string; body: T; provider: LlmProvider } | { ok: false; response: Response };
 
-/** Session, bounded body, validation, provider and quota: shared by every engine endpoint. */
-async function prepare<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<T>> {
+/** Session, bounded body, validation and provider: shared by every engine endpoint. Quota is charged separately. */
+export async function prepareEngine<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<T>> {
   const user = await engineUserId();
   if (!user.ok) return user;
   const { userId } = user;
@@ -46,42 +39,38 @@ async function prepare<T>(req: Request, check: RouteCheck<T>): Promise<Prepared<
     console.error("engine unavailable", e);
     return { ok: false, response: jsonError("engine_unavailable", 503) };
   }
-  const quota = await consumeQuota(prismaQuotaStore, userId, check.kind, dailyLimit());
-  if (!quota.allowed) return { ok: false, response: jsonError("quota_exceeded", 429) };
   return { ok: true, userId, body: body.data, provider };
 }
 
-interface EngineRoute<T> extends RouteCheck<T> {
-  run: (body: T, ctx: EngineContext) => Promise<PipelineResult>;
+/** Spends one run of `kind`; the 429 response when today's limit is reached, null when allowed. */
+export async function chargeQuota(userId: string, kind: UsageKind): Promise<Response | null> {
+  const quota = await consumeQuota(prismaQuotaStore, userId, kind, dailyLimit());
+  return quota.allowed ? null : jsonError("quota_exceeded", 429);
 }
 
-/** Phase 2 (tailor, refine): the NDJSON stream; unrecognized movements are queued after the result is sent. */
-export async function handleEngineRequest<T>(req: Request, route: EngineRoute<T>): Promise<Response> {
-  const p = await prepare(req, route);
-  if (!p.ok) return p.response;
-  const [profile, domain] = await Promise.all([loadProfile(p.userId), getDomainData()]);
-  return engineStreamResponse(
-    (onProgress) => route.run(p.body, { provider: p.provider, profile, domain, onProgress }),
-    (result) => recordUnrecognized(prismaUnrecognizedStore, result),
-  );
+const STATUS: Partial<Record<string, number>> = {
+  unauthorized: 403, tailoring_off: 403, day_passed: 403, account_disabled: 403,
+  not_found: 404, invalid_request: 400, block_changed: 409, invalid_state: 409,
+};
+
+/** A service refusal as its code and HTTP status; null for anything else. */
+export function refusalResponse(e: unknown): Response | null {
+  const status = e instanceof TrainingError ? STATUS[e.code] : undefined;
+  return status === undefined ? null : jsonError((e as TrainingError).code, status);
 }
 
-interface AnalyzeRoute<T, R> {
-  schema: z.ZodType<T>;
-  maxBodyChars: number;
-  run: (body: T, ctx: { provider: LlmProvider; profile: AthleteProfile; domain: DomainData }) => Promise<R>;
-}
+type Adapting = { ok: true; athlete: AthleteAccount; ctx: AdaptContext } | { ok: false; response: Response };
 
-/** Phase 1 (analyze): one model call, plain JSON; counted as "analyze". Never leaks exception text. The profile
- * (injuries, equipment) shapes the clarifying questions. */
-export async function handleAnalyzeRequest<T, R>(req: Request, route: AnalyzeRoute<T, R>): Promise<Response> {
-  const p = await prepare(req, { schema: route.schema, maxBodyChars: route.maxBodyChars, kind: "analyze" });
-  if (!p.ok) return p.response;
-  try {
-    const [profile, domain] = await Promise.all([loadProfile(p.userId), getDomainData()]);
-    return NextResponse.json(await route.run(p.body, { provider: p.provider, profile, domain }));
-  } catch (e) {
-    console.error("analysis failed", e);
-    return jsonError("engine_failed", 502);
-  }
+/**
+ * The athlete and what the adaptation services need. The engine writes in the athlete's app language: their saved
+ * locale, else the request's.
+ */
+export async function loadAdaptContext(userId: string): Promise<Adapting> {
+  const athlete = await getAthleteByUserId(prisma, userId);
+  if (!athlete) return { ok: false, response: jsonError("unauthorized", 403) };
+  const [profile, domain, libraryVersion, requestLocale] = await Promise.all([
+    loadEngineProfile(prisma, userId), getDomainData(), getPublishedLibraryVersion(), getLocale(),
+  ]);
+  const locale = isLocale(athlete.locale) ? athlete.locale : isLocale(requestLocale) ? requestLocale : DEFAULT_LOCALE;
+  return { ok: true, athlete, ctx: { profile, domain, libraryVersion, locale } };
 }

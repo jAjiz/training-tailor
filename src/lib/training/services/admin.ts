@@ -46,6 +46,19 @@ export async function changeCoachStatus(
   });
 }
 
+/** The coach-level switch for AI tailoring; programs can only turn it on under an enabled coach. */
+export async function setCoachTailoring(db: Db, actor: string, coachId: string, enabled: boolean): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const coach = await tx.coachAccount.findUnique({ where: { id: coachId }, include: { user: true } });
+    if (!coach) throw new TrainingError("not_found");
+    await tx.coachAccount.update({ where: { id: coachId }, data: { tailoringEnabled: enabled } });
+    await writeAudit(tx, {
+      actorUserId: actor, action: enabled ? "coach.tailoring_on" : "coach.tailoring_off", targetUserId: coach.userId,
+      targetType: "coach", targetId: coach.id, targetLabel: coach.user.email,
+    });
+  });
+}
+
 export async function approveCoach(
   db: Db, email: string,
 ): Promise<{ outcome: "approved" | "not_found"; intents: NotificationIntent[] }> {

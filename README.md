@@ -10,10 +10,23 @@ invitation. Spanish and English.
 
 ## Features
 
-- **Athletes:** daily sessions, results, leaderboards, personal records, workout tailoring and
-  push notifications. Installable as a PWA.
+- **Athletes:** daily sessions, results, leaderboards, personal records and push
+  notifications. Installable as a PWA.
 - **Coaches:** programs, a weekly planner, invitation links, results and announcements.
 - **Admin:** coach approval, accounts, audit log and the domain library editor.
+
+### AI tailoring
+
+An athlete can adapt one block of the day from its card ("Adapt"): a chat where they describe
+pain or missing equipment, review the adapted block and accept it or ask for more changes. The
+adapted block replaces the coach's one for that athlete only, is marked "Adapted" and keeps
+the original one tap away. A result logged on an adapted block is always Scaled and tagged;
+coaches see the adaptation and what the athlete wrote.
+
+It is off by default: the admin enables it per coach (`/admin/coaches/<id>`), and an enabled
+coach turns it on per program (program settings). The engine uses Gemini (`GEMINI_API_KEY`,
+model pinned with `GEMINI_MODEL`); each athlete gets `DAILY_ENGINE_LIMIT` engine runs per day
+(30 by default).
 
 ## Stack
 
