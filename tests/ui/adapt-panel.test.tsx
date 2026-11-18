@@ -189,6 +189,7 @@ describe("AdaptPanel", () => {
       { kind: "caution_movement", severity: "warning", blockIndex: 0, movement: "Test Pull", message: "Test Pull: use caution (test reason)" },
       { kind: "stimulus_drift", severity: "warning", blockIndex: null, movement: null, message: "Test English drift" },
       { kind: "unrecognized_movement", severity: "warning", blockIndex: 0, movement: null, message: "Test English unknown" },
+      { kind: "percent_load_dropped", severity: "warning", blockIndex: 0, movement: "Test Goblet", message: "Test English percent" },
     ];
     open([
       { role: "athlete", at, text: "Test me duele la rodilla" },
@@ -197,6 +198,7 @@ describe("AdaptPanel", () => {
     expect(screen.getByText(es.adapt.warning)).toBeInTheDocument();
     expect(screen.getByText("Test Pull: hazlo con cuidado, por lo que nos has contado.")).toBeInTheDocument();
     expect(screen.getByText("La sesión puede sentirse distinta de lo que buscaba tu coach.")).toBeInTheDocument();
+    expect(screen.getByText("Test Goblet: el porcentaje del 1RM original no se aplica a este movimiento. Elige una carga que puedas mover con buena técnica.")).toBeInTheDocument();
     // A finding without the detail its copy needs gets the generic line.
     expect(screen.getByText(es.adapt.findings.other)).toBeInTheDocument();
     for (const f of findings) expect(screen.queryByText(f.message)).toBeNull();

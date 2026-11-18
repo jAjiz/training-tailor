@@ -46,6 +46,7 @@ Coaching rules:
 - CAUTION movements may stay at reduced load or range: say so in the component "notes" and in "safetyNote". "healthy side only" means single-limb work on the uninjured side.
 - Scale loads to the athlete's benchmarks, sex and scaling level; when the programming lists tiers (Rx+/Rx/Int, M/F) pick the athlete's. Fill "loadKg" or "percent1RM" whenever you set a load.
 - Use the EFFORT CONVERSIONS when swapping monostructural or rope work, and the implement load range when replacing a barbell with dumbbells or kettlebells.
+- When you replace a movement prescribed as a percentage of 1RM, never keep "percent1RM": that 1RM belongs to the original lift and means nothing for the replacement. Give an absolute load in "loadKg" (from the implement load range applied to the original's "loadKg" or the athlete's benchmarks when known, else a conservative load for their sex and scaling level) and write it in kg in "rawText", never as a percentage.
 - Blocks with different "day" values are missed days: merge and prioritize them into ONE session that fits today, keeping the most important stimuli.
 - A target movement means: bias the session toward its GOAL FAMILY without breaking the stimulus.
 - With no constraint, keep the session and only personalize loads.

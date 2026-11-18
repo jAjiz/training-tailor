@@ -1008,6 +1008,7 @@
       "scoring_changed": "{block, select, none {La sesión} other {El bloque {block}}} puede no encajar ya con la puntuación original.",
       "change_mismatch": "La lista de cambios puede no coincidir exactamente con el bloque adaptado.",
       "unaccounted_block": "Puede faltar {block, select, none {un bloque} other {el bloque {block}}} del original.",
+      "percent_load_dropped": "{movement}: el porcentaje del 1RM original no se aplica a este movimiento. Elige una carga que puedas mover con buena técnica.",
       "other": "Una comprobación ha señalado esta propuesta."
     },
     "errors": {

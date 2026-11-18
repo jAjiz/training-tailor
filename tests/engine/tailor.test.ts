@@ -178,6 +178,14 @@ describe("tailor", () => {
     expect(provider.calls[0].systemPrompt).toMatch(/\(removed\)/);
   });
 
+  it("tells the model never to carry the original lift's percentage over to a replacement", async () => {
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(couplet()) });
+    await tailor(provider, input());
+    const { systemPrompt } = provider.calls[0];
+    expect(systemPrompt).toMatch(/replace a movement prescribed as a percentage of 1RM, never keep "percent1RM"/);
+    expect(systemPrompt).toMatch(/absolute load in "loadKg"[^\n]*kg in "rawText"/);
+  });
+
   it("prompt asks for Spanish prose for locale es", async () => {
     const provider = new FakeProvider({ TailoringResult: toTailoringDraft(couplet()) });
     await tailor(provider, input({ locale: "es" }));

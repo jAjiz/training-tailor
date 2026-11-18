@@ -146,6 +146,33 @@ function removeUnavailable(result: TailoringResult, findings: Finding[]): Tailor
   };
 }
 
+/**
+ * A replacement never keeps the percentage of 1RM of the lift it replaces: that 1RM says nothing about it. A component
+ * whose movement is not in its source blocks loses its percent1RM, with a warning (its text may still show one).
+ */
+function dropReplacedPercentages(
+  original: StructuredWorkout, result: TailoringResult,
+): { result: TailoringResult; findings: Finding[] } {
+  const findings: Finding[] = [];
+  const blocks = result.blocks.map((b, i) => {
+    const sources = b.sourceBlocks.flatMap((j) => original.blocks[j] ?? []);
+    const kept = new Set((sources.length > 0 ? sources : original.blocks).flatMap((o) => o.components.map((c) => c.canonical ?? c.movement)));
+    return {
+      ...b,
+      components: b.components.map((c) => {
+        const name = c.canonical ?? c.movement;
+        if (c.percent1RM === null || kept.has(name)) return c;
+        findings.push({
+          kind: "percent_load_dropped", severity: "warning", blockIndex: i, movement: name,
+          message: `${name} replaces a lift prescribed as a percentage of 1RM; the percentage was dropped.`,
+        });
+        return { ...c, percent1RM: null };
+      }),
+    };
+  });
+  return { result: { ...result, blocks }, findings };
+}
+
 /** Nothing to train: every tailored block lost its components, or every original block was dropped. */
 function isEmpty(original: StructuredWorkout, result: TailoringResult): boolean {
   const dropped = new Set(result.droppedBlocks.map((d) => d.index));
@@ -190,7 +217,8 @@ async function tailorAndValidate(
     throw new EngineUnsafeError(findings);
   }
   if (isEmpty(s.original, result)) throw new EngineEmptyError();
-  return { result, findings };
+  const guarded = dropReplacedPercentages(s.original, result);
+  return { result: guarded.result, findings: [...findings, ...guarded.findings] };
 }
 
 /**

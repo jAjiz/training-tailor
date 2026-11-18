@@ -1008,6 +1008,7 @@
       "scoring_changed": "{block, select, none {The session} other {Block {block}}} may no longer fit the original scoring.",
       "change_mismatch": "The list of changes may not match the adapted block exactly.",
       "unaccounted_block": "{block, select, none {A block} other {Block {block}}} of the original may be missing.",
+      "percent_load_dropped": "{movement}: the original percentage of 1RM does not apply to it. Pick a load you can move with good form.",
       "other": "A check flagged this proposal."
     },
     "errors": {

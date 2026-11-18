@@ -35,7 +35,7 @@ const SITUATION_RULES = `From the SITUATION text (any language) report:
   - "positions": positions they name, only from: ${Position.options.join(", ")} ("I can't hang" → hanging). Empty when they named none.
   - Pain alone ("my shoulder hurts") gives a site with empty lists. "evidence": the athlete's own words.
 - "conditions": only non-pain conditions from the CONDITION CATALOG (e.g. pregnancy); never a pain or an injury. "side" null, "severity" "moderate", "evidence": the athlete's words.
-- "unavailableEquipment": equipment the athlete says they lack today, only from: ${Equipment.options.join(", ")}.`;
+- "unavailableEquipment": equipment the athlete says they lack today, only from: ${Equipment.options.join(", ")}. "only X" / "solo X" / "just X" means every other equipment is unavailable today: list all the others ("solo tengo mancuernas" → every option except dumbbell).`;
 
 const STIMULUS_RULES = `"stimulus" per block is the intended training effect, using only TAXONOMY keys: "quality", "energySystem" (null when not metabolic, e.g. skill work) and "loadIntensity" (null when unloaded), plus a one-sentence "rationale". Use null for the whole stimulus only for a pure rest block.`;
 

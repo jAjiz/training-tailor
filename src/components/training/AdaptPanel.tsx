@@ -283,7 +283,9 @@ function Entry({ message: m, latest, busy, accepting, onAccept }: {
   );
 }
 
-const MOVEMENT_FINDINGS: Finding["kind"][] = ["unrecognized_movement", "caution_movement", "contraindicated_movement", "equipment_unavailable"];
+const MOVEMENT_FINDINGS: Finding["kind"][] = [
+  "unrecognized_movement", "caution_movement", "contraindicated_movement", "equipment_unavailable", "percent_load_dropped",
+];
 const BLOCK_FINDINGS: Finding["kind"][] = ["time_cap_exceeded", "stimulus_drift", "scoring_changed", "change_mismatch", "unaccounted_block"];
 
 /**

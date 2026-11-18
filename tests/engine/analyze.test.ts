@@ -93,6 +93,13 @@ describe("analyzePaste", () => {
 });
 
 describe("analyzeSituation", () => {
+  it("tells the model that only one kind of equipment means every other one is missing", async () => {
+    const provider = new FakeProvider({ SituationAnalysis: { restrictions: [], conditions: [], unavailableEquipment: [] } });
+    await analyzeSituation(provider, "solo tengo mancuernas", domain);
+    expect(provider.calls[0].systemPrompt).toMatch(/"only X" \/ "solo X"[^\n]*every other equipment[^\n]*unavailable/);
+  });
+
+
   it("returns nothing for an empty situation without calling the model", async () => {
     const provider = new FakeProvider({});
     expect(await analyzeSituation(provider, "", domain)).toEqual({ restrictions: [], conditions: [], unavailableEquipment: [] });

@@ -7,7 +7,7 @@ import {
 import {
   RestrictionDraftSchema, WorkoutDraftSchema, emptyProfile, emptyRequest, type Restriction, type TailoringDraft,
 } from "@/lib/engine/types";
-import { COUPLET_TEXT, HOIST_TEXT, component, couplet, coupletDraft, fixtureDomain, hoistSession, toTailoringDraft } from "../fixtures/workouts";
+import { COUPLET_TEXT, HOIST_TEXT, component, couplet, coupletDraft, fixtureDomain, hoistSession, split, toTailoringDraft } from "../fixtures/workouts";
 
 const domain = fixtureDomain();
 
@@ -227,6 +227,27 @@ describe("runTailorPipeline", () => {
     drifted.blocks[0].stimulus = { ...drifted.blocks[0].stimulus!, energySystem: "oxidative" };
     const r = await run(new FakeProvider({ TailoringResult: drifted }), [], { lockedFormats: ["for_time"] });
     expect(r.findings).toEqual([expect.objectContaining({ kind: "stimulus_drift", severity: "warning" })]);
+  });
+
+  it("drops the percentage of a replaced lift: the original's 1RM says nothing about the replacement", async () => {
+    const swapped = toTailoringDraft(split());
+    swapped.blocks[0].components = [component("Test Dumbbell Squat", { reps: "5x3", percent1RM: 85 })];
+    swapped.changes = [{ blockIndex: 0, original: "Test Squat", modified: "Test Dumbbell Squat", reason: "No barbell." }];
+    const r = await run(new FakeProvider({ TailoringResult: swapped }), [], {
+      original: split(), restrictions: [], unavailableEquipment: ["barbell"], request: emptyRequest(),
+    });
+    expect(r.tailored.blocks[0].components[0]).toMatchObject({ canonical: "Test Dumbbell Squat", percent1RM: null });
+    expect(r.findings).toContainEqual(expect.objectContaining({
+      kind: "percent_load_dropped", severity: "warning", blockIndex: 0, movement: "Test Dumbbell Squat",
+    }));
+  });
+
+  it("keeps the percentage of a lift that stays", async () => {
+    const r = await run(new FakeProvider({ TailoringResult: toTailoringDraft(split()) }), [], {
+      original: split(), restrictions: [], request: emptyRequest(),
+    });
+    expect(r.tailored.blocks[0].components[0]).toMatchObject({ canonical: "Test Squat", percent1RM: 85 });
+    expect(r.findings.filter((f) => f.kind === "percent_load_dropped")).toEqual([]);
   });
 
   it("applies profile injuries even with nothing today", async () => {
