@@ -936,6 +936,7 @@
     "stale": "Your coach changed this block after you adapted it. Your adaptation was made for an earlier version.",
     "again": "Adapt again",
     "seePrevious": "See previous adaptation",
+    "previousAdaptation": "Previous adaptation",
     "hidePrevious": "Hide previous adaptation",
     "questionsTitle": "One question before we adapt",
     "stage": {

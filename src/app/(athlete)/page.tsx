@@ -111,7 +111,8 @@ export default async function TodayPage({ searchParams }: Props) {
               summary={mine ? formatScore(scoreTarget(b), mine.score, locale) : null}
               adaptation={{
                 blockId: b.id, adaptable, accepted: accepted?.tailored ?? null,
-                stale: accepted !== null && accepted.workoutHash !== workoutHash(b), messages: adaptation?.messages ?? [],
+                stale: accepted !== null && accepted.workoutHash !== workoutHash(b),
+                resultAdapted: mine !== undefined && mine.adaptation !== null, messages: adaptation?.messages ?? [],
               }}>
               {b.kind === "barbell" && b.movement && !oneRms.has(b.movement) && (b.sets as BarbellSet[] | null)?.some((s) => s.percent !== null) && (
                 <Link href={`/prs/${encodeURIComponent(b.movement)}`} className="text-xs text-muted underline">{t("addOneRm", { movement: b.movement })}</Link>

@@ -43,6 +43,8 @@ export type CardAdaptation = {
   accepted: TailoringResult | null;
   /** The coach changed the block after the adaptation was accepted; it can still be discarded. */
   stale: boolean;
+  /** The athlete's own result for the block was logged with an adaptation snapshot. */
+  resultAdapted: boolean;
   messages: AdaptationMessage[];
 };
 
@@ -125,7 +127,10 @@ export function BlockCard({ block, oneRm = null, compact = false, summary, adapt
         <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 focus-visible:outline-2 focus-visible:outline-foreground [&::-webkit-details-marker]:hidden">
           {/* A title taken from the text is cut to one line; a real title wraps. */}
           <h3 className={cx("min-w-0 flex-1 text-lg leading-snug", !heading && "truncate normal-case")}>{collapsedTitle(block) ?? t("untitled")}</h3>
-          {active && <Pill tone="inverted" className="shrink-0">{ta("adapted")}</Pill>}
+          {/* Anything adapted is marked: the adaptation in force or the athlete's adapted result; else an older one. */}
+          {active || adaptation?.resultAdapted
+            ? <Pill tone="inverted" className="shrink-0">{ta("adapted")}</Pill>
+            : previous && <Pill className="shrink-0">{ta("previousAdaptation")}</Pill>}
           {summary && <span className="shrink-0 text-sm font-semibold text-(--block-ink)">{summary}</span>}
           <ChevronDown size={20} aria-hidden className="shrink-0 text-muted transition group-open/block:rotate-180" />
         </summary>

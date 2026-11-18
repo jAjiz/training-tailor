@@ -259,7 +259,7 @@ const coachBlock: CardBlock = {
 function card(adaptation: Partial<CardAdaptation>) {
   render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <BlockCard block={coachBlock} adaptation={{ blockId: "b1", adaptable: false, accepted: null, stale: false, messages: [], ...adaptation }} />
+      <BlockCard block={coachBlock} adaptation={{ blockId: "b1", adaptable: false, accepted: null, stale: false, resultAdapted: false, messages: [], ...adaptation }} />
     </NextIntlClientProvider>,
   );
 }
@@ -289,6 +289,37 @@ describe("BlockCard adaptation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: en.adapt.seePrevious, hidden: true }));
     expect(screen.getByText("Test adapted text")).toBeInTheDocument();
+  });
+
+  // The collapsed card's header: what shows before the athlete opens the block.
+  const header = () => within(document.querySelector("summary")!);
+
+  it("marks the collapsed card Adapted when the adaptation is in force", () => {
+    card({ accepted: result().tailored });
+    expect(header().getByText(en.adapt.adapted)).toBeInTheDocument();
+  });
+
+  it("keeps the Adapted mark on a stale adaptation when the athlete's result was adapted", () => {
+    card({ accepted: result().tailored, stale: true, resultAdapted: true });
+    expect(header().getByText(en.adapt.adapted)).toBeInTheDocument();
+    expect(header().queryByText(en.adapt.previousAdaptation)).toBeNull();
+  });
+
+  it("marks a stale adaptation with no adapted result as a previous adaptation, muted", () => {
+    card({ accepted: result().tailored, stale: true });
+    expect(header().getByText(en.adapt.previousAdaptation)).toHaveClass("text-muted");
+    expect(header().queryByText(en.adapt.adapted)).toBeNull();
+  });
+
+  it("marks the card Adapted when the athlete's result was adapted, even after a discard", () => {
+    card({ resultAdapted: true });
+    expect(header().getByText(en.adapt.adapted)).toBeInTheDocument();
+  });
+
+  it("has no mark on a block never adapted", () => {
+    card({});
+    expect(header().queryByText(en.adapt.adapted)).toBeNull();
+    expect(header().queryByText(en.adapt.previousAdaptation)).toBeNull();
   });
 
   it("offers Adapt on an adaptable block and opens the panel", () => {
