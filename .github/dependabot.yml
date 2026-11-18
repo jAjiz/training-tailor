@@ -4,6 +4,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    assignees:
+      - jAjiz
     groups:
       minor-and-patch:
         update-types:
@@ -20,6 +22,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    assignees:
+      - jAjiz
     groups:
       actions:
         patterns:
