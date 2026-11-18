@@ -58,7 +58,8 @@ ${SITUATION_RULES}`;
 // A coach's block is read once for every athlete: no situation, only the workout.
 const BLOCK_SYSTEM = `You analyze one block of a coach's functional-fitness program for a coaching engine. Return JSON only.
 
-${WORKOUT_RULES}`;
+${WORKOUT_RULES}
+- COACH METADATA (title, scoring, time cap) is context, never part of any "rawText": slices come from the SESSION text only. Use it for the block "title", the "format" (scoring for_time → for_time, amrap → amrap) and "timeDomainMinutes" (at most the time cap).`;
 
 const SITUATION_SYSTEM = `You read an athlete's description of their situation for a coaching engine. Return JSON only.
 ${SITUATION_RULES}`;
@@ -175,25 +176,39 @@ const rawBlock = (rawText: string, format: BlockFormat): StructuredWorkout => ({
   }],
 });
 
+/** What the coach set around a block's text: context for the analysis, never part of the analyzed text. */
+export interface BlockMetadata {
+  title: string | null;
+  scoring: string | null; // the block's scoring ("for_time", "amrap", ...); null when it has none
+  timeCapMinutes: number | null;
+}
+
+function metadataText(m: BlockMetadata | null): string | null {
+  if (m === null) return null;
+  const lines = [
+    m.title !== null ? `- title: ${m.title}` : null,
+    m.scoring !== null ? `- scoring: ${m.scoring}` : null,
+    m.timeCapMinutes !== null ? `- time cap: ${m.timeCapMinutes} min` : null,
+  ].filter((l): l is string => l !== null);
+  return lines.length > 0 ? `COACH METADATA:\n${lines.join("\n")}` : null;
+}
+
 /**
  * Reads one program block's workout, with no athlete situation. `forced` is a barbell block's movement: it
  * overrides the canonical of every component that resolves to it or is prescribed as a percentage. `degradedFormat` is
  * the raw block's format when the model fails: the format the block's scoring needs, so validation still guards it.
+ * `metadata` (title, scoring, time cap) goes in its own section, outside the SESSION text the slices come from.
  */
 export async function analyzeBlock(
   provider: LlmProvider, text: string, ctx: AnalyzeContext, forced: { movement: string } | null,
-  degradedFormat: BlockFormat = "other",
+  degradedFormat: BlockFormat = "other", metadata: BlockMetadata | null = null,
 ): Promise<{ workout: StructuredWorkout; analyzed: boolean }> {
   const resolve = createMovementResolver(ctx.movements);
+  const sections = [vocabularyText(ctx), metadataText(metadata), `SESSION:\n"""\n${text}\n"""`];
   try {
     const out = await provider.generateStructured({
       systemPrompt: BLOCK_SYSTEM,
-      prompt: `${vocabularyText(ctx)}
-
-SESSION:
-"""
-${text}
-"""`,
+      prompt: sections.filter((s): s is string => s !== null).join("\n\n"),
       schema: WorkoutDraftSchema,
       schemaName: "BlockAnalysis",
     });

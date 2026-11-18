@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { BlockMetadata } from "@/lib/engine/analyze";
 import type { BlockFormat, StructuredWorkout } from "@/lib/engine/types";
 import { describeSets, percentToKg } from "./barbell";
 import type { BarbellSet } from "./schemas";
@@ -24,21 +25,39 @@ function workoutFields(b: BlockFields) {
   };
 }
 
-/** Hash of everything the coach wrote for a block; position, day and color are not part of it. */
-export const contentHash = (b: BlockFields): string => sha256({ ...workoutFields(b), coachingTips: b.coachingTips });
+/**
+ * The version of what a block analysis is read from (blockAnalysisText, blockMetadata and the prompt around them).
+ * Bump it when that changes so stored analyses are redone. It is part of contentHash only, never of workoutHash: an
+ * accepted adaptation must not go stale because the analysis input changed.
+ * 2: title, scoring and time cap moved out of the analyzed text into the coach metadata.
+ */
+const ANALYSIS_FORMAT_VERSION = 2;
 
-/** Like contentHash without the coaching tips: what an athlete's tailoring depends on. */
+/** Hash of everything the coach wrote for a block, plus the analysis format; position, day and color are not part of it. */
+export const contentHash = (b: BlockFields): string =>
+  sha256({ ...workoutFields(b), coachingTips: b.coachingTips, analysisFormat: ANALYSIS_FORMAT_VERSION });
+
+/** What an athlete's tailoring depends on: the coach's workout, without the tips or the analysis format. */
 export const workoutHash = (b: BlockFields): string => sha256(workoutFields(b));
 
-/** The text the engine reads for a block. Barbell loads stay in percent: kg depends on the athlete. */
+/**
+ * The text the engine reads for a block: only what the coach wrote, since the analysis keeps verbatim slices of it and
+ * the adapted text starts from them. Barbell loads stay in percent: kg depends on the athlete.
+ */
 export function blockAnalysisText(b: BlockFields, locale: string): string {
   const lines = b.kind === "barbell"
-    ? [b.title ?? b.movement, ...describeSets((b.sets ?? []) as BarbellSet[], null, locale), b.instructions]
-    : [
-      b.title, b.description, b.scoring !== null && b.scoring !== "none" ? `Scoring: ${b.scoring}` : null,
-      b.timeCapSeconds !== null ? `Time cap: ${Math.round(b.timeCapSeconds / 60)} min` : null,
-    ];
+    ? [b.movement, ...describeSets((b.sets ?? []) as BarbellSet[], null, locale), b.instructions]
+    : [b.description];
   return lines.filter((l): l is string => !!l).join("\n");
+}
+
+/** Title, scoring and time cap: context for the analysis (format, time domain), never part of the analyzed text. */
+export function blockMetadata(b: BlockFields): BlockMetadata {
+  return {
+    title: b.title,
+    scoring: b.scoring !== null && b.scoring !== "none" ? b.scoring : null,
+    timeCapMinutes: b.timeCapSeconds !== null ? Math.round(b.timeCapSeconds / 60) : null,
+  };
 }
 
 /** The formats an adaptation must keep so the block's scoring still applies; null when any format fits. */

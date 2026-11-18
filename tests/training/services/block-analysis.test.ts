@@ -54,6 +54,18 @@ describe("ensureBlockAnalysis", () => {
     expect(p.calls).toHaveLength(2);
   });
 
+  it("analyzes the coach's text, with title, scoring and time cap as metadata outside the session", async () => {
+    const { program } = await setup();
+    const block = await makeCustomBlock(tdb.prisma, program.id, 1, { title: "Test Metcon", scoring: "for_time", timeCapSeconds: 600 });
+    const p = provider();
+    await ensure(p, block.id);
+    const { prompt } = p.calls[0];
+    const session = prompt.slice(prompt.indexOf("SESSION:"));
+    expect(session).toContain("21-15-9 thrusters and pull-ups");
+    expect(session).not.toMatch(/Test Metcon|Scoring:|Time cap:/);
+    expect(prompt.slice(prompt.indexOf("COACH METADATA:"), prompt.indexOf("SESSION:"))).toMatch(/Test Metcon[\s\S]*for_time[\s\S]*10 min/);
+  });
+
   it("keeps the analysis when the block moves day", async () => {
     const { block } = await setup();
     const p = provider();

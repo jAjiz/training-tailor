@@ -135,6 +135,25 @@ describe("analyzeBlock", () => {
     expect(provider.calls[0].prompt).toContain(blockText);
   });
 
+  it("sends the coach metadata as context outside the SESSION", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    await analyzeBlock(provider, blockText, domain, null, "for_time", { title: "Test Strength", scoring: "for_time", timeCapMinutes: 10 });
+    const { prompt, systemPrompt } = provider.calls[0];
+    const metadata = prompt.indexOf("COACH METADATA");
+    const session = prompt.indexOf("SESSION:");
+    expect(metadata).toBeGreaterThan(-1);
+    expect(metadata).toBeLessThan(session);
+    expect(prompt.slice(metadata, session)).toMatch(/Test Strength[\s\S]*for_time[\s\S]*10 min/);
+    expect(prompt.slice(session)).not.toMatch(/Test Strength|for_time|10 min/);
+    expect(systemPrompt).toMatch(/COACH METADATA[^\n]*never part of any "rawText"/);
+  });
+
+  it("sends no metadata section when there is none", async () => {
+    const provider = new FakeProvider({ BlockAnalysis: draft() });
+    await analyzeBlock(provider, blockText, domain, null);
+    expect(provider.calls[0].prompt).not.toContain("COACH METADATA:");
+  });
+
   it("forces the barbell movement on percent components only", async () => {
     const provider = new FakeProvider({ BlockAnalysis: draft() });
     const { workout, analyzed } = await analyzeBlock(provider, blockText, domain, { movement: "Test Combo" });

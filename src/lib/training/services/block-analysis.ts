@@ -5,7 +5,7 @@ import { analyzeBlock } from "@/lib/engine/analyze";
 import { analyzeContext } from "@/lib/engine/pipeline";
 import type { StructuredWorkout } from "@/lib/engine/types";
 import { toJson } from "@/lib/json";
-import { blockAnalysisText, contentHash, lockedFormatsFor } from "../block-engine";
+import { blockAnalysisText, blockMetadata, contentHash, lockedFormatsFor } from "../block-engine";
 import type { Db } from "./types";
 
 export interface EnsuredBlockAnalysis {
@@ -31,7 +31,7 @@ export async function ensureBlockAnalysis(
   // A degraded analysis keeps the format the block's scoring needs, so the scoring guard still applies.
   const degradedFormat = lockedFormatsFor(block.scoring)?.[0] ?? "other";
   const { workout, analyzed } = await analyzeBlock(
-    provider, blockAnalysisText(block, locale), analyzeContext(domain), forced, degradedFormat,
+    provider, blockAnalysisText(block, locale), analyzeContext(domain), forced, degradedFormat, blockMetadata(block),
   );
   const data = { contentHash: hash, libraryVersion, workout: toJson(workout), analyzed, model: provider.model };
   await db.blockAnalysis.upsert({ where: { blockId: block.id }, create: { blockId: block.id, ...data }, update: data });
