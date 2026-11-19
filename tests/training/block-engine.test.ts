@@ -68,7 +68,7 @@ describe("blockAnalysisText", () => {
       movement: "Test Squat", sets: [{ reps: 5, percent: 80, kg: null }], instructions: null,
     };
     expect(blockAnalysisText(barbell, "en")).not.toContain("Test Strength");
-    expect(blockMetadata(barbell)).toEqual({ title: "Test Strength", scoring: null, timeCapMinutes: null });
+    expect(blockMetadata(barbell)).toEqual({ title: "Test Strength", scoring: null, timeCapMinutes: null, coachingTips: "Stay smooth" });
   });
 
   it("custom analysis text is what the coach wrote, with no internal labels", () => {
@@ -79,13 +79,17 @@ describe("blockAnalysisText", () => {
 });
 
 describe("blockMetadata", () => {
-  it("carries title, scoring and time cap for the analysis", () => {
-    expect(blockMetadata(custom)).toEqual({ title: "Test Couplet", scoring: "for_time", timeCapMinutes: 10 });
+  it("carries title, scoring, time cap and coaching tips for the analysis", () => {
+    expect(blockMetadata(custom)).toEqual({ title: "Test Couplet", scoring: "for_time", timeCapMinutes: 10, coachingTips: "Stay smooth" });
+  });
+
+  it("reads blank tips as none", () => {
+    expect(blockMetadata({ ...custom, coachingTips: "  \n " }).coachingTips).toBeNull();
   });
 
   it("leaves out a scoring of none and a missing cap", () => {
     expect(blockMetadata({ ...custom, title: null, scoring: "none", timeCapSeconds: null }))
-      .toEqual({ title: null, scoring: null, timeCapMinutes: null });
+      .toEqual({ title: null, scoring: null, timeCapMinutes: null, coachingTips: "Stay smooth" });
   });
 });
 
