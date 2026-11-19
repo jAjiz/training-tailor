@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { emptyProfile, type AthleteProfile, type Benchmark } from "@/lib/engine/types";
+import { emptyProfile, emptyStoredProfile, type StoredProfile } from "@/lib/engine/types";
 import { toJson } from "@/lib/json";
 import { loadEngineProfile } from "@/lib/tailor-service";
 import { createTestDb, type TestDb } from "../helpers/db";
@@ -10,49 +10,47 @@ beforeAll(async () => { tdb = await createTestDb(); }, 60_000);
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
 
-const bench = (patch: Partial<Benchmark>): Benchmark => ({
-  movement: "Test Squat", kind: "1rm", value: 90, unit: "kg", recordedAt: null, ...patch,
-});
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
-async function store(userId: string, profile: AthleteProfile) {
+async function store(userId: string, profile: StoredProfile & { benchmarks?: unknown }) {
   await tdb.prisma.athleteProfile.create({ data: { userId, data: toJson(profile) } });
 }
 
 describe("loadEngineProfile", () => {
-  it("replaces stored 1rm benchmarks with PRs", async () => {
+  it("builds the benchmarks from the best record of each kind, ignoring stored ones", async () => {
     const athlete = await makeAthlete(tdb.prisma);
-    await store(athlete.userId, { ...emptyProfile(), benchmarks: [bench({ value: 90 }), bench({ movement: "Test Press", value: 40 })] });
+    await store(athlete.userId, {
+      ...emptyStoredProfile(), sex: "female",
+      benchmarks: [{ movement: "Test Back Squat", kind: "1rm", value: 200, unit: "kg", recordedAt: null }],
+    });
+    const at = (movement: string, kind: "lift" | "reps" | "time", fields: object, on = "2026-09-01") =>
+      ({ athleteId: athlete.id, movement, kind, achievedOn: day(on), ...fields });
     await tdb.prisma.personalRecord.createMany({ data: [
-      { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 100, reps: 1, achievedOn: day("2026-09-01") },
-      { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 110, reps: 1, achievedOn: day("2026-10-01") },
-      { athleteId: athlete.id, movement: "Test Deadlift", kind: "lift", kg: 150, reps: 1, achievedOn: day("2026-09-15") },
+      at("Test Back Squat", "lift", { kg: 95, reps: 3 }, "2026-10-01"),
+      at("Test Back Squat", "lift", { kg: 100, reps: 1 }),
+      at("Test Pull-up", "reps", { reps: 18 }),
+      at("Test Pull-up", "reps", { reps: 20 }, "2026-10-02"),
+      at("Test Pull-up", "reps", { reps: 8, kg: 20 }),
+      at("Test Row", "time", { distanceM: 2000, seconds: 430 }),
+      at("Test Row", "time", { distanceM: 2000, seconds: 425 }, "2026-10-03"),
+      // Re-categorised in the library after it was stored: still sent by its stored kind.
+      at("Test DB Snatch", "reps", { reps: 30 }),
     ] });
-    const { benchmarks } = await loadEngineProfile(tdb.prisma, athlete.userId);
-    expect(benchmarks).toHaveLength(2);
-    expect(benchmarks).toEqual(expect.arrayContaining([
-      { movement: "Test Squat", kind: "1rm", value: 110, unit: "kg", recordedAt: "2026-10-01" },
-      { movement: "Test Deadlift", kind: "1rm", value: 150, unit: "kg", recordedAt: "2026-09-15" },
-    ]));
-  });
-
-  it("keeps max_reps and time benchmarks", async () => {
-    const athlete = await makeAthlete(tdb.prisma);
-    const reps = bench({ movement: "Test Pull-up", kind: "max_reps", value: 12, unit: "reps" });
-    const time = bench({ movement: "Test Row", kind: "time", value: 400, unit: "seconds" });
-    await store(athlete.userId, { ...emptyProfile(), sex: "female", benchmarks: [reps, bench({}), time] });
     const profile = await loadEngineProfile(tdb.prisma, athlete.userId);
-    expect(profile.benchmarks).toEqual([reps, time]);
     expect(profile.sex).toBe("female");
+    expect(profile.benchmarks).toEqual(expect.arrayContaining([
+      { movement: "Test Back Squat", kind: "1rm", value: 104.5, unit: "kg", estimated: true, recordedAt: "2026-10-01" },
+      { movement: "Test Pull-up", kind: "max_reps", value: 20, unit: "reps", addedKg: null, recordedAt: "2026-10-02" },
+      { movement: "Test Pull-up", kind: "max_reps", value: 8, unit: "reps", addedKg: 20, recordedAt: "2026-09-01" },
+      { movement: "Test Row", kind: "time", value: 425, unit: "seconds", distanceM: 2000, recordedAt: "2026-10-03" },
+      { movement: "Test DB Snatch", kind: "max_reps", value: 30, unit: "reps", addedKg: null, recordedAt: "2026-09-01" },
+    ]));
+    expect(profile.benchmarks).toHaveLength(5);
   });
 
-  it("works without a stored profile", async () => {
+  it("works without a stored profile or an athlete account", async () => {
     const athlete = await makeAthlete(tdb.prisma);
     expect(await loadEngineProfile(tdb.prisma, athlete.userId)).toEqual(emptyProfile());
-    await tdb.prisma.personalRecord.create({
-      data: { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 100, reps: 1, achievedOn: day("2026-09-01") },
-    });
-    const { benchmarks } = await loadEngineProfile(tdb.prisma, athlete.userId);
-    expect(benchmarks).toEqual([{ movement: "Test Squat", kind: "1rm", value: 100, unit: "kg", recordedAt: "2026-09-01" }]);
+    expect(await loadEngineProfile(tdb.prisma, "test-no-athlete")).toEqual(emptyProfile());
   });
 });

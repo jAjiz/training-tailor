@@ -96,10 +96,10 @@
   },
   "profile": {
     "title": "Training profile",
-    "intro": "What the engine knows about you when it adapts a block. Your 1RMs come from your PRs.",
+    "intro": "What the engine knows about you when it adapts a block. Your records come from Records.",
     "back": "Back to Me",
     "link": "Training profile",
-    "linkHint": "Injuries, equipment, benchmarks and goals for block adaptation.",
+    "linkHint": "Injuries, equipment and goals for block adaptation.",
     "about": "About you",
     "sex": "Loads",
     "level": "Level",
@@ -156,24 +156,7 @@
       "sandbag": "Sandbag",
       "d_ball": "Dead ball"
     },
-    "benchmarks": "Benchmarks",
-    "benchmarksHint": "Max reps and best times. 1RMs are read from your PRs.",
-    "prsLink": "Manage your PRs",
     "movement": "Movement",
-    "kind": "Type",
-    "value": "Value",
-    "unit": "Unit",
-    "kinds": {
-      "max_reps": "Max reps",
-      "time": "Time"
-    },
-    "units": {
-      "kg": "kg",
-      "lb": "lb",
-      "reps": "reps",
-      "seconds": "seconds"
-    },
-    "addBenchmark": "Add benchmark",
     "goals": "Goals",
     "goalPlaceholder": "e.g. first strict muscle-up",
     "goalMovement": "Movement (optional)",

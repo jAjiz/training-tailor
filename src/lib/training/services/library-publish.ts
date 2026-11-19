@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { DomainLibrary, MovementRename } from "@/lib/domain/library";
 import { hasErrors, validateLibrary, type LibraryFinding } from "@/lib/domain/validate-library";
-import { AthleteProfileSchema, type AthleteProfile } from "@/lib/engine/types";
+import { StoredProfileSchema, type StoredProfile } from "@/lib/engine/types";
 import { toJson } from "@/lib/json";
 import { isLiftMovement } from "../barbell";
 import { TrainingError } from "../errors";
@@ -24,15 +24,15 @@ function add(counts: Map<string, number>, name: string | null | undefined) {
   if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
 }
 
-async function storedProfiles(db: DbOrTx): Promise<{ id: string; profile: AthleteProfile }[]> {
+async function storedProfiles(db: DbOrTx): Promise<{ id: string; profile: StoredProfile }[]> {
   const all = await db.athleteProfile.findMany({ select: { id: true, data: true } });
   return all.flatMap(({ id, data }) => {
-    const parsed = AthleteProfileSchema.safeParse(data);
+    const parsed = StoredProfileSchema.safeParse(data);
     return parsed.success ? [{ id, profile: parsed.data }] : [];
   });
 }
 
-async function movementCounts(db: DbOrTx, profiles: { profile: AthleteProfile }[]) {
+async function movementCounts(db: DbOrTx, profiles: { profile: StoredProfile }[]) {
   const [prs, blocks] = await Promise.all([
     db.personalRecord.groupBy({ by: ["movement"], _count: { _all: true } }),
     db.block.groupBy({ by: ["movement"], where: { kind: "barbell" }, _count: { _all: true } }),
@@ -43,7 +43,6 @@ async function movementCounts(db: DbOrTx, profiles: { profile: AthleteProfile }[
   }
   const all = new Map(lifts);
   for (const { profile } of profiles) {
-    for (const b of profile.benchmarks) add(all, b.movement);
     for (const g of profile.goals) add(all, g.movement);
   }
   return { lifts, all };
@@ -93,12 +92,9 @@ async function applyRenames(tx: Prisma.TransactionClient, renames: readonly Move
     await tx.block.updateMany({ where: { kind: "barbell", movement: from }, data: { movement: to } });
   }
   for (const { id, profile } of await storedProfiles(tx)) {
-    const benchmarks = profile.benchmarks.map((b) => ({ ...b, movement: renamed(b.movement, renames) }));
     const goals = profile.goals.map((g) => ({ ...g, movement: g.movement && renamed(g.movement, renames) }));
-    const changed = benchmarks.some((b, i) => b.movement !== profile.benchmarks[i].movement)
-      || goals.some((g, i) => g.movement !== profile.goals[i].movement);
-    if (changed) {
-      await tx.athleteProfile.update({ where: { id }, data: { data: toJson({ ...profile, benchmarks, goals }) } });
+    if (goals.some((g, i) => g.movement !== profile.goals[i].movement)) {
+      await tx.athleteProfile.update({ where: { id }, data: { data: toJson({ ...profile, goals }) } });
     }
   }
 }

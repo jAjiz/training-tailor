@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -9,29 +8,20 @@ import { Input, Select } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Field";
 import { chipClasses } from "@/components/ui/Pill";
 import { Severity, Side, type Equipment } from "@/lib/domain/types";
-import {
-  BenchmarkUnit, ScalingLevel, Sex,
-  type AthleteProfile, type Benchmark, type Goal, type ProfileInjury,
-} from "@/lib/engine/types";
+import { ScalingLevel, Sex, type Goal, type ProfileInjury, type StoredProfile } from "@/lib/engine/types";
 
 interface Props {
-  initial: AthleteProfile;
+  initial: StoredProfile;
   catalog: { key: string; label: string; kind: string }[];
   movementNames: string[];
   equipmentOptions: Equipment[];
 }
 
-type EditableKind = "max_reps" | "time";
-const KINDS: EditableKind[] = ["max_reps", "time"];
-const UNIT_FOR: Record<EditableKind, Benchmark["unit"]> = { max_reps: "reps", time: "seconds" };
-
 const toggle = <T,>(list: T[], item: T) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
-/** 1RMs come from the PRs: the form neither shows nor edits stored `1rm` benchmarks (the server keeps them). */
-const editable = (p: AthleteProfile): AthleteProfile => ({ ...p, benchmarks: p.benchmarks.filter((b) => b.kind !== "1rm") });
 
 export function ProfileForm({ initial, catalog, movementNames, equipmentOptions }: Props) {
   const t = useTranslations("profile");
-  const [p, setP] = useState<AthleteProfile>(() => editable(initial));
+  const [p, setP] = useState<StoredProfile>(initial);
   const [newInjury, setNewInjury] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
 
@@ -41,16 +31,13 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
   const isInjury = (key: string) => catalog.find((c) => c.key === key)?.kind === "injury";
   const setInjury = (i: number, patch: Partial<ProfileInjury>) =>
     setP({ ...p, injuries: p.injuries.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-  const setBenchmark = (i: number, patch: Partial<Benchmark>) =>
-    setP({ ...p, benchmarks: p.benchmarks.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
   const setGoal = (i: number, patch: Partial<Goal>) =>
     setP({ ...p, goals: p.goals.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
 
   async function save() {
     setStatus("saving");
-    const body: AthleteProfile = {
+    const body: StoredProfile = {
       ...p,
-      benchmarks: p.benchmarks.filter((b) => b.movement.trim() !== "" && b.value > 0),
       goals: p.goals.filter((g) => g.description.trim() !== ""),
     };
     const res = await fetch("/api/profile", {
@@ -60,7 +47,7 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
       setStatus("failed");
       return;
     }
-    setP(editable((await res.json()).profile));
+    setP((await res.json()).profile);
     setStatus("saved");
   }
 
@@ -140,34 +127,6 @@ export function ProfileForm({ initial, catalog, movementNames, equipmentOptions 
             ))}
           </div>
         )}
-      </Card>
-
-      <Card as="section" className="flex flex-col gap-3 p-5">
-        <h2>{t("benchmarks")}</h2>
-        <p className="text-sm text-muted">
-          {t("benchmarksHint")} <Link href="/prs" className="underline hover:text-foreground">{t("prsLink")}</Link>
-        </p>
-        {p.benchmarks.map((b, i) => (
-          <div key={i} className="flex flex-col gap-2 rounded-xl bg-surface-2 p-3">
-            <Input compact list="movement-names" placeholder={t("movement")} aria-label={t("movement")} value={b.movement} onChange={(e) => setBenchmark(i, { movement: e.target.value })} />
-            <div className="grid grid-cols-[1fr_5.5rem_1fr] gap-2">
-              <Select compact aria-label={t("kind")} value={b.kind} onChange={(e) => {
-                const kind = e.target.value as EditableKind;
-                setBenchmark(i, { kind, unit: UNIT_FOR[kind] });
-              }}>
-                {KINDS.map((k) => <option key={k} value={k}>{t(`kinds.${k}`)}</option>)}
-              </Select>
-              <Input compact type="number" min={0} step="any" aria-label={t("value")} value={b.value || ""} onChange={(e) => setBenchmark(i, { value: Number(e.target.value) })} />
-              <Select compact aria-label={t("unit")} value={b.unit} onChange={(e) => setBenchmark(i, { unit: BenchmarkUnit.parse(e.target.value) })}>
-                {BenchmarkUnit.options.map((u) => <option key={u} value={u}>{t(`units.${u}`)}</option>)}
-              </Select>
-            </div>
-            <Button type="button" variant="ghost" size="sm" className="w-fit" onClick={() => setP({ ...p, benchmarks: p.benchmarks.filter((_, j) => j !== i) })}>{t("remove")}</Button>
-          </div>
-        ))}
-        <Button type="button" variant="secondary" size="sm" className="w-fit" onClick={() => setP({
-          ...p, benchmarks: [...p.benchmarks, { movement: "", kind: "max_reps", value: 0, unit: "reps", recordedAt: null }],
-        })}>{t("addBenchmark")}</Button>
       </Card>
 
       <Card as="section" className="flex flex-col gap-3 p-5">

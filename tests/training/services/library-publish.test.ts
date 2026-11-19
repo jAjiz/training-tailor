@@ -185,6 +185,7 @@ describe("publishDraft", () => {
     const coach = await makeCoach(tdb.prisma);
     const program = await makeContinuous(tdb.prisma, coach.id);
     const block = await makeBarbellBlock(tdb.prisma, program.id, 0, "Test Squat");
+    // A profile stored before records still has a benchmarks key: it parses and loses it.
     const profile = await makeProfile({
       benchmarks: [{ movement: "Test Squat", kind: "1rm", value: 100, unit: "kg", recordedAt: null }],
       goals: [{ movement: "Test Squat", description: "Test goal" }, { movement: null, description: "Test other" }],
@@ -204,7 +205,7 @@ describe("publishDraft", () => {
     expect((await tdb.prisma.block.findUniqueOrThrow({ where: { id: block.id } })).movement).toBe("Test Low Squat");
     const stored = await tdb.prisma.athleteProfile.findUniqueOrThrow({ where: { id: profile.id } });
     const data = stored.data as unknown as AthleteProfile;
-    expect(data.benchmarks[0].movement).toBe("Test Low Squat");
+    expect(data).not.toHaveProperty("benchmarks");
     expect(data.goals.map((g) => g.movement)).toEqual(["Test Low Squat", null]);
     const version = await tdb.prisma.domainLibraryVersion.findUniqueOrThrow({ where: { id: draft.id } });
     expect(version.renames).toEqual([]);
