@@ -153,9 +153,10 @@ describe("analyzeBlock", () => {
     expect(metadata).toBeGreaterThan(-1);
     expect(metadata).toBeLessThan(session);
     expect(prompt.slice(metadata, session)).toMatch(/Test Strength[\s\S]*for_time[\s\S]*10 min/);
-    expect(prompt.slice(metadata, session)).toContain("- coaching tips: Keep it fast\nTest note");
+    expect(prompt.slice(metadata, session)).toContain('- coaching tips: """Keep it fast\nTest note"""');
     expect(prompt.slice(session)).not.toMatch(/Test Strength|for_time|10 min|Keep it fast/);
-    expect(systemPrompt).toMatch(/COACH METADATA[^\n]*coaching tips/);
+    expect(systemPrompt).toMatch(/COACH METADATA[^\n]*coaching tips[^\n]*"stimulus"/);
+    expect(systemPrompt).toMatch(/never copy them into "coachingNotes"/); // tips reach the tailoring once, as COACH INTENT
     expect(systemPrompt).toMatch(/COACH METADATA[^\n]*never part of any "rawText"/);
   });
 

@@ -59,7 +59,7 @@ ${SITUATION_RULES}`;
 const BLOCK_SYSTEM = `You analyze one block of a coach's functional-fitness program for a coaching engine. Return JSON only.
 
 ${WORKOUT_RULES}
-- COACH METADATA (title, scoring, time cap, coaching tips) is context, never part of any "rawText": slices come from the SESSION text only. Use it for the block "title", the "format" (scoring for_time → for_time, amrap → amrap) and "timeDomainMinutes" (at most the time cap); the coaching tips say what the coach is after: use them for the block "stimulus" and "coachingNotes".`;
+- COACH METADATA (title, scoring, time cap, coaching tips) is context, never part of any "rawText": slices come from the SESSION text only. Use it for the block "title", the "format" (scoring for_time → for_time, amrap → amrap) and "timeDomainMinutes" (at most the time cap); the coaching tips say what the coach is after: use them to read the block "stimulus", never copy them into "coachingNotes".`;
 
 const SITUATION_SYSTEM = `You read an athlete's description of their situation for a coaching engine. Return JSON only.
 ${SITUATION_RULES}`;
@@ -190,7 +190,7 @@ function metadataText(m: BlockMetadata | null): string | null {
     m.title !== null ? `- title: ${m.title}` : null,
     m.scoring !== null ? `- scoring: ${m.scoring}` : null,
     m.timeCapMinutes !== null ? `- time cap: ${m.timeCapMinutes} min` : null,
-    m.coachingTips !== null ? `- coaching tips: ${m.coachingTips}` : null,
+    m.coachingTips !== null ? `- coaching tips: """${m.coachingTips}"""` : null,
   ].filter((l): l is string => l !== null);
   return lines.length > 0 ? `COACH METADATA:\n${lines.join("\n")}` : null;
 }

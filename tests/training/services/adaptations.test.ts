@@ -390,19 +390,28 @@ describe("coach intent", () => {
     await say(p, s.athlete, s.block.id, "my shoulder hurts overhead");
     await tailorNow(p, s.athlete, s.block.id);
     const prompt = lastTailorPrompt(p);
-    expect(prompt).toContain("- block coaching tips: Test tip");
-    expect(prompt).toContain("- day note: Test day goal");
-    expect(prompt).toContain("- week note: Test week goal");
+    expect(prompt).toContain('- block coaching tips: """Test tip"""');
+    expect(prompt).toContain('- day note: """Test day goal"""');
+    expect(prompt).toContain('- week note: """Test week goal"""');
     expect(prompt).not.toMatch(/Test other (day|week)/);
   });
 
   it("a refinement reads the note as it is now", async () => {
-    const { program, athlete, block } = await proposed();
-    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 0, body: "Test day goal v2" } });
+    const { program, athlete, block } = await setup();
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 0, body: "Test day goal" } });
+    const first = new FakeProvider({ BlockAnalysis: coupletDraft(), SituationAnalysis: situation([overheadToday]), TailoringResult: safeDraft() });
+    await say(first, athlete, block.id, "my shoulder hurts overhead");
+    await tailorNow(first, athlete, block.id);
+    expect(lastTailorPrompt(first)).toContain('- day note: """Test day goal"""');
+
+    await tdb.prisma.dayNote.update({
+      where: { programId_dayIndex: { programId: program.id, dayIndex: 0 } }, data: { body: "Test day goal v2" },
+    });
     const p = new FakeProvider({ SituationAnalysis: situation(), TailoringResult: safeDraft() });
     await say(p, athlete, block.id, "too heavy");
     await tailorNow(p, athlete, block.id);
-    expect(lastTailorPrompt(p)).toContain("- day note: Test day goal v2");
+    expect(lastTailorPrompt(p)).toContain('- day note: """Test day goal v2"""');
+    expect(lastTailorPrompt(p)).not.toContain('"""Test day goal"""');
   });
 
   it("editing a note leaves an accepted adaptation fresh", async () => {

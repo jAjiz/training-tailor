@@ -19,6 +19,7 @@ import {
 } from "../adaptation-types";
 import { applyAthleteLoads, contentHash, lockedFormatsFor, workoutHash } from "../block-engine";
 import { TrainingError } from "../errors";
+import { weekIndexOf } from "../dates";
 import { ensureBlockAnalysis } from "./block-analysis";
 import { oneRmMap } from "./prs";
 import { getAdaptableBlock } from "./tailoring";
@@ -244,7 +245,7 @@ async function coachIntentFor(
   const { programId, dayIndex } = block;
   const [day, week] = await Promise.all([
     db.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex } } }),
-    db.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex: Math.floor(dayIndex / 7) } } }),
+    db.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex: weekIndexOf(dayIndex) } } }),
   ]);
   return { blockTips: textOrNull(block.coachingTips), dayNote: textOrNull(day?.body), weekNote: textOrNull(week?.body) };
 }

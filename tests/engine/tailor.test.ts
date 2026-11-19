@@ -178,8 +178,8 @@ describe("tailor", () => {
   it("renders the coach intent after the original session", () => {
     const prompt = buildTailorPrompt(input({ coachIntent: { blockTips: "Test tip line 1\nline 2", dayNote: "Test day goal", weekNote: null } }));
     expect(prompt).toContain("COACH INTENT");
-    expect(prompt).toContain("- block coaching tips: Test tip line 1\nline 2");
-    expect(prompt).toContain("- day note: Test day goal");
+    expect(prompt).toContain('- block coaching tips: """Test tip line 1\nline 2"""');
+    expect(prompt).toContain('- day note: """Test day goal"""');
     expect(prompt).not.toContain("week note");
     expect(prompt.indexOf("COACH INTENT")).toBeGreaterThan(prompt.indexOf("ORIGINAL SESSION"));
     expect(prompt.indexOf("COACH INTENT")).toBeLessThan(prompt.indexOf("ATHLETE:"));

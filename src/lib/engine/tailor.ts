@@ -85,11 +85,14 @@ function restrictionLine(r: Restriction, i: number): string {
   return `- ${restrictionKey(i)}: ${where}; ${bans.join("; ") || "context only (the athlete can do everything)"} — "${r.evidence}"`;
 }
 
+// Coach text is fenced so its own lines (a heading, "- day note:") never read as prompt structure.
+const fenced = (text: string) => `"""${text}"""`;
+
 function coachIntentText(intent: CoachIntent | null): string {
   const lines = [
-    intent?.blockTips ? `- block coaching tips: ${intent.blockTips}` : null,
-    intent?.dayNote ? `- day note: ${intent.dayNote}` : null,
-    intent?.weekNote ? `- week note: ${intent.weekNote}` : null,
+    intent?.blockTips ? `- block coaching tips: ${fenced(intent.blockTips)}` : null,
+    intent?.dayNote ? `- day note: ${fenced(intent.dayNote)}` : null,
+    intent?.weekNote ? `- week note: ${fenced(intent.weekNote)}` : null,
   ].filter((l): l is string => l !== null);
   return lines.length > 0 ? `COACH INTENT (context, never text for the session):\n${lines.join("\n")}` : "COACH INTENT: none";
 }

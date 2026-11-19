@@ -101,7 +101,7 @@ describe("runTailorPipeline", () => {
   it("passes the coach intent to the tailoring prompt", async () => {
     const provider = new FakeProvider({ TailoringResult: safeDraft() });
     await run(provider, [], { coachIntent: { blockTips: null, dayNote: "Test day goal", weekNote: null } });
-    expect(provider.calls.find((c) => c.schemaName === "TailoringResult")!.prompt).toContain("- day note: Test day goal");
+    expect(provider.calls.find((c) => c.schemaName === "TailoringResult")!.prompt).toContain('- day note: """Test day goal"""');
   });
 
   it("tailors and validates against today's restrictions in one model call", async () => {
@@ -312,6 +312,6 @@ describe("runRefinePipeline", () => {
       profile: emptyProfile(), request: emptyRequest(), domain, locale: "en", lockedFormats: null,
       coachIntent: { blockTips: null, dayNote: "Test day goal", weekNote: null },
     });
-    expect(provider.calls[0].prompt).toContain("- day note: Test day goal");
+    expect(provider.calls[0].prompt).toContain('- day note: """Test day goal"""');
   });
 });
