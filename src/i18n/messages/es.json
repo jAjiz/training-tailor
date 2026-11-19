@@ -25,7 +25,7 @@
     "today": "Entreno",
     "calendar": "Calendario",
     "board": "Anuncios",
-    "prs": "RMs",
+    "prs": "Marcas",
     "me": "Perfil",
     "programs": "Mis programas",
     "main": "Navegación principal",
@@ -228,16 +228,34 @@
     "estimatedOneRm": "Cargas sobre tu 1RM estimado ({kg} kg)"
   },
   "prs": {
-    "title": "RMs",
+    "title": "Marcas",
     "search": "Buscar un ejercicio",
     "noResults": "Ningún ejercicio coincide.",
     "current": "1RM actual",
     "history": "Historial",
-    "empty": "Todavía no has registrado ningún 1RM de este ejercicio.",
-    "add": "Añadir 1RM",
+    "empty": "Todavía no has registrado ninguna marca de este ejercicio.",
+    "add": "Añadir marca",
     "kg": "kg",
     "date": "Fecha",
-    "deleteConfirm": "¿Borrar esta entrada?"
+    "deleteConfirm": "¿Borrar esta entrada?",
+    "tabsLabel": "Tipo de marca",
+    "tabs": {
+      "lift": "Levantamientos",
+      "reps": "Gimnásticos",
+      "time": "Cardio"
+    },
+    "estimated": "estimado",
+    "bodyweight": "Peso corporal",
+    "addedKg": "+{kg} kg",
+    "repsCount": "{reps} reps",
+    "reps": "Repeticiones",
+    "addedLoad": "Lastre (kg)",
+    "distance": "Distancia",
+    "time": "Tiempo",
+    "timeHint": "m:ss",
+    "bestByReps": "Mejor por repeticiones",
+    "bestByLoad": "Mejor por lastre",
+    "bestByDistance": "Mejor por distancia"
   },
   "patterns": {
     "squat": "Sentadillas",

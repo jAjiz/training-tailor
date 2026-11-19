@@ -91,3 +91,26 @@ export function bestByDistance<T extends { distanceM: number; seconds: number; a
   }
   return [...best.values()].sort((a, b) => a.distanceM - b.distanceM);
 }
+
+/** "7:05" or "1:02:05". */
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = String(seconds % 60).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
+/** Seconds from a typed "m:ss" or "h:mm:ss"; null for anything else or zero. */
+export function parseDuration(text: string): number | null {
+  const match = /^(?:(\d+):)?(\d+):([0-5]\d)$/.exec(text.trim());
+  if (!match) return null;
+  const [, h, m, s] = match;
+  if (h !== undefined && Number(m) > 59) return null;
+  const total = Number(h ?? 0) * 3600 + Number(m) * 60 + Number(s);
+  return total > 0 ? total : null;
+}
+
+/** "500 m", "2 km". */
+export function formatDistance(metres: number): string {
+  return metres < 1000 ? `${metres} m` : `${metres / 1000} km`;
+}

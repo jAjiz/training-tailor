@@ -25,7 +25,7 @@
     "today": "Workout",
     "calendar": "Calendar",
     "board": "Announcements",
-    "prs": "PRs",
+    "prs": "Records",
     "me": "Me",
     "programs": "My programs",
     "main": "Main navigation",
@@ -228,16 +228,34 @@
     "estimatedOneRm": "Loads from your estimated 1RM ({kg} kg)"
   },
   "prs": {
-    "title": "PRs",
+    "title": "Records",
     "search": "Search an exercise",
     "noResults": "No exercise matches.",
     "current": "Current 1RM",
     "history": "History",
-    "empty": "You have not recorded a 1RM for this exercise yet.",
-    "add": "Add 1RM",
+    "empty": "You have not recorded anything for this exercise yet.",
+    "add": "Add record",
     "kg": "kg",
     "date": "Date",
-    "deleteConfirm": "Delete this entry?"
+    "deleteConfirm": "Delete this entry?",
+    "tabsLabel": "Record type",
+    "tabs": {
+      "lift": "Lifts",
+      "reps": "Gymnastics",
+      "time": "Cardio"
+    },
+    "estimated": "estimated",
+    "bodyweight": "Bodyweight",
+    "addedKg": "+{kg} kg",
+    "repsCount": "{reps} reps",
+    "reps": "Reps",
+    "addedLoad": "Added load (kg)",
+    "distance": "Distance",
+    "time": "Time",
+    "timeHint": "m:ss",
+    "bestByReps": "Best by reps",
+    "bestByLoad": "Best by load",
+    "bestByDistance": "Best by distance"
   },
   "patterns": {
     "squat": "Squats",

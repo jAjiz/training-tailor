@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  bestByDistance, bestByLoad, bestByReps, bestSetAbove, currentOneRm, epley, recordKind, recordKindOf,
+  bestByDistance, bestByLoad, bestByReps, bestSetAbove, currentOneRm, epley, formatDistance, formatDuration, parseDuration,
+  recordKind, recordKindOf,
 } from "@/lib/training/records";
 import { testMovement } from "../helpers/library-builders";
 
@@ -107,5 +108,26 @@ describe("bestByDistance", () => {
       { distanceM: 2000, seconds: 425, achievedOn: d(2) },
     ]);
     expect(best.map((r) => [r.distanceM, r.seconds])).toEqual([[500, 95], [2000, 425]]);
+  });
+});
+
+describe("durations and distances", () => {
+  it("formats seconds as m:ss or h:mm:ss", () => {
+    expect(formatDuration(425)).toBe("7:05");
+    expect(formatDuration(3725)).toBe("1:02:05");
+  });
+
+  it("reads m:ss and h:mm:ss, and nothing else", () => {
+    expect(parseDuration(" 7:05 ")).toBe(425);
+    expect(parseDuration("1:02:05")).toBe(3725);
+    expect(parseDuration("7:5")).toBeNull();
+    expect(parseDuration("7:65")).toBeNull();
+    expect(parseDuration("425")).toBeNull();
+    expect(parseDuration("0:00")).toBeNull();
+  });
+
+  it("writes distances in metres below a kilometre", () => {
+    expect(formatDistance(500)).toBe("500 m");
+    expect(formatDistance(2000)).toBe("2 km");
   });
 });
