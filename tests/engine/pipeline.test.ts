@@ -46,6 +46,7 @@ const run = (provider: FakeProvider, stages: ProgressStage[] = [], overrides: Pa
     domain,
     locale: "en",
     lockedFormats: null,
+    coachIntent: null,
     onProgress: (s) => stages.push(s),
     ...overrides,
   });
@@ -97,6 +98,12 @@ describe("analyzeFeedback", () => {
 });
 
 describe("runTailorPipeline", () => {
+  it("passes the coach intent to the tailoring prompt", async () => {
+    const provider = new FakeProvider({ TailoringResult: safeDraft() });
+    await run(provider, [], { coachIntent: { blockTips: null, dayNote: "Test day goal", weekNote: null } });
+    expect(provider.calls.find((c) => c.schemaName === "TailoringResult")!.prompt).toContain("- day note: Test day goal");
+  });
+
   it("tailors and validates against today's restrictions in one model call", async () => {
     const provider = new FakeProvider({ TailoringResult: safeDraft() });
     const stages: ProgressStage[] = [];
@@ -274,7 +281,7 @@ describe("runRefinePipeline", () => {
       previous: first, feedback: "too heavy, and my knee hurts too", confirmed: [],
       restrictions: [restriction({ site: "knee", side: "left", movements: ["Test Jump"], evidence: "my knee hurts too" })],
       unavailableEquipment: ["kettlebell"],
-      profile: emptyProfile(), request: emptyRequest(), domain, locale: "en", lockedFormats: null, onProgress: (s) => stages.push(s),
+      profile: emptyProfile(), request: emptyRequest(), domain, locale: "en", lockedFormats: null, coachIntent: null, onProgress: (s) => stages.push(s),
     });
     expect(stages).toEqual(["tailoring", "validating"]);
     expect(provider.calls).toHaveLength(1);
@@ -293,8 +300,18 @@ describe("runRefinePipeline", () => {
     const profile = { ...emptyProfile(), injuries: [{ key: "test_hand", side: null, severity: "moderate" as const, notes: null, since: null }] };
     const r = await runRefinePipeline(new FakeProvider({ TailoringResult: safeDraft() }), {
       previous: tampered, feedback: "more volume", confirmed: [], restrictions: [], unavailableEquipment: [],
-      profile, request: emptyRequest(), domain, locale: "en", lockedFormats: null,
+      profile, request: emptyRequest(), domain, locale: "en", lockedFormats: null, coachIntent: null,
     });
     expect(r.conditions.map((c) => c.key)).toEqual(["test_hand"]);
+  });
+  it("passes the coach intent to the refinement prompt", async () => {
+    const first = await run(new FakeProvider({ TailoringResult: safeDraft() }));
+    const provider = new FakeProvider({ TailoringResult: safeDraft() });
+    await runRefinePipeline(provider, {
+      previous: first, feedback: "more volume", confirmed: [], restrictions: [], unavailableEquipment: [],
+      profile: emptyProfile(), request: emptyRequest(), domain, locale: "en", lockedFormats: null,
+      coachIntent: { blockTips: null, dayNote: "Test day goal", weekNote: null },
+    });
+    expect(provider.calls[0].prompt).toContain("- day note: Test day goal");
   });
 });

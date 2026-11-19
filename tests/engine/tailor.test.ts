@@ -31,6 +31,7 @@ function input(overrides: Partial<TailorInput> = {}): TailorInput {
     restrictions: [],
     locale: "en",
     lockedFormats: null,
+    coachIntent: null,
     ...overrides,
   };
 }
@@ -172,6 +173,31 @@ describe("tailor", () => {
     expect(system).toMatch(/"estimated" 1RM[^\n]*conservative guide/);
     expect(system).toMatch(/max_reps[^\n]*unbroken[^\n]*"addedKg"/);
     expect(system).toMatch(/time[^\n]*"distanceM"/);
+  });
+
+  it("renders the coach intent after the original session", () => {
+    const prompt = buildTailorPrompt(input({ coachIntent: { blockTips: "Test tip line 1\nline 2", dayNote: "Test day goal", weekNote: null } }));
+    expect(prompt).toContain("COACH INTENT");
+    expect(prompt).toContain("- block coaching tips: Test tip line 1\nline 2");
+    expect(prompt).toContain("- day note: Test day goal");
+    expect(prompt).not.toContain("week note");
+    expect(prompt.indexOf("COACH INTENT")).toBeGreaterThan(prompt.indexOf("ORIGINAL SESSION"));
+    expect(prompt.indexOf("COACH INTENT")).toBeLessThan(prompt.indexOf("ATHLETE:"));
+  });
+
+  it("says none when the coach wrote no intent", () => {
+    expect(buildTailorPrompt(input())).toContain("COACH INTENT: none");
+    expect(buildTailorPrompt(input({ coachIntent: { blockTips: null, dayNote: null, weekNote: null } }))).toContain("COACH INTENT: none");
+  });
+
+  it("tells the model how to use the coach intent", async () => {
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(couplet()) });
+    await tailor(provider, input());
+    const { systemPrompt } = provider.calls[0];
+    const rule = (systemPrompt ?? "").split("\n").find((l) => l.includes("COACH INTENT")) ?? "";
+    expect(rule).toMatch(/ignore/i);
+    expect(rule).toMatch(/never copy/i);
+    expect(rule).toMatch(/never overrides/i);
   });
 
   it("tells the model never to change a movement for pain the plan does not mark", async () => {

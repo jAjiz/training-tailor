@@ -259,6 +259,7 @@ export async function adaptTailor(
   const common = {
     confirmed: state.conditions, restrictions: state.restrictions, unavailableEquipment: state.unavailableEquipment,
     profile: ctx.profile, domain: ctx.domain, onProgress: ctx.onProgress, locale: ctx.locale, lockedFormats: lockedFormatsFor(block.scoring),
+    coachIntent: null,
   };
   const at = now.toISOString();
   let result: PipelineResult;

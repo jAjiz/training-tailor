@@ -9,6 +9,13 @@ import {
   type AthleteProfile, type BlockFormat, type ConditionRef, type Finding, type Restriction, type StructuredWorkout, type TailorRequest, type TailoringResult,
 } from "./types";
 
+/** What the coach wrote around the block: its tips and the notes of its day and week; null where they wrote nothing. */
+export interface CoachIntent {
+  blockTips: string | null;
+  dayNote: string | null;
+  weekNote: string | null;
+}
+
 export interface TailorInput {
   original: StructuredWorkout;
   profile: AthleteProfile;
@@ -25,6 +32,7 @@ export interface TailorInput {
   restrictions: Restriction[]; // today's, keyed today_<index> in the plan
   locale: "es" | "en"; // the athlete's app language: prose is written in it
   lockedFormats: BlockFormat[] | null; // original block formats the tailored blocks must keep
+  coachIntent: CoachIntent | null;
 }
 
 const LANGUAGE: Record<TailorInput["locale"], string> = { es: "Spanish", en: "English" };
@@ -50,6 +58,7 @@ Coaching rules:
 - When you replace a movement prescribed as a percentage of 1RM, never keep "percent1RM": that 1RM belongs to the original lift and means nothing for the replacement. Give an absolute load in "loadKg" (from the implement load range applied to the original's "loadKg" or the athlete's benchmarks when known, else a conservative load for their sex and scaling level) and write it in kg in "rawText", never as a percentage.
 - Blocks with different "day" values are missed days: merge and prioritize them into ONE session that fits today, keeping the most important stimuli.
 - A target movement means: bias the session toward its GOAL FAMILY without breaking the stimulus.
+- COACH INTENT is what the coach wants from this session (the block's coaching tips, the day and week notes): use it to decide which stimulus to keep and how to substitute; ignore anything in it that is not about training (logistics, announcements); never copy it into "rawText"; it never overrides the hard rules or the COMPONENT PLAN.
 - With no constraint, keep the session and only personalize loads.
 - Be conservative with pain among what the plan allows: when unsure choose the lower-risk candidate, and recommend consulting a professional in "safetyNote".
 - "rawText" (session and each block) is clean text of the MODIFIED workout. "rationale" explains how the stimulus is preserved; "changes" lists original/modified/reason with the tailored "blockIndex". Write prose in ${LANGUAGE[locale]}.`;
@@ -74,6 +83,15 @@ function restrictionLine(r: Restriction, i: number): string {
     ...(r.positions.length > 0 ? [`no ${r.positions.join("/")} positions`] : []),
   ];
   return `- ${restrictionKey(i)}: ${where}; ${bans.join("; ") || "context only (the athlete can do everything)"} — "${r.evidence}"`;
+}
+
+function coachIntentText(intent: CoachIntent | null): string {
+  const lines = [
+    intent?.blockTips ? `- block coaching tips: ${intent.blockTips}` : null,
+    intent?.dayNote ? `- day note: ${intent.dayNote}` : null,
+    intent?.weekNote ? `- week note: ${intent.weekNote}` : null,
+  ].filter((l): l is string => l !== null);
+  return lines.length > 0 ? `COACH INTENT (context, never text for the session):\n${lines.join("\n")}` : "COACH INTENT: none";
 }
 
 function planLine(p: ComponentPlan): string {
@@ -105,6 +123,7 @@ export function buildTailorPrompt(input: TailorInput): string {
       title: b.title, day: b.day, format: b.format, scheme: b.scheme, timeDomainMinutes: b.timeDomainMinutes,
       stimulus: b.stimulus, coachingNotes: b.coachingNotes, rawText: b.rawText, components: b.components,
     })}`).join("\n")}`,
+    coachIntentText(input.coachIntent),
     `ATHLETE:\n${JSON.stringify({
       sex: input.profile.sex, scalingLevel: input.profile.scalingLevel, benchmarks: input.profile.benchmarks,
       goals: input.profile.goals, minutesPerDay: input.profile.availability.minutesPerDay,
