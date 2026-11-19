@@ -241,7 +241,8 @@
       "calories": "Calorías",
       "distance": "Distancia (m)",
       "max_time": "Tiempo (más es mejor)"
-    }
+    },
+    "estimatedOneRm": "Cargas sobre tu 1RM estimado ({kg} kg)"
   },
   "prs": {
     "title": "RMs",
@@ -445,8 +446,8 @@
     "delete": "Borrar resultado",
     "deleteConfirm": "¿Borrar tu resultado?",
     "notLoggable": "Este bloque todavía no se puede registrar.",
-    "singlePrompt": "¿Actualizar tu 1RM de {movement} de {from} kg a {to} kg?",
-    "singlePromptFirst": "¿Guardar {to} kg como tu 1RM de {movement}?",
+    "singlePrompt": "¿Actualizar tu marca de {movement} a {reps} reps de {from} kg a {to} kg?",
+    "singlePromptFirst": "¿Guardar {to} kg × {reps} como tu marca de {movement}?",
     "yes": "Sí, actualizar",
     "no": "No"
   },

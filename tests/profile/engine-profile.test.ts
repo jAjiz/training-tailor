@@ -24,9 +24,9 @@ describe("loadEngineProfile", () => {
     const athlete = await makeAthlete(tdb.prisma);
     await store(athlete.userId, { ...emptyProfile(), benchmarks: [bench({ value: 90 }), bench({ movement: "Test Press", value: 40 })] });
     await tdb.prisma.personalRecord.createMany({ data: [
-      { athleteId: athlete.id, movement: "Test Squat", kg: 100, achievedOn: day("2026-09-01") },
-      { athleteId: athlete.id, movement: "Test Squat", kg: 110, achievedOn: day("2026-10-01") },
-      { athleteId: athlete.id, movement: "Test Deadlift", kg: 150, achievedOn: day("2026-09-15") },
+      { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 100, reps: 1, achievedOn: day("2026-09-01") },
+      { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 110, reps: 1, achievedOn: day("2026-10-01") },
+      { athleteId: athlete.id, movement: "Test Deadlift", kind: "lift", kg: 150, reps: 1, achievedOn: day("2026-09-15") },
     ] });
     const { benchmarks } = await loadEngineProfile(tdb.prisma, athlete.userId);
     expect(benchmarks).toHaveLength(2);
@@ -50,7 +50,7 @@ describe("loadEngineProfile", () => {
     const athlete = await makeAthlete(tdb.prisma);
     expect(await loadEngineProfile(tdb.prisma, athlete.userId)).toEqual(emptyProfile());
     await tdb.prisma.personalRecord.create({
-      data: { athleteId: athlete.id, movement: "Test Squat", kg: 100, achievedOn: day("2026-09-01") },
+      data: { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 100, reps: 1, achievedOn: day("2026-09-01") },
     });
     const { benchmarks } = await loadEngineProfile(tdb.prisma, athlete.userId);
     expect(benchmarks).toEqual([{ movement: "Test Squat", kind: "1rm", value: 100, unit: "kg", recordedAt: "2026-09-01" }]);

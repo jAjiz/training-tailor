@@ -58,7 +58,7 @@ export function active(
   return { contraindication, side, severity };
 }
 
-/** The library seeded for service tests: two barbell lifts, one non-lift. */
+/** The library seeded for service tests: two barbell lifts, bodyweight, cardio and dumbbell movements. */
 export function serviceLibrary(): DomainLibrary {
   return {
     ...testDomain({
@@ -66,6 +66,9 @@ export function serviceLibrary(): DomainLibrary {
         testMovement("Test Back Squat", { equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
         testMovement("Test Deadlift", { patterns: ["hinge"], equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
         testMovement("Test Air Squat", { substitutes: ["Test Back Squat"] }),
+        testMovement("Test Pull-up", { patterns: ["vertical_pull"], equipment: ["pullup_bar"] }),
+        testMovement("Test Row", { patterns: ["monostructural"], equipment: ["rower"] }),
+        testMovement("Test DB Snatch", { patterns: ["olympic"], equipment: ["dumbbell"] }),
       ],
       contraindications: [testContraindication("test_injury")],
     }),

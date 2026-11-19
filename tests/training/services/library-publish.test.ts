@@ -45,7 +45,7 @@ async function publishLive(admin: { id: string }, library: DomainLibrary = testL
 async function makePr(movement: string) {
   const athlete = await makeAthlete(tdb.prisma);
   await tdb.prisma.personalRecord.create({
-    data: { athleteId: athlete.id, movement, kg: 100, achievedOn: new Date("2026-10-01T00:00:00Z") },
+    data: { athleteId: athlete.id, movement, kind: "lift", kg: 100, reps: 1, achievedOn: new Date("2026-10-01T00:00:00Z") },
   });
   return athlete;
 }

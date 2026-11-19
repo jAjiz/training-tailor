@@ -9,6 +9,7 @@ import { blockLabel } from "@/lib/training/block-label";
 import { logDraftFor } from "@/lib/training/log-draft";
 import type { BarbellSet } from "@/lib/training/schemas";
 import { scoreTarget } from "@/lib/training/scoring";
+import type { OneRm } from "@/lib/training/records";
 import { oneRmMap } from "@/lib/training/services/prs";
 import { adaptationToKeep, getMyResult, getVisibleBlock } from "@/lib/training/services/results";
 import { LogForm } from "./LogForm";
@@ -30,7 +31,7 @@ export default async function LogPage({ params }: { params: Promise<{ id: string
   }
   const [mine, oneRms, adaptation] = await Promise.all([
     getMyResult(prisma, athlete.id, block.id),
-    block.movement ? oneRmMap(prisma, athlete.id, [block.movement]) : Promise.resolve(new Map<string, number>()),
+    block.movement ? oneRmMap(prisma, athlete.id, [block.movement]) : Promise.resolve(new Map<string, OneRm>()),
     adaptationToKeep(prisma, athlete.id, block),
   ]);
   const target = scoreTarget(block);
@@ -43,7 +44,7 @@ export default async function LogPage({ params }: { params: Promise<{ id: string
         target={target}
         date={date}
         backHref={backHref}
-        initial={logDraftFor(target, mine?.score ?? null, prescribed, block.movement ? oneRms.get(block.movement) ?? null : null, adaptation !== null)}
+        initial={logDraftFor(target, mine?.score ?? null, prescribed, block.movement ? oneRms.get(block.movement)?.kg ?? null : null, adaptation !== null)}
         initialDivision={mine?.division === "scaled" ? "scaled" : "rx"}
         initialNotes={mine?.notes ?? ""}
         divisionLocked={adaptation !== null}

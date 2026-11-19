@@ -8,8 +8,7 @@ import { getDomainData } from "@/lib/domain/repository";
 import { formatDay } from "@/lib/format";
 import { isLiftMovement } from "@/lib/training/barbell";
 import { fromDbDate, todayIn } from "@/lib/training/dates";
-import { currentOneRm } from "@/lib/training/prs";
-import { listMovementPrs } from "@/lib/training/services/prs";
+import { liftOneRms, listMovementPrs } from "@/lib/training/services/prs";
 import { PrHistory } from "./PrHistory";
 
 export default async function MovementPrPage({ params }: { params: Promise<{ movement: string }> }) {
@@ -25,7 +24,7 @@ export default async function MovementPrPage({ params }: { params: Promise<{ mov
   const [t, tc] = await Promise.all([getTranslations("prs"), getTranslations("common")]);
   const locale = await getLocale();
   const records = await listMovementPrs(prisma, athlete.id, movement);
-  const current = currentOneRm(records);
+  const current = liftOneRms(records).get(movement)?.kg ?? null;
   return (
     <section className="flex flex-col gap-5 pt-4">
       <div>
@@ -37,7 +36,7 @@ export default async function MovementPrPage({ params }: { params: Promise<{ mov
         <p className="type-display text-4xl tabular-nums">{current !== null ? `${current} ${t("kg")}` : "—"}</p>
       </div>
       <PrHistory movement={movement} today={todayIn(athlete.timezone)}
-        entries={records.map((r) => ({ id: r.id, kg: r.kg, label: formatDay(fromDbDate(r.achievedOn), locale, { day: "numeric", month: "short", year: "numeric" }) }))} />
+        entries={records.flatMap((r) => r.kind !== "lift" || r.kg === null ? [] : [{ id: r.id, kg: r.kg, label: formatDay(fromDbDate(r.achievedOn), locale, { day: "numeric", month: "short", year: "numeric" }) }])} />
     </section>
   );
 }

@@ -67,5 +67,13 @@ describe("records migration", () => {
       `INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "reps", "achievedOn")
        VALUES ('zero', 'a1', 'Test Pull', 'reps', 0, '2026-10-01')`,
     )).rejects.toThrow(/PersonalRecord_kind_fields/);
+    await expect(db.exec(
+      `INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "kg", "achievedOn")
+       VALUES ('noreps', 'a1', 'Test Squat', 'lift', 100, '2026-10-01')`,
+    )).rejects.toThrow(/PersonalRecord_kind_fields/);
+    await expect(db.exec(
+      `INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "seconds", "achievedOn")
+       VALUES ('nodist', 'a1', 'Test Row', 'time', 420, '2026-10-01')`,
+    )).rejects.toThrow(/PersonalRecord_kind_fields/);
   });
 });

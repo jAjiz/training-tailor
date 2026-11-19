@@ -241,7 +241,8 @@
       "calories": "Calories",
       "distance": "Distance (m)",
       "max_time": "Time (more is better)"
-    }
+    },
+    "estimatedOneRm": "Loads from your estimated 1RM ({kg} kg)"
   },
   "prs": {
     "title": "PRs",
@@ -445,8 +446,8 @@
     "delete": "Delete result",
     "deleteConfirm": "Delete your result?",
     "notLoggable": "This block cannot be logged yet.",
-    "singlePrompt": "Update your {movement} 1RM from {from} kg to {to} kg?",
-    "singlePromptFirst": "Save {to} kg as your {movement} 1RM?",
+    "singlePrompt": "Update your {movement} {reps}-rep record from {from} kg to {to} kg?",
+    "singlePromptFirst": "Save {to} kg × {reps} as your {movement} record?",
     "yes": "Yes, update",
     "no": "No"
   },

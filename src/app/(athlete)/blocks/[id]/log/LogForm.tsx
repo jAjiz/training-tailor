@@ -31,7 +31,7 @@ type Props = {
   subtitle: string;
 };
 
-type Prompt = { movement: string; from: number | null; to: number };
+type Prompt = { movement: string; reps: number; from: number | null; to: number };
 
 export function LogForm({ blockId, target, date, backHref, initial, initialDivision, initialNotes, divisionLocked, hasResult, titles, subtitle }: Props) {
   const cappedId = useId();
@@ -70,7 +70,7 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
     if (!prompt || pending) return;
     setPending(true);
     try {
-      const r = await addPrAction({ movement: prompt.movement, kg: prompt.to, achievedOn: date });
+      const r = await addPrAction({ kind: "lift", movement: prompt.movement, kg: prompt.to, reps: prompt.reps, achievedOn: date });
       if (r.ok) done();
       else setError(r.code);
     } finally {
@@ -105,8 +105,8 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
       {header}
       <Card className="flex flex-col gap-4 p-5">
         <p className="text-[15px]">{prompt.from === null
-          ? t("log.singlePromptFirst", { movement: prompt.movement, to: formatDecimal(prompt.to, locale) })
-          : t("log.singlePrompt", { movement: prompt.movement, from: formatDecimal(prompt.from, locale), to: formatDecimal(prompt.to, locale) })}</p>
+          ? t("log.singlePromptFirst", { movement: prompt.movement, reps: prompt.reps, to: formatDecimal(prompt.to, locale) })
+          : t("log.singlePrompt", { movement: prompt.movement, reps: prompt.reps, from: formatDecimal(prompt.from, locale), to: formatDecimal(prompt.to, locale) })}</p>
         <div className="flex gap-3">
           <Button type="button" variant="primary" slanted onClick={acceptPrompt} disabled={pending}>{t("log.yes")}</Button>
           <Button type="button" variant="ghost" onClick={done} disabled={pending}>{t("log.no")}</Button>

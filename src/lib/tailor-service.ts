@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import type { AthleteProfile, Benchmark } from "@/lib/engine/types";
 import { normalizeProfile } from "@/lib/profile";
 import { getAthleteByUserId } from "@/lib/training/services/accounts";
-import { listPrs } from "@/lib/training/services/prs";
+import { liftOneRms, listPrs } from "@/lib/training/services/prs";
 import type { Db } from "@/lib/training/services/types";
 
 export async function loadProfile(userId: string): Promise<AthleteProfile> {
@@ -18,11 +18,8 @@ export async function loadEngineProfile(db: Db, userId: string): Promise<Athlete
   const [row, athlete] = await Promise.all([db.athleteProfile.findUnique({ where: { userId } }), getAthleteByUserId(db, userId)]);
   const profile = normalizeProfile(row?.data);
   const current = new Map<string, Benchmark>();
-  for (const pr of athlete ? await listPrs(db, athlete.id) : []) {
-    if ((current.get(pr.movement)?.value ?? 0) >= pr.kg) continue; // rows come latest first
-    current.set(pr.movement, {
-      movement: pr.movement, kind: "1rm", value: pr.kg, unit: "kg", recordedAt: pr.achievedOn.toISOString().slice(0, 10),
-    });
+  for (const [movement, r] of liftOneRms(athlete ? await listPrs(db, athlete.id) : [])) {
+    current.set(movement, { movement, kind: "1rm", value: r.kg, unit: "kg", recordedAt: r.achievedOn.toISOString().slice(0, 10) });
   }
   return { ...profile, benchmarks: [...profile.benchmarks.filter((b) => b.kind !== "1rm"), ...current.values()] };
 }

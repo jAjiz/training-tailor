@@ -7,12 +7,12 @@ import { activeAthleteIn, athleteTimeline, hasLeaderboard } from "../access";
 import { addDays, canLogDay, dateOfDay, fromDbDate, isDayVisible, toDbDate, todayIn, type IsoDate } from "../dates";
 import { TrainingError } from "../errors";
 import { rank } from "../leaderboard";
-import { singleAbove } from "../prs";
+import { bestSetAbove } from "../records";
 import type { ResultInputValue } from "../schemas";
 import { evaluateScore, formatScore, scoreTarget, type BarbellResult } from "../scoring";
 import { getAdaptation, snapshotOf } from "./adaptations";
 import { getOwnedProgram, publishedWeeks } from "./programs";
-import { oneRmMap } from "./prs";
+import { liftRows } from "./prs";
 import type { Db } from "./types";
 
 type AthleteRef = { id: string; timezone: string };
@@ -34,7 +34,8 @@ export async function getVisibleBlock(db: Db, athlete: AthleteRef, blockId: stri
   };
 }
 
-export type SinglePrompt = { movement: string; from: number | null; to: number };
+/** A logged set worth saving as a record: `from` is the previous best at its rep count. */
+export type SinglePrompt = { movement: string; reps: number; from: number | null; to: number };
 
 /**
  * The snapshot a saved result carries, as stored JSON, or null for an unadapted one. A result already tagged keeps its
@@ -80,9 +81,8 @@ export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInput
 
   let singlePrompt: SinglePrompt | null = null;
   if (adaptation === null && block.kind === "barbell" && block.movement) {
-    const current = (await oneRmMap(db, athlete.id, [block.movement])).get(block.movement) ?? null;
-    const top = singleAbove((evaluated.score as BarbellResult).sets, current);
-    if (top !== null) singlePrompt = { movement: block.movement, from: current, to: top };
+    const best = bestSetAbove((evaluated.score as BarbellResult).sets, await liftRows(db, athlete.id, block.movement));
+    if (best !== null) singlePrompt = { movement: block.movement, ...best };
   }
   return { resultId: result.id, singlePrompt };
 }

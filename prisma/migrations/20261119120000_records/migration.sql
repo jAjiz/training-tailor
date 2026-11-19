@@ -11,12 +11,13 @@ ALTER TABLE "PersonalRecord"
 -- Every PR so far is a 1RM.
 UPDATE "PersonalRecord" SET "reps" = 1;
 
+-- COALESCE: a CHECK passes on NULL, so a missing required field must read as false.
 ALTER TABLE "PersonalRecord" ADD CONSTRAINT "PersonalRecord_kind_fields" CHECK (
-  CASE "kind"
+  COALESCE(CASE "kind"
     WHEN 'lift' THEN "kg" > 0 AND "reps" > 0 AND "distanceM" IS NULL AND "seconds" IS NULL
     WHEN 'reps' THEN "reps" > 0 AND ("kg" IS NULL OR "kg" > 0) AND "distanceM" IS NULL AND "seconds" IS NULL
     WHEN 'time' THEN "distanceM" > 0 AND "seconds" > 0 AND "kg" IS NULL AND "reps" IS NULL
-  END
+  END, false)
 );
 
 -- Profile max reps become records of athletes; times (no distance), stored 1RMs (already ignored) and the benchmarks of
