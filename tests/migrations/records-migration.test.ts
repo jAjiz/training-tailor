@@ -16,8 +16,10 @@ beforeAll(async () => {
   for (const dir of readdirSync(MIGRATIONS).filter((d) => /^\d/.test(d) && d < RECORDS).sort()) await db.exec(sql(dir));
   await db.exec(`
     INSERT INTO "user" ("id", "name", "email", "updatedAt") VALUES
-      ('u1', 'Test One', 'one@test.local', now()), ('u2', 'Test Two', 'two@test.local', now());
-    INSERT INTO "AthleteAccount" ("id", "userId", "displayName", "timezone") VALUES ('a1', 'u1', 'Test One', 'UTC');
+      ('u1', 'Test One', 'one@test.local', now()), ('u2', 'Test Two', 'two@test.local', now()),
+      ('u3', 'Test Three', 'three@test.local', now());
+    INSERT INTO "AthleteAccount" ("id", "userId", "displayName", "timezone") VALUES
+      ('a1', 'u1', 'Test One', 'UTC'), ('a3', 'u3', 'Test Three', 'UTC');
     INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kg", "achievedOn") VALUES ('pr1', 'a1', 'Test Squat', 100, '2026-09-01');
   `);
   await db.query(`INSERT INTO "AthleteProfile" ("id", "userId", "data", "updatedAt") VALUES ('p1', 'u1', $1::jsonb, now()), ('p2', 'u2', $2::jsonb, now())`, [
@@ -27,8 +29,14 @@ beforeAll(async () => {
       { movement: "Test Dip", kind: "max_reps", value: 0.5, unit: "reps", recordedAt: null },
       { movement: "Test Push", kind: "max_reps", value: 12, unit: "reps", recordedAt: null },
       { movement: "Test Row", kind: "time", value: 420, unit: "seconds", recordedAt: null },
+      // Free-form values an old client could store: never abort the migration.
+      { movement: "Test Dip", kind: "max_reps", value: 15, unit: "reps", recordedAt: "" },
+      { movement: "Test Dip", kind: "max_reps", value: "abc", unit: "reps", recordedAt: null },
     ]),
     benchmarks([{ movement: "Test Pull", kind: "max_reps", value: 10, unit: "reps", recordedAt: null }]),
+  ]);
+  await db.query(`INSERT INTO "AthleteProfile" ("id", "userId", "data", "updatedAt") VALUES ('p3', 'u3', $1::jsonb, now())`, [
+    JSON.stringify({ sex: "female", goals: [], benchmarks: { not: "an array" } }),
   ]);
   await db.exec(sql(RECORDS));
 });
@@ -46,16 +54,17 @@ describe("records migration", () => {
       `SELECT "movement", "reps", "kg", "achievedOn", "achievedOn" = CURRENT_DATE AS today
        FROM "PersonalRecord" WHERE "kind" = 'reps' ORDER BY "movement"`,
     );
-    expect(rows.map((r) => [r.movement, r.reps, r.kg])).toEqual([["Test Pull", 18, null], ["Test Push", 12, null]]);
-    expect(rows[0].achievedOn.toISOString().slice(0, 10)).toBe("2026-10-01");
-    expect(rows[1].today).toBe(true);
+    expect(rows.map((r) => [r.movement, r.reps, r.kg, r.today])).toEqual([
+      ["Test Dip", 15, null, true], ["Test Pull", 18, null, false], ["Test Push", 12, null, true],
+    ]);
+    expect(rows[1].achievedOn.toISOString().slice(0, 10)).toBe("2026-10-01");
     const { rows: all } = await db.query(`SELECT count(*)::int AS n FROM "PersonalRecord"`);
-    expect(all).toEqual([{ n: 3 }]); // nothing for the user without an athlete account
+    expect(all).toEqual([{ n: 4 }]); // nothing for the user without an athlete account
   });
 
   it("removes benchmarks from every profile and keeps the rest", async () => {
     const { rows } = await db.query<{ data: Record<string, unknown> }>(`SELECT "data" FROM "AthleteProfile" ORDER BY "id"`);
-    expect(rows.map((r) => r.data)).toEqual([{ sex: "female", goals: [] }, { sex: "female", goals: [] }]);
+    expect(rows.map((r) => r.data)).toEqual([{ sex: "female", goals: [] }, { sex: "female", goals: [] }, { sex: "female", goals: [] }]);
   });
 
   it("rejects a row whose fields do not match its kind", async () => {

@@ -5,6 +5,8 @@ import { NextIntlClientProvider } from "next-intl";
 import { describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 
+const search = vi.hoisted(() => ({ value: "" }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(search.value) }));
 vi.mock("next/link", () => ({
   default: ({ href, ...rest }: { href: string } & Record<string, unknown>) => <a href={href} {...rest} />,
 }));
@@ -20,12 +22,19 @@ const tabs: RecordTabs = {
   time: [{ label: null, movements: [{ name: "Test Row", summary: "2 km · 7:05", estimated: false }] }],
 };
 
-const show = (initial: "lift" | "reps" | "time" = "lift") => render(
-  <NextIntlClientProvider locale="en" messages={en}><PrList tabs={tabs} initialTab={initial} /></NextIntlClientProvider>,
-);
+const show = (query = "") => {
+  search.value = query;
+  return render(<NextIntlClientProvider locale="en" messages={en}><PrList tabs={tabs} /></NextIntlClientProvider>);
+};
 
 describe("PrList", () => {
-  it("splits records into three sub-tabs and opens the given one", () => {
+  it("opens the sub-tab the URL names, so going back restores it", () => {
+    show("?tab=time");
+    expect(screen.getByRole("radio", { name: en.prs.tabs.time })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("link", { name: /Test Row/ })).toBeInTheDocument();
+  });
+
+  it("splits records into three sub-tabs and opens lifts by default", () => {
     show();
     expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([en.prs.tabs.lift, en.prs.tabs.reps, en.prs.tabs.time]);
     expect(screen.getByRole("radio", { name: en.prs.tabs.lift })).toHaveAttribute("aria-checked", "true");
@@ -43,7 +52,7 @@ describe("PrList", () => {
   });
 
   it("searches only the open tab", () => {
-    show("reps");
+    show("?tab=reps");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "squat" } });
     expect(screen.getByText(en.prs.noResults)).toBeInTheDocument();
   });

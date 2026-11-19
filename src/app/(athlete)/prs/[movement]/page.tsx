@@ -69,7 +69,7 @@ export default async function MovementPrPage({ params }: { params: Promise<{ mov
   return (
     <section className="flex flex-col gap-5 pt-4">
       <div>
-        <IconButton href="/prs" label={tc("back")}><ChevronLeft size={20} aria-hidden /></IconButton>
+        <IconButton href={`/prs?tab=${formKind ?? sections[0]?.kind ?? "lift"}`} label={tc("back")}><ChevronLeft size={20} aria-hidden /></IconButton>
       </div>
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl">{movement}</h1>

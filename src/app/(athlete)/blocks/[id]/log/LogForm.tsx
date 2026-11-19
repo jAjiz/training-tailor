@@ -29,11 +29,13 @@ type Props = {
   hasResult: boolean;
   titles: { new: string; edit: string };
   subtitle: string;
+  /** The estimated 1RM the prefilled loads come from, or null when they come from a real one (or none). */
+  estimatedOneRm?: number | null;
 };
 
 type Prompt = { movement: string; reps: number; from: number | null; to: number };
 
-export function LogForm({ blockId, target, date, backHref, initial, initialDivision, initialNotes, divisionLocked, hasResult, titles, subtitle }: Props) {
+export function LogForm({ blockId, target, date, backHref, initial, initialDivision, initialNotes, divisionLocked, hasResult, titles, subtitle, estimatedOneRm = null }: Props) {
   const cappedId = useId();
   const [title] = useState(hasResult ? titles.edit : titles.new);
   const t = useTranslations();
@@ -96,6 +98,9 @@ export function LogForm({ blockId, target, date, backHref, initial, initialDivis
     <div className="flex flex-col gap-1">
       <h1 className="text-3xl">{title}</h1>
       <p className="text-[15px] text-muted">{subtitle}</p>
+      {estimatedOneRm !== null && (
+        <p className="text-xs text-muted">{t("block.estimatedOneRm", { kg: formatDecimal(estimatedOneRm, locale) })}</p>
+      )}
     </div>
   );
 

@@ -8,11 +8,9 @@ import { bestByDistance, bestByLoad, formatDistance, formatDuration, recordKind,
 import { liftOneRms, listPrs } from "@/lib/training/services/prs";
 import { PrList, type RecordRow, type RecordTabs } from "./PrList";
 
-const KINDS: RecordKind[] = ["lift", "reps", "time"];
-
-export default async function PrsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function PrsPage() {
   const athlete = await requireAthletePage("/prs");
-  const [t, tp, locale, { tab }] = await Promise.all([getTranslations(), getTranslations("prs"), getLocale(), searchParams]);
+  const [t, tp, locale] = await Promise.all([getTranslations(), getTranslations("prs"), getLocale()]);
   const [records, domain] = await Promise.all([listPrs(prisma, athlete.id), getDomainData()]);
   const num = (n: number) => formatDecimal(n, locale);
 
@@ -56,11 +54,10 @@ export default async function PrsPage({ searchParams }: { searchParams: Promise<
     reps: [{ label: null, movements: names("reps").map(repsRow) }],
     time: [{ label: null, movements: names("time").map(timeRow) }],
   };
-  const initialTab = KINDS.find((k) => k === tab) ?? "lift";
   return (
     <section className="flex flex-col gap-5 pt-4">
       <h1 className="text-3xl">{tp("title")}</h1>
-      <PrList tabs={tabs} initialTab={initialTab} />
+      <PrList tabs={tabs} />
     </section>
   );
 }

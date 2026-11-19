@@ -33,15 +33,19 @@ async function storedProfiles(db: DbOrTx): Promise<{ id: string; profile: Stored
 }
 
 async function movementCounts(db: DbOrTx, profiles: { profile: StoredProfile }[]) {
-  const [prs, blocks] = await Promise.all([
-    db.personalRecord.groupBy({ by: ["movement"], _count: { _all: true } }),
+  const [liftPrs, otherPrs, blocks] = await Promise.all([
+    db.personalRecord.groupBy({ by: ["movement"], where: { kind: "lift" }, _count: { _all: true } }),
+    db.personalRecord.groupBy({ by: ["movement"], where: { kind: { not: "lift" } }, _count: { _all: true } }),
     db.block.groupBy({ by: ["movement"], where: { kind: "barbell" }, _count: { _all: true } }),
   ]);
+  const count = (map: Map<string, number>, rows: { movement: string | null; _count: { _all: number } }[]) => {
+    for (const row of rows) if (row.movement) map.set(row.movement, (map.get(row.movement) ?? 0) + row._count._all);
+  };
+  // Only lift records and barbell blocks need a barbell movement; every record needs its movement to exist.
   const lifts = new Map<string, number>();
-  for (const row of [...prs, ...blocks]) {
-    if (row.movement) lifts.set(row.movement, (lifts.get(row.movement) ?? 0) + row._count._all);
-  }
+  count(lifts, [...liftPrs, ...blocks]);
   const all = new Map(lifts);
+  count(all, otherPrs);
   for (const { profile } of profiles) {
     for (const g of profile.goals) add(all, g.movement);
   }

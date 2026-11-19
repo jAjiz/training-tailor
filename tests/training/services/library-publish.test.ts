@@ -151,6 +151,17 @@ describe("publishDraft", () => {
     expect(row.movements).toHaveLength(2);
   });
 
+  it("publishes with reps records on a non-lift movement", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    await publishLive(admin);
+    const athlete = await makeAthlete(tdb.prisma);
+    await tdb.prisma.personalRecord.create({
+      data: { athleteId: athlete.id, movement: "Test Press", kind: "reps", reps: 12, achievedOn: new Date("2026-10-01T00:00:00Z") },
+    });
+    const draft = await openDraft(tdb.prisma, admin.id);
+    expect(await publishDraft(tdb.prisma, admin.id, publishInput(draft.revision))).toEqual({ ok: true, number: 2 });
+  });
+
   it("refuses turning a lift with PRs into a non-lift", async () => {
     const admin = await makeAdmin(tdb.prisma);
     await publishLive(admin);

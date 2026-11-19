@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/controls";
@@ -14,11 +15,21 @@ export type RecordGroup = { label: string | null; movements: RecordRow[] };
 export type RecordTabs = Record<RecordKind, RecordGroup[]>;
 
 const KINDS: RecordKind[] = ["lift", "reps", "time"];
+const kindOf = (value: string | null): RecordKind => KINDS.find((k) => k === value) ?? "lift";
 
-/** The records list, one sub-tab per kind. The open tab lives in `?tab=`, so back and links keep it. */
-export function PrList({ tabs, initialTab }: { tabs: RecordTabs; initialTab: RecordKind }) {
+/**
+ * The records list, one sub-tab per kind. The open tab lives in `?tab=` and is read from the URL, so going back (which
+ * can restore a page rendered for another tab) and links keep it.
+ */
+export function PrList({ tabs }: { tabs: RecordTabs }) {
   const t = useTranslations("prs");
-  const [tab, setTab] = useState<RecordKind>(initialTab);
+  const fromUrl = kindOf(useSearchParams().get("tab"));
+  const [tab, setTab] = useState<RecordKind>(fromUrl);
+  const [seen, setSeen] = useState(fromUrl);
+  if (seen !== fromUrl) {
+    setSeen(fromUrl);
+    setTab(fromUrl);
+  }
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const visible = tabs[tab]
