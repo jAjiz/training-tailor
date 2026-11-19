@@ -945,6 +945,14 @@
     "previousAdaptation": "Previous adaptation",
     "hidePrevious": "Hide previous adaptation",
     "questionsTitle": "One question before we adapt",
+    "working": "The AI is working",
+    "steps": {
+      "read": "Read your message",
+      "adapt": "Adapt the block",
+      "check": "Check it is safe for you"
+    },
+    "waitHint": "The AI usually takes under a minute. Keep this open.",
+    "slowHint": "Still working: some blocks take a little longer.",
     "stage": {
       "analyzing": "Reading your message…",
       "tailoring": "Adapting the block…",
