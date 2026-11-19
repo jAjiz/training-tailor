@@ -373,6 +373,57 @@ describe("adaptation conversation", () => {
   });
 });
 
+describe("coach intent", () => {
+  const lastTailorPrompt = (p: FakeProvider) => p.calls.filter((c) => c.schemaName === "TailoringResult").at(-1)!.prompt;
+  const notes = async (programId: string) => {
+    await tdb.prisma.dayNote.create({ data: { programId, dayIndex: 0, body: "Test day goal" } });
+    await tdb.prisma.weekNote.create({ data: { programId, weekIndex: 0, body: "Test week goal" } });
+    await tdb.prisma.dayNote.create({ data: { programId, dayIndex: 1, body: "Test other day" } });
+    await tdb.prisma.weekNote.create({ data: { programId, weekIndex: 1, body: "Test other week" } });
+  };
+
+  it("the proposal prompt carries the block tips, the day note and the week note", async () => {
+    const s = await setup();
+    await tdb.prisma.block.update({ where: { id: s.block.id }, data: { coachingTips: "Test tip" } });
+    await notes(s.program.id);
+    const p = new FakeProvider({ BlockAnalysis: coupletDraft(), SituationAnalysis: situation([overheadToday]), TailoringResult: safeDraft() });
+    await say(p, s.athlete, s.block.id, "my shoulder hurts overhead");
+    await tailorNow(p, s.athlete, s.block.id);
+    const prompt = lastTailorPrompt(p);
+    expect(prompt).toContain("- block coaching tips: Test tip");
+    expect(prompt).toContain("- day note: Test day goal");
+    expect(prompt).toContain("- week note: Test week goal");
+    expect(prompt).not.toMatch(/Test other (day|week)/);
+  });
+
+  it("a refinement reads the note as it is now", async () => {
+    const { program, athlete, block } = await proposed();
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 0, body: "Test day goal v2" } });
+    const p = new FakeProvider({ SituationAnalysis: situation(), TailoringResult: safeDraft() });
+    await say(p, athlete, block.id, "too heavy");
+    await tailorNow(p, athlete, block.id);
+    expect(lastTailorPrompt(p)).toContain("- day note: Test day goal v2");
+  });
+
+  it("editing a note leaves an accepted adaptation fresh", async () => {
+    const { program, athlete, block } = await proposed();
+    await acceptAdaptation(tdb.prisma, athlete, block.id, NOW);
+    await tdb.prisma.dayNote.create({ data: { programId: program.id, dayIndex: 0, body: "Test new goal" } });
+    const a = (await getAdaptation(tdb.prisma, athlete.id, block.id))!;
+    expect(a.accepted!.workoutHash).toBe(workoutHash(await tdb.prisma.block.findUniqueOrThrow({ where: { id: block.id } })));
+  });
+
+  it("blank notes and tips read as no intent", async () => {
+    const s = await setup();
+    await tdb.prisma.block.update({ where: { id: s.block.id }, data: { coachingTips: "  " } });
+    await tdb.prisma.dayNote.create({ data: { programId: s.program.id, dayIndex: 0, body: " \n " } });
+    const p = new FakeProvider({ BlockAnalysis: coupletDraft(), SituationAnalysis: situation([overheadToday]), TailoringResult: safeDraft() });
+    await say(p, s.athlete, s.block.id, "my shoulder hurts overhead");
+    await tailorNow(p, s.athlete, s.block.id);
+    expect(lastTailorPrompt(p)).toContain("COACH INTENT: none");
+  });
+});
+
 describe("stored rows the schemas no longer accept", () => {
   it("are left out of the day view and read as absent", async () => {
     const { athlete, block } = await proposed();
