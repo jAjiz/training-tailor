@@ -198,6 +198,8 @@ describe("tailor", () => {
     expect(rule).toMatch(/ignore/i);
     expect(rule).toMatch(/never copy/i);
     expect(rule).toMatch(/never overrides/i);
+    expect(rule).toMatch(/explains the session as written/i);
+    expect(rule).toMatch(/not a reason to scale/i);
   });
 
   it("tells the model never to change a movement for pain the plan does not mark", async () => {
