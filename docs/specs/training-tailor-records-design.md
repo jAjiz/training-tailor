@@ -41,11 +41,13 @@ validation, the detail page and the engine input all use it.
 
 The rules are applied in this order:
 1. Equipment includes `barbell` → `lift`. This is today's `isLift`.
-2. Any pattern is `monostructural` → `time`.
-3. Equipment includes none of `dumbbell`, `kettlebell`, `sandbag`, `d_ball`, `wall_ball` (`LOAD_EQUIPMENT`) → `reps`.
+2. Equipment includes `jump_rope` → `reps`. Single-unders and double-unders are counted as unbroken reps, though the
+   library files them as `monostructural`.
+3. Any pattern is `monostructural` → `time`.
+4. Equipment includes none of `dumbbell`, `kettlebell`, `sandbag`, `d_ball`, `wall_ball` (`LOAD_EQUIPMENT`) → `reps`.
    Every other equipment (`pullup_bar`, `rings`, `box`, `ghd`, `band`, `rope`, `jump_rope`, `bench`, `ramp`, and the
    ergs when the movement is not monostructural) is bodyweight equipment.
-4. Otherwise `null`: the movement accepts no record.
+5. Otherwise `null`: the movement accepts no record.
 
 | Sub-tab | Kind | Fields | Bounds | Better is |
 |---|---|---|---|---|

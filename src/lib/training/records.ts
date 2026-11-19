@@ -10,6 +10,8 @@ export const LOAD_EQUIPMENT = ["dumbbell", "kettlebell", "sandbag", "d_ball", "w
 
 export function recordKind(m: Pick<Movement, "equipment" | "patterns">): RecordKind | null {
   if (m.equipment.includes("barbell")) return "lift";
+  // Rope skips are counted, not timed, though the library files them as monostructural.
+  if (m.equipment.includes("jump_rope")) return "reps";
   if (m.patterns.includes("monostructural")) return "time";
   if (m.equipment.some((e) => (LOAD_EQUIPMENT as readonly string[]).includes(e))) return null;
   return "reps";

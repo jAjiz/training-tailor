@@ -16,6 +16,10 @@ describe("recordKind", () => {
     expect(recordKind({ equipment: [], patterns: ["core"] })).toBe("reps");
   });
 
+  it("counts reps for a jump-rope movement, even when the library calls it monostructural", () => {
+    expect(recordKind({ equipment: ["jump_rope"], patterns: ["monostructural"] })).toBe("reps");
+  });
+
   it("gives no kind to a movement with load equipment other than a barbell", () => {
     expect(recordKind({ equipment: ["dumbbell"], patterns: ["hinge"] })).toBeNull();
     expect(recordKind({ equipment: ["kettlebell", "box"], patterns: ["squat"] })).toBeNull();
