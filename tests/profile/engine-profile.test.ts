@@ -23,7 +23,7 @@ describe("loadEngineProfile", () => {
       ...emptyStoredProfile(), sex: "female",
       benchmarks: [{ movement: "Test Back Squat", kind: "1rm", value: 200, unit: "kg", recordedAt: null }],
     });
-    const at = (movement: string, kind: "lift" | "reps" | "time", fields: object, on = "2026-09-01") =>
+    const at = (movement: string, kind: "lift" | "reps" | "distance" | "time", fields: object, on = "2026-09-01") =>
       ({ athleteId: athlete.id, movement, kind, achievedOn: day(on), ...fields });
     await tdb.prisma.personalRecord.createMany({ data: [
       at("Test Back Squat", "lift", { kg: 95, reps: 3 }, "2026-10-01"),
@@ -33,8 +33,9 @@ describe("loadEngineProfile", () => {
       at("Test Pull-up", "reps", { reps: 8, kg: 20 }),
       at("Test Row", "time", { distanceM: 2000, seconds: 430 }),
       at("Test Row", "time", { distanceM: 2000, seconds: 425 }, "2026-10-03"),
-      // Re-categorised in the library after it was stored: still sent by its stored kind.
-      at("Test DB Snatch", "reps", { reps: 30 }),
+      at("Test Row", "time", { calories: 50, seconds: 160 }),
+      at("Test Walk", "distance", { distanceM: 20 }),
+      at("Test Walk", "distance", { distanceM: 25 }, "2026-10-04"),
     ] });
     const profile = await loadEngineProfile(tdb.prisma, athlete.userId);
     expect(profile.sex).toBe("female");
@@ -43,9 +44,10 @@ describe("loadEngineProfile", () => {
       { movement: "Test Pull-up", kind: "max_reps", value: 20, unit: "reps", addedKg: null, recordedAt: "2026-10-02" },
       { movement: "Test Pull-up", kind: "max_reps", value: 8, unit: "reps", addedKg: 20, recordedAt: "2026-09-01" },
       { movement: "Test Row", kind: "time", value: 425, unit: "seconds", distanceM: 2000, recordedAt: "2026-10-03" },
-      { movement: "Test DB Snatch", kind: "max_reps", value: 30, unit: "reps", addedKg: null, recordedAt: "2026-09-01" },
+      { movement: "Test Row", kind: "time", value: 160, unit: "seconds", calories: 50, recordedAt: "2026-09-01" },
+      { movement: "Test Walk", kind: "max_distance", value: 25, unit: "meters", recordedAt: "2026-10-04" },
     ]));
-    expect(profile.benchmarks).toHaveLength(5);
+    expect(profile.benchmarks).toHaveLength(6);
   });
 
   it("works without a stored profile or an athlete account", async () => {

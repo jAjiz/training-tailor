@@ -161,8 +161,8 @@ export const TailoringResultSchema = z.object({ ...tailoringFields, blocks: z.ar
 export type TailoringResult = z.infer<typeof TailoringResultSchema>;
 
 // ---- athlete profile ----
-export const BenchmarkKind = z.enum(["1rm", "max_reps", "time"]);
-export const BenchmarkUnit = z.enum(["kg", "lb", "reps", "seconds"]);
+export const BenchmarkKind = z.enum(["1rm", "max_reps", "max_distance", "time"]);
+export const BenchmarkUnit = z.enum(["kg", "lb", "reps", "seconds", "meters"]);
 export const Weekday = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
 export const Sex = z.enum(["male", "female"]);
 export const ScalingLevel = z.enum(["scaled", "intermediate", "rx", "rx_plus"]);
@@ -185,6 +185,7 @@ export const BenchmarkSchema = z.object({
   estimated: z.boolean().optional(), // 1rm: an Epley estimate from a multi-rep lift
   addedKg: z.number().positive().nullable().optional(), // max_reps: the added load, null = bodyweight
   distanceM: z.number().int().positive().optional(), // time: the distance it covers
+  calories: z.number().int().positive().optional(), // time: the calories it covers
 });
 export type Benchmark = z.infer<typeof BenchmarkSchema>;
 
