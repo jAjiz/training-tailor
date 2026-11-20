@@ -945,6 +945,14 @@
     "previousAdaptation": "Adaptación anterior",
     "hidePrevious": "Ocultar adaptación anterior",
     "questionsTitle": "Una pregunta antes de adaptar",
+    "working": "La IA está trabajando",
+    "steps": {
+      "read": "Leer tu mensaje",
+      "adapt": "Adaptar el bloque",
+      "check": "Comprobar que es seguro para ti"
+    },
+    "waitHint": "La IA suele tardar menos de un minuto. No cierres esta ventana.",
+    "slowHint": "Sigue trabajando: algunos bloques tardan un poco más.",
     "stage": {
       "analyzing": "Leyendo tu mensaje…",
       "tailoring": "Adaptando el bloque…",

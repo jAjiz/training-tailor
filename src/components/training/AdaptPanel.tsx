@@ -13,6 +13,7 @@ import type { ClarifyQuestion, Finding } from "@/lib/engine/types";
 import { readEngineOutcome } from "@/lib/engine-events";
 import type { AdaptationMessage } from "@/lib/training/adaptation-types";
 import { AdaptedBlock } from "./AdaptedBlock";
+import { EngineProgress } from "./EngineProgress";
 
 type Props = {
   blockId: string;
@@ -87,10 +88,12 @@ export function AdaptPanel({ blockId, blockTitle, initialMessages, hasAccepted, 
   // A proposal for a block the coach changed can no longer be accepted.
   const [cleared, setCleared] = useState(false);
   const [draft, setDraft] = useState("");
+  // What the athlete just sent, shown at once while the model reads it; it joins `messages` once the server stored it.
+  const [pending, setPending] = useState<AdaptationMessage[]>([]);
   const end = useRef<HTMLDivElement>(null);
   const busy = stage !== null || accepting;
 
-  useEffect(() => { end.current?.scrollIntoView?.({ block: "end" }); }, [messages, questions, stage, error]);
+  useEffect(() => { end.current?.scrollIntoView?.({ block: "end" }); }, [messages, pending, questions, stage, error]);
 
   const latest = cleared ? -1 : messages.findLastIndex((m) => m.role === "proposal");
   const siteOpen = questions.some((q) => q.kind === "site");
@@ -151,16 +154,19 @@ export function AdaptPanel({ blockId, blockTitle, initialMessages, hasAccepted, 
     setError(null);
     setStage("analyzing");
     setCanRetry(false);
+    setPending(sent);
+    if ("text" in body) setDraft("");
     const res = await post("analyze", body);
     const read = typeof res === "string" ? null : await res.json().catch(() => null) as { questions?: ClarifyQuestion[] } | null;
+    setPending([]);
     if (!read?.questions) {
+      if ("text" in body) setDraft(body.text); // nothing was stored: the athlete can send it again
       fail(typeof res === "string" ? res : "engine_failed");
       setStage(null);
       return;
     }
     setMessages((ms) => [...ms, ...sent, ...read.questions!.map((question): AdaptationMessage => ({ role: "question", at: now(), question }))]);
     setQuestions(read.questions);
-    if ("text" in body) setDraft("");
     if (read.questions.length === 0) await tailor();
     else setStage(null);
   }
@@ -221,14 +227,15 @@ export function AdaptPanel({ blockId, blockTitle, initialMessages, hasAccepted, 
         </div>
       )}>
       <div className="flex flex-col gap-4">
-        {messages.length === 0 && <p className="text-[15px] leading-relaxed text-muted">{t("intro")}</p>}
+        {messages.length === 0 && pending.length === 0 && <p className="text-[15px] leading-relaxed text-muted">{t("intro")}</p>}
         {messages.map((m, i) => (
           <Entry key={i} message={m} latest={i === latest} busy={busy} accepting={accepting} onAccept={() => void accept()} />
         ))}
+        {pending.map((m, i) => <Entry key={`pending-${i}`} message={m} latest={false} busy accepting={false} onAccept={() => {}} />)}
         {questions.length > 0 && (
           <Questions key={JSON.stringify(questions)} questions={questions} busy={busy} onSubmit={answer} />
         )}
-        {stage && <p className="text-sm text-muted" aria-live="polite">{t(`stage.${stage}`)}</p>}
+        {stage && <EngineProgress stage={stage} />}
         {error && <p role="alert" className="text-sm text-danger">{t(`errors.${error}`)}</p>}
         {canRetry && !busy && (
           <Button type="button" size="sm" className="self-start" onClick={retry}>{t("retry")}</Button>

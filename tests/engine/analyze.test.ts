@@ -144,20 +144,25 @@ describe("analyzeBlock", () => {
 
   it("sends the coach metadata as context outside the SESSION", async () => {
     const provider = new FakeProvider({ BlockAnalysis: draft() });
-    await analyzeBlock(provider, blockText, domain, null, "for_time", { title: "Test Strength", scoring: "for_time", timeCapMinutes: 10 });
+    await analyzeBlock(provider, blockText, domain, null, "for_time", {
+      title: "Test Strength", scoring: "for_time", timeCapMinutes: 10, coachingTips: "Keep it fast\nTest note",
+    });
     const { prompt, systemPrompt } = provider.calls[0];
     const metadata = prompt.indexOf("COACH METADATA");
     const session = prompt.indexOf("SESSION:");
     expect(metadata).toBeGreaterThan(-1);
     expect(metadata).toBeLessThan(session);
     expect(prompt.slice(metadata, session)).toMatch(/Test Strength[\s\S]*for_time[\s\S]*10 min/);
-    expect(prompt.slice(session)).not.toMatch(/Test Strength|for_time|10 min/);
+    expect(prompt.slice(metadata, session)).toContain('- coaching tips: """Keep it fast\nTest note"""');
+    expect(prompt.slice(session)).not.toMatch(/Test Strength|for_time|10 min|Keep it fast/);
+    expect(systemPrompt).toMatch(/COACH METADATA[^\n]*coaching tips[^\n]*"stimulus"/);
+    expect(systemPrompt).toMatch(/never copy them into "coachingNotes"/); // tips reach the tailoring once, as COACH INTENT
     expect(systemPrompt).toMatch(/COACH METADATA[^\n]*never part of any "rawText"/);
   });
 
   it("sends no metadata section when there is none", async () => {
     const provider = new FakeProvider({ BlockAnalysis: draft() });
-    await analyzeBlock(provider, blockText, domain, null);
+    await analyzeBlock(provider, blockText, domain, null, "other", { title: null, scoring: null, timeCapMinutes: null, coachingTips: null });
     expect(provider.calls[0].prompt).not.toContain("COACH METADATA:");
   });
 

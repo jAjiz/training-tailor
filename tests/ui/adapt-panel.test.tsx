@@ -108,6 +108,25 @@ describe("AdaptPanel", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  it("shows the athlete's message and the model's progress at once, while the model runs", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {}))); // the model never answers
+    open();
+    send("Test my knee hurts");
+    expect(await screen.findByText("Test my knee hurts")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(en.adapt.stage.analyzing);
+    expect(screen.getByRole("textbox", { name: en.adapt.inputLabel })).toHaveValue("");
+  });
+
+  it("gives the message back to the box when the run fails", async () => {
+    mockFetch(json({ error: "quota_exceeded" }, 429));
+    open();
+    send("Test my knee hurts");
+    expect(await screen.findByText(en.adapt.errors.quota_exceeded)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: en.adapt.inputLabel })).toHaveValue("Test my knee hurts");
+    expect(screen.queryByText("Test my knee hurts", { selector: "p" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("renders a site question and posts the chosen answer", async () => {
     const question: ClarifyQuestion = {
       kind: "site", restriction: 0, site: "knee", side: null, evidence: "Test my knee hurts",

@@ -12,12 +12,14 @@ import {
   emptyRequest, type AthleteProfile, type ClarifyQuestion, type ConfirmedCondition, type PipelineResult, type Restriction,
   type StructuredWorkout,
 } from "@/lib/engine/types";
+import type { CoachIntent } from "@/lib/engine/tailor";
 import { toJson } from "@/lib/json";
 import {
   AcceptedAdaptation, AdaptationMessage, AdaptationState, type AdaptationSnapshot, type AdaptMessageInput,
 } from "../adaptation-types";
 import { applyAthleteLoads, contentHash, lockedFormatsFor, workoutHash } from "../block-engine";
 import { TrainingError } from "../errors";
+import { weekIndexOf } from "../dates";
 import { ensureBlockAnalysis } from "./block-analysis";
 import { oneRmMap } from "./prs";
 import { getAdaptableBlock } from "./tailoring";
@@ -234,6 +236,20 @@ async function tailorable(db: Db, athlete: AthleteRef, blockId: string, now: Dat
   return { block, messages: current.messages, state };
 }
 
+const textOrNull = (t: string | null | undefined) => t?.trim() || null;
+
+/** The coach's intent around a block: its tips and its day's and week's notes, read now so every run sees the latest. */
+async function coachIntentFor(
+  db: Db, block: { programId: string; dayIndex: number; coachingTips: string | null },
+): Promise<CoachIntent> {
+  const { programId, dayIndex } = block;
+  const [day, week] = await Promise.all([
+    db.dayNote.findUnique({ where: { programId_dayIndex: { programId, dayIndex } } }),
+    db.weekNote.findUnique({ where: { programId_weekIndex: { programId, weekIndex: weekIndexOf(dayIndex) } } }),
+  ]);
+  return { blockTips: textOrNull(block.coachingTips), dayNote: textOrNull(day?.body), weekNote: textOrNull(week?.body) };
+}
+
 /** Whether the next run is the first proposal (`tailor`) or a refinement (`refine`); throws what adaptTailor would refuse. */
 export async function adaptTailorKind(
   db: Db, athlete: AthleteRef, blockId: string, now: Date = new Date(),
@@ -259,6 +275,7 @@ export async function adaptTailor(
   const common = {
     confirmed: state.conditions, restrictions: state.restrictions, unavailableEquipment: state.unavailableEquipment,
     profile: ctx.profile, domain: ctx.domain, onProgress: ctx.onProgress, locale: ctx.locale, lockedFormats: lockedFormatsFor(block.scoring),
+    coachIntent: await coachIntentFor(db, block),
   };
   const at = now.toISOString();
   let result: PipelineResult;

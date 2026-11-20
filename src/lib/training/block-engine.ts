@@ -30,8 +30,9 @@ function workoutFields(b: BlockFields) {
  * Bump it when that changes so stored analyses are redone. It is part of contentHash only, never of workoutHash: an
  * accepted adaptation must not go stale because the analysis input changed.
  * 2: title, scoring and time cap moved out of the analyzed text into the coach metadata.
+ * 3: coaching tips in the coach metadata.
  */
-const ANALYSIS_FORMAT_VERSION = 2;
+const ANALYSIS_FORMAT_VERSION = 3;
 
 /** Hash of everything the coach wrote for a block, plus the analysis format; position, day and color are not part of it. */
 export const contentHash = (b: BlockFields): string =>
@@ -51,12 +52,13 @@ export function blockAnalysisText(b: BlockFields, locale: string): string {
   return lines.filter((l): l is string => !!l).join("\n");
 }
 
-/** Title, scoring and time cap: context for the analysis (format, time domain), never part of the analyzed text. */
+/** Title, scoring, time cap and tips: context for the analysis (format, time domain, stimulus), never part of the analyzed text. */
 export function blockMetadata(b: BlockFields): BlockMetadata {
   return {
     title: b.title,
     scoring: b.scoring !== null && b.scoring !== "none" ? b.scoring : null,
     timeCapMinutes: b.timeCapSeconds !== null ? Math.round(b.timeCapSeconds / 60) : null,
+    coachingTips: b.coachingTips?.trim() || null,
   };
 }
 

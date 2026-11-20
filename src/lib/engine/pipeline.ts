@@ -9,7 +9,7 @@ import { activateConditions, profileConditionRefs, restrictionConditions } from 
 import {
   availableEquipment, goalFamily, missingEquipment, planComponents, type ComponentPlan, type PlanContext,
 } from "./plan";
-import { tailor, type TailorInput } from "./tailor";
+import { tailor, type CoachIntent, type TailorInput } from "./tailor";
 import {
   REMOVED_MOVEMENT,
   type AthleteProfile, type BlockFormat, type ConditionRef, type ConfirmedCondition, type FeedbackAnalysis, type Finding,
@@ -40,6 +40,7 @@ export class EngineEmptyError extends Error {
 interface TailorOptions {
   locale: "es" | "en";
   lockedFormats: BlockFormat[] | null;
+  coachIntent: CoachIntent | null; // read fresh for every run, so a refinement sees the coach's latest notes
 }
 
 export interface AnalyzeArgs {
@@ -192,7 +193,7 @@ async function tailorAndValidate(
     plan: forceReplacements(planComponents(s.original, planContext), s.restrictions, planContext),
     goal: goalFamily(s.request.targetMovement, planContext), equipment, movements: domain.movements,
     conversions: domain.conversions, previousAttempt: s.previousAttempt, violations: [],
-    locale: s.locale, lockedFormats: s.lockedFormats,
+    locale: s.locale, lockedFormats: s.lockedFormats, coachIntent: s.coachIntent,
   };
   const validate = (result: TailoringResult) => validateTailoring({
     original: s.original, result, movements: domain.movements, active, equipment,
@@ -263,7 +264,7 @@ export async function runTailorPipeline(provider: LlmProvider, args: PipelineArg
   const { result, findings } = await tailorAndValidate(provider, {
     original: args.original, refs, catalogActive: active, restrictions: args.restrictions,
     unavailable: args.unavailableEquipment, profile: args.profile, request: args.request, domain: args.domain,
-    previousAttempt: null, progress, locale: args.locale, lockedFormats: args.lockedFormats,
+    previousAttempt: null, progress, locale: args.locale, lockedFormats: args.lockedFormats, coachIntent: args.coachIntent,
   });
   return {
     original: args.original, conditions: refs, restrictions: args.restrictions, unavailableEquipment: args.unavailableEquipment,
@@ -285,7 +286,7 @@ export async function runRefinePipeline(provider: LlmProvider, args: RefineArgs)
   const { result, findings } = await tailorAndValidate(provider, {
     original: args.previous.original, refs, catalogActive: active, restrictions, unavailable, profile: args.profile,
     request: args.request, domain: args.domain, previousAttempt: { result: args.previous.tailored, feedbackHistory }, progress,
-    locale: args.locale, lockedFormats: args.lockedFormats,
+    locale: args.locale, lockedFormats: args.lockedFormats, coachIntent: args.coachIntent,
   });
   return {
     original: args.previous.original, conditions: refs, restrictions, unavailableEquipment: unavailable,
