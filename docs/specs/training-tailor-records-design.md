@@ -77,16 +77,17 @@ type RecordGroup<E> = { label: { en: string; es: string }; entries: E[] };
 - Assisted (negative) load is out of scope.
 - The targets are checked on the server only, so editing the catalog needs no migration.
 
-### Movements outside the catalog
+### Records always match the catalog
 
-- `/prs` lists only catalog entries. `/prs/[movement]` is a 404 for a movement outside the catalog.
-- Rows of a movement that leaves the catalog are kept but hidden, and the engine doesn't receive them. If it comes
-  back, they show again.
-- A row whose kind no longer matches its entry (the admin moved it between sub-tabs) is shown on the movement page,
-  read-only and deletable, under the stored kind. The add form follows the entry.
-- A row of the right kind whose fields no longer fit the entry (a target the entry dropped, a load on an entry no
-  longer weighted) is still a real mark: it counts for the bests, the list summary and the engine. Only the add form
-  follows the entry. My call.
+The app is in development, so records that no longer fit are deleted rather than kept around:
+
+- At publish, inside the publish transaction, every record is deleted when its movement is not in the new catalog, its
+  kind is not the entry's kind, or its fields don't fit the entry (a target the entry no longer lists, a load on an
+  entry that is not `weighted`). Renames are applied first, so a renamed movement keeps its records.
+- Before publishing, the draft's findings include a warning with how many records that publish would delete, per
+  movement.
+- So every stored record matches the published catalog, and the list, the movement page and the engine read records
+  with no filtering or fallbacks. `/prs/[movement]` is a 404 for a movement outside the catalog.
 - The log's PR offer only appears for a lift in the catalog.
 - My call: a coach can still program percentage sets on any barbell movement. When it's outside the catalog the athlete
   has no 1RM for it, so the load shows as a percentage only, as it does today for an athlete with no 1RM.
@@ -115,8 +116,7 @@ closed beta.
 
 `PersonalRecord` has typed columns:
 
-- `kind`, an enum `lift | reps | distance | time`. It is stored on the row, so moving a movement in the catalog doesn't
-  change what its history means.
+- `kind`, an enum `lift | reps | distance | time`, always the kind of the movement's catalog entry.
 - `kg Float?`, `reps Int?`, `distanceM Int?`, `calories Int?`, `seconds Int?`.
 - A database check constraint, by kind (each wrapped so a NULL fails it):
   - `lift`: `kg` and `reps` set; the rest null.
@@ -132,7 +132,8 @@ above. This replaces `assertRecordKind`.
 `DomainLibraryVersion` gains `records Json` with an empty catalog as default; `DomainLibrarySchema`, the export format
 and `emptyLibrary()` include it.
 
-The publish's existing `lift_in_use` check stays as it is.
+The publish's `lift_in_use` check now only covers barbell blocks: records follow the catalog, and a `lift` entry must
+be a barbell movement.
 
 ### Approaches considered
 
@@ -237,28 +238,16 @@ tailor prompt's benchmark sentence adds four points:
 
 ## Migration
 
-One Prisma migration in SQL, run on deploy. It needs no library:
+The first records migration has not reached production, so it is rewritten instead of adding a second one. The dev
+database is reset from production before applying it. Old data is dropped rather than converted:
 
-1. Add the enum and the columns. Backfill existing rows as `kind = lift, reps = 1`. Add the check constraint.
-2. For every `AthleteProfile` whose user has an `AthleteAccount`, insert one `PersonalRecord` per `max_reps` benchmark:
-   - `kind = reps`, `reps = floor(value)`, `kg = null`;
-   - `achievedOn = recordedAt`, or the migration date when `recordedAt` is missing;
-   - skip entries where `floor(value) < 1`;
-   - copy duplicates as they are, since they become history.
-
-   Every `max_reps` entry is copied whatever its movement. A row on a movement outside the catalog falls under
-   "Movements outside the catalog": kept and hidden.
-3. Drop `time` benchmarks (they have no distance; dropping them was agreed for the closed beta) and stored `1rm`
-   benchmarks (already ignored). Drop the benchmarks of profiles with no `AthleteAccount`: those users have no records
-   page and already get no PR-based benchmarks.
-4. Remove the `benchmarks` key from every profile's JSON.
-
-A second migration, for the catalog (the first one is already applied on the dev database, so it is not edited):
-
-1. Add `distance` to the `RecordKind` enum and the `calories Int?` column, and replace the check constraint with the one
-   above. Existing rows already satisfy it.
-2. Add `records Json` to `DomainLibraryVersion`, defaulting to an empty catalog
+1. Create the `RecordKind` enum (`lift | reps | distance | time`), add the columns and make `kg` nullable. Backfill
+   existing rows as `kind = lift, reps = 1`. Add the check constraint.
+2. Remove the `benchmarks` key from every profile's JSON. Max reps and times stored there are dropped, not converted.
+3. Add `records Json` to `DomainLibraryVersion`, defaulting to an empty catalog
    (`{"lift":[],"gymnastics":[],"cardio":[]}`), so every existing version parses.
+
+The existing 1RMs survive until the first publish with a catalog, which deletes those outside it.
 
 ## Left to the builder
 
