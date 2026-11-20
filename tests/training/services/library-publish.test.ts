@@ -6,7 +6,7 @@ import type { DomainLibrary } from "@/lib/domain/library";
 import { emptyProfile, type AthleteProfile } from "@/lib/engine/types";
 import { toJson } from "@/lib/json";
 import {
-  deleteMovement, importLibrary, listVersions, openDraft, readDraft, renameMovement, saveMovement,
+  deleteMovement, importLibrary, listVersions, openDraft, readDraft, renameMovement, saveDocument, saveMovement,
 } from "@/lib/training/services/library";
 import { publishDraft } from "@/lib/training/services/library-publish";
 
@@ -15,6 +15,8 @@ beforeAll(async () => { tdb = await createTestDb({ library: false }); }, 60_000)
 afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
 
+const label = { en: "Test", es: "Test" };
+
 function testLibrary(): DomainLibrary {
   const base = testDomain({
     movements: [
@@ -22,6 +24,7 @@ function testLibrary(): DomainLibrary {
       testMovement("Test Press", { substitutes: ["Test Squat"] }),
     ],
     contraindications: [testContraindication("test_knee", { avoidMovements: ["Test Press"] })],
+    records: { lift: [{ label, entries: [{ movement: "Test Squat" }] }], gymnastics: [], cardio: [] },
   });
   return { ...base, expectations: [], evalCases: [] };
 }
@@ -41,7 +44,13 @@ async function publishLive(admin: { id: string }, library: DomainLibrary = testL
   expect(outcome.ok).toBe(true);
 }
 
-// Rows are written with prisma: the PR service still checks lifts against the files, which know no `Test ` names.
+async function makeBlock(movement: string) {
+  const coach = await makeCoach(tdb.prisma);
+  const program = await makeContinuous(tdb.prisma, coach.id);
+  return makeBarbellBlock(tdb.prisma, program.id, 0, movement);
+}
+
+// Rows are written with prisma, to store rows the published catalog may not accept.
 async function makePr(movement: string) {
   const athlete = await makeAthlete(tdb.prisma);
   await tdb.prisma.personalRecord.create({
@@ -101,10 +110,10 @@ describe("publishDraft", () => {
     expect(await state()).toEqual({ ...before, draftVersionId: draft.id });
   });
 
-  it("refuses removing a movement a PR uses, unless a rename covers it", async () => {
+  it("refuses removing a movement a barbell block uses", async () => {
     const admin = await makeAdmin(tdb.prisma);
     await publishLive(admin);
-    await makePr("Test Squat");
+    await makeBlock("Test Squat");
 
     const draft = await openDraft(tdb.prisma, admin.id);
     const removed = await deleteMovement(tdb.prisma, admin.id, { revision: draft.revision, name: "Test Squat" });
@@ -128,7 +137,7 @@ describe("publishDraft", () => {
   it("refuses a rename whose target is deleted", async () => {
     const admin = await makeAdmin(tdb.prisma);
     await publishLive(admin);
-    await makePr("Test Squat");
+    await makeBlock("Test Squat");
     const draft = await openDraft(tdb.prisma, admin.id);
     const renamedRevision = await renameMovement(tdb.prisma, admin.id, {
       revision: draft.revision, from: "Test Squat", to: "Test Deep Squat",
@@ -151,21 +160,78 @@ describe("publishDraft", () => {
     expect(row.movements).toHaveLength(2);
   });
 
-  it("publishes with reps records on a non-lift movement", async () => {
-    const admin = await makeAdmin(tdb.prisma);
-    await publishLive(admin);
-    const athlete = await makeAthlete(tdb.prisma);
-    await tdb.prisma.personalRecord.create({
-      data: { athleteId: athlete.id, movement: "Test Press", kind: "reps", reps: 12, achievedOn: new Date("2026-10-01T00:00:00Z") },
-    });
-    const draft = await openDraft(tdb.prisma, admin.id);
-    expect(await publishDraft(tdb.prisma, admin.id, publishInput(draft.revision))).toEqual({ ok: true, number: 2 });
-  });
-
-  it("refuses turning a lift with PRs into a non-lift", async () => {
+  it("warns about records outside the new catalog and deletes them on publish", async () => {
     const admin = await makeAdmin(tdb.prisma);
     await publishLive(admin);
     await makePr("Test Squat");
+    const draft = await openDraft(tdb.prisma, admin.id);
+    const revision = await saveDocument(tdb.prisma, admin.id, {
+      revision: draft.revision, document: "records", value: { lift: [], gymnastics: [], cardio: [] },
+    });
+    const warned = await publishDraft(tdb.prisma, admin.id, publishInput(revision, { acceptWarnings: false }));
+    expect(warned.ok).toBe(false);
+    if (warned.ok) return;
+    expect(warned.findings).toContainEqual(expect.objectContaining({ level: "warning", code: "records_deleted", ref: "Test Squat" }));
+    expect(await tdb.prisma.personalRecord.count()).toBe(1);
+    expect((await publishDraft(tdb.prisma, admin.id, publishInput(revision))).ok).toBe(true);
+    expect(await tdb.prisma.personalRecord.count()).toBe(0);
+  });
+
+  it("deletes records that no longer fit their entry and keeps the rest", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    const library = testLibrary();
+    library.movements.push(testMovement("Test Erg", { patterns: ["monostructural"], substitutes: ["Test Press"] }));
+    library.records.cardio = [{ label, entries: [{ movement: "Test Erg", targets: [{ distanceM: 500 }, { calories: 50 }] }] }];
+    await publishLive(admin, library);
+    const athlete = await makeAthlete(tdb.prisma);
+    const day = new Date("2026-10-01T00:00:00Z");
+    await tdb.prisma.personalRecord.createMany({ data: [
+      { athleteId: athlete.id, movement: "Test Erg", kind: "time", distanceM: 500, seconds: 95, achievedOn: day },
+      { athleteId: athlete.id, movement: "Test Erg", kind: "time", calories: 50, seconds: 160, achievedOn: day },
+      { athleteId: athlete.id, movement: "Test Squat", kind: "reps", reps: 5, achievedOn: day },
+    ] });
+    const draft = await openDraft(tdb.prisma, admin.id);
+    const revision = await saveDocument(tdb.prisma, admin.id, {
+      revision: draft.revision, document: "records",
+      value: { ...library.records, cardio: [{ label, entries: [{ movement: "Test Erg", targets: [{ calories: 50 }] }] }] },
+    });
+    expect((await publishDraft(tdb.prisma, admin.id, publishInput(revision))).ok).toBe(true);
+    const left = await tdb.prisma.personalRecord.findMany({ select: { movement: true, calories: true } });
+    expect(left).toEqual([{ movement: "Test Erg", calories: 50 }]);
+  });
+
+  it("keeps the records of a movement renamed in the same publish", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    await publishLive(admin);
+    await makePr("Test Squat");
+    const draft = await openDraft(tdb.prisma, admin.id);
+    const revision = await renameMovement(tdb.prisma, admin.id, { revision: draft.revision, from: "Test Squat", to: "Test Deep Squat" });
+    const warned = await publishDraft(tdb.prisma, admin.id, publishInput(revision, { acceptWarnings: false }));
+    expect(warned.ok ? [] : warned.findings.map((f) => f.code)).not.toContain("records_deleted");
+    expect(await publishDraft(tdb.prisma, admin.id, publishInput(revision))).toEqual({ ok: true, number: 2 });
+    expect((await tdb.prisma.personalRecord.findFirstOrThrow()).movement).toBe("Test Deep Squat");
+  });
+
+  it("doesn't count lift records as uses of a barbell movement", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    const library = testLibrary();
+    library.movements.push(testMovement("Test Clean", { equipment: ["barbell"], substitutes: ["Test Squat"] }));
+    await publishLive(admin, library);
+    await makePr("Test Clean");
+    const draft = await openDraft(tdb.prisma, admin.id);
+    const revision = await saveMovement(tdb.prisma, admin.id, {
+      revision: draft.revision, originalName: "Test Clean",
+      movement: testMovement("Test Clean", { equipment: [], substitutes: ["Test Squat"] }),
+    });
+    const outcome = await publishDraft(tdb.prisma, admin.id, publishInput(revision));
+    expect(outcome.ok).toBe(true);
+    expect(await tdb.prisma.personalRecord.count()).toBe(0);
+  });
+
+  it("refuses turning a lift with barbell blocks into a non-lift", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    await publishLive(admin);
+    await makeBlock("Test Squat");
     const draft = await openDraft(tdb.prisma, admin.id);
     const revision = await saveMovement(tdb.prisma, admin.id, {
       revision: draft.revision, originalName: "Test Squat",
@@ -182,7 +248,7 @@ describe("publishDraft", () => {
     await publishLive(admin);
     const draft = await openDraft(tdb.prisma, admin.id);
     const revision = await deleteMovement(tdb.prisma, admin.id, { revision: draft.revision, name: "Test Squat" });
-    await makePr("Test Squat");
+    await makeBlock("Test Squat");
     const outcome = await publishDraft(tdb.prisma, admin.id, publishInput(revision));
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
