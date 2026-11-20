@@ -71,6 +71,7 @@ export function serviceLibrary(): DomainLibrary {
         testMovement("Test Row", { patterns: ["monostructural"], equipment: ["rower"] }),
         testMovement("Test DB Snatch", { patterns: ["olympic"], equipment: ["dumbbell"] }),
         testMovement("Test Walk", { patterns: ["carry"] }),
+        testMovement("Test Bench Press", { patterns: ["horizontal_push"], equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
       ],
       contraindications: [testContraindication("test_injury")],
       records: {

@@ -8,23 +8,23 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/controls";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Segmented } from "@/components/ui/Segmented";
-import type { RecordKind } from "@/lib/training/records";
+import type { RecordTab } from "@/lib/training/records";
 
 export type RecordRow = { name: string; summary: string | null; estimated: boolean };
 export type RecordGroup = { label: string | null; movements: RecordRow[] };
-export type RecordTabs = Record<RecordKind, RecordGroup[]>;
+export type RecordTabs = Record<RecordTab, RecordGroup[]>;
 
-const KINDS: RecordKind[] = ["lift", "reps", "time"];
-const kindOf = (value: string | null): RecordKind => KINDS.find((k) => k === value) ?? "lift";
+const TABS: RecordTab[] = ["lift", "gymnastics", "cardio"];
+const tabOf = (value: string | null): RecordTab => TABS.find((k) => k === value) ?? "lift";
 
 /**
- * The records list, one sub-tab per kind. The open tab lives in `?tab=` and is read from the URL, so going back (which
+ * The records list, one sub-tab per catalog tab. The open tab lives in `?tab=` and is read from the URL, so going back (which
  * can restore a page rendered for another tab) and links keep it.
  */
 export function PrList({ tabs }: { tabs: RecordTabs }) {
   const t = useTranslations("prs");
-  const fromUrl = kindOf(useSearchParams().get("tab"));
-  const [tab, setTab] = useState<RecordKind>(fromUrl);
+  const fromUrl = tabOf(useSearchParams().get("tab"));
+  const [tab, setTab] = useState<RecordTab>(fromUrl);
   const [seen, setSeen] = useState(fromUrl);
   if (seen !== fromUrl) {
     setSeen(fromUrl);
@@ -36,14 +36,14 @@ export function PrList({ tabs }: { tabs: RecordTabs }) {
     .map((g) => ({ ...g, movements: g.movements.filter((m) => m.name.toLowerCase().includes(q)) }))
     .filter((g) => g.movements.length > 0);
 
-  function open(next: RecordKind) {
+  function open(next: RecordTab) {
     setTab(next);
     window.history.replaceState(null, "", `?tab=${next}`);
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <Segmented label={t("tabsLabel")} value={tab} onChange={open} options={KINDS.map((k) => ({ value: k, label: t(`tabs.${k}`) }))} />
+      <Segmented label={t("tabsLabel")} value={tab} onChange={open} options={TABS.map((k) => ({ value: k, label: t(`tabs.${k}`) }))} />
       <Input type="search" aria-label={t("search")} placeholder={t("search")} value={query} onChange={(e) => setQuery(e.target.value)} />
       {visible.length === 0 && <EmptyState>{t("noResults")}</EmptyState>}
       {visible.map((g, i) => (

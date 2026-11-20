@@ -109,6 +109,12 @@ describe("results", () => {
     expect((await getMyResult(tdb.prisma, ana.id, squat.id))?.division).toBe("rx");
   });
 
+  it("offers no record for a barbell movement outside the records catalog", async () => {
+    const { program, ana } = await setup();
+    const bench = await makeBarbellBlock(tdb.prisma, program.id, 2, "Test Bench Press", [{ reps: 1, percent: null, kg: 100 }]);
+    expect((await log(ana, bench.id, { sets: [{ kg: 100, reps: 1 }] })).singlePrompt).toBeNull();
+  });
+
   it("deletes a result and counts the day's scores", async () => {
     const { program, ana, ben, wod } = await setup();
     await log(ana, wod.id, { seconds: 640 });

@@ -241,8 +241,8 @@
     "tabsLabel": "Record type",
     "tabs": {
       "lift": "Lifts",
-      "reps": "Gymnastics",
-      "time": "Cardio"
+      "gymnastics": "Gymnastics",
+      "cardio": "Cardio"
     },
     "estimated": "estimated",
     "bodyweight": "Bodyweight",
@@ -250,12 +250,14 @@
     "repsCount": "{reps} reps",
     "reps": "Reps",
     "addedLoad": "Added load (kg)",
-    "distance": "Distance",
     "time": "Time",
     "timeHint": "m:ss",
     "bestByReps": "Best by reps",
     "bestByLoad": "Best by load",
-    "bestByDistance": "Best by distance"
+    "target": "Target",
+    "distanceRecord": "Metres",
+    "bestDistance": "Longest",
+    "bestByTarget": "Best by target"
   },
   "patterns": {
     "squat": "Squats",

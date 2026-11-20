@@ -7,7 +7,8 @@ import { activeAthleteIn, athleteTimeline, hasLeaderboard } from "../access";
 import { addDays, canLogDay, dateOfDay, fromDbDate, isDayVisible, toDbDate, todayIn, type IsoDate } from "../dates";
 import { TrainingError } from "../errors";
 import { rank } from "../leaderboard";
-import { bestSetAbove } from "../records";
+import { getDomainData } from "@/lib/domain/repository";
+import { bestSetAbove, findRecordEntry } from "../records";
 import type { ResultInputValue } from "../schemas";
 import { evaluateScore, formatScore, scoreTarget, type BarbellResult } from "../scoring";
 import { getAdaptation, snapshotOf } from "./adaptations";
@@ -80,7 +81,9 @@ export async function saveResult(db: Db, athlete: AthleteRef, input: ResultInput
   });
 
   let singlePrompt: SinglePrompt | null = null;
-  if (adaptation === null && block.kind === "barbell" && block.movement) {
+  const catalogLift = block.kind === "barbell" && block.movement !== null
+    && findRecordEntry((await getDomainData(db)).records, block.movement)?.kind === "lift";
+  if (adaptation === null && catalogLift && block.movement) {
     const best = bestSetAbove((evaluated.score as BarbellResult).sets, await liftRows(db, athlete.id, block.movement));
     if (best !== null) singlePrompt = { movement: block.movement, ...best };
   }

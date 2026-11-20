@@ -241,8 +241,8 @@
     "tabsLabel": "Tipo de marca",
     "tabs": {
       "lift": "Levantamientos",
-      "reps": "Gimnásticos",
-      "time": "Cardio"
+      "gymnastics": "Gimnásticos",
+      "cardio": "Cardio"
     },
     "estimated": "estimado",
     "bodyweight": "Peso corporal",
@@ -250,12 +250,14 @@
     "repsCount": "{reps} reps",
     "reps": "Repeticiones",
     "addedLoad": "Lastre (kg)",
-    "distance": "Distancia",
     "time": "Tiempo",
     "timeHint": "m:ss",
     "bestByReps": "Mejor por repeticiones",
     "bestByLoad": "Mejor por lastre",
-    "bestByDistance": "Mejor por distancia"
+    "target": "Objetivo",
+    "distanceRecord": "Metros",
+    "bestDistance": "Máxima distancia",
+    "bestByTarget": "Mejor por objetivo"
   },
   "patterns": {
     "squat": "Sentadillas",
