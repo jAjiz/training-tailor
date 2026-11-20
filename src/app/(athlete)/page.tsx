@@ -9,12 +9,14 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { requireAthletePage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
+import { getDomainData } from "@/lib/domain/repository";
 import { getSessionContext } from "@/lib/session";
 import { formatDay, formatDayRange } from "@/lib/format";
 import { hasLeaderboard } from "@/lib/training/access";
 import { workoutHash } from "@/lib/training/block-engine";
 import { addDays, dateOfDay, isIsoDate, mondayOf, todayIn, weekIndexOf } from "@/lib/training/dates";
 import type { BarbellSet } from "@/lib/training/schemas";
+import { oneRmToAdd } from "@/lib/training/records";
 import { formatScore, scoreTarget } from "@/lib/training/scoring";
 import { listAdaptations } from "@/lib/training/services/adaptations";
 import { getAthleteDay, getAthleteWeekNote, getVisibleDays } from "@/lib/training/services/athlete-view";
@@ -71,10 +73,11 @@ export default async function TodayPage({ searchParams }: Props) {
     if (body) weekNote = { body, title };
   }
   const blockIds = day.blocks.map((b) => b.id);
-  const [dayResults, oneRms, adaptations] = await Promise.all([
+  const [dayResults, oneRms, adaptations, { records: catalog }] = await Promise.all([
     getDayResults(prisma, athlete.id, programId, blockIds),
     oneRmMap(prisma, athlete.id, movements),
     listAdaptations(prisma, athlete.id, blockIds),
+    getDomainData(),
   ]);
   // An impersonation session never runs the engine: it sees accepted adaptations but cannot adapt.
   const adaptable = !impersonating && tailoringOn(day.program) && isAdaptableDay(date, today);
@@ -106,6 +109,7 @@ export default async function TodayPage({ searchParams }: Props) {
           const board = hasLeaderboard(b, day.program);
           const adaptation = adaptations.get(b.id);
           const accepted = adaptation?.accepted ?? null;
+          const missing = oneRmToAdd(b, catalog, (m) => oneRms.has(m));
           return (
             <BlockCard key={b.id} block={{ ...b, sets: b.sets as BarbellSet[] | null }} oneRm={b.movement ? oneRms.get(b.movement) ?? null : null}
               summary={mine ? formatScore(scoreTarget(b), mine.score, locale) : null}
@@ -114,8 +118,8 @@ export default async function TodayPage({ searchParams }: Props) {
                 stale: accepted !== null && accepted.workoutHash !== workoutHash(b),
                 resultAdapted: mine !== undefined && mine.adaptation !== null, messages: adaptation?.messages ?? [],
               }}>
-              {b.kind === "barbell" && b.movement && !oneRms.has(b.movement) && (b.sets as BarbellSet[] | null)?.some((s) => s.percent !== null) && (
-                <Link href={`/prs/${encodeURIComponent(b.movement)}`} className="text-xs text-muted underline">{t("addOneRm", { movement: b.movement })}</Link>
+              {missing && (
+                <Link href={`/prs/${encodeURIComponent(missing)}`} className="text-xs text-muted underline">{t("addOneRm", { movement: missing })}</Link>
               )}
               {(scored && day.loggable) || board ? (
                 <div className="flex gap-2">

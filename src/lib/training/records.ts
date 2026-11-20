@@ -168,3 +168,16 @@ export function formatTarget(target: CardioTarget): string {
   if ("calories" in target) return `${target.calories} cal`;
   return target.distanceM < 1000 ? `${target.distanceM} m` : `${target.distanceM / 1000} km`;
 }
+
+/**
+ * The movement whose 1RM a block asks for and the athlete hasn't recorded: a barbell block on a catalog lift with
+ * percentage sets. Null otherwise, so no link points at a movement that takes no record.
+ */
+export function oneRmToAdd(
+  block: { kind: string; movement: string | null; sets: unknown }, catalog: RecordsCatalog, hasOneRm: (movement: string) => boolean,
+): string | null {
+  if (block.kind !== "barbell" || !block.movement || hasOneRm(block.movement)) return null;
+  if (findRecordEntry(catalog, block.movement)?.kind !== "lift") return null;
+  const sets = Array.isArray(block.sets) ? (block.sets as { percent: number | null }[]) : [];
+  return sets.some((s) => s.percent !== null) ? block.movement : null;
+}

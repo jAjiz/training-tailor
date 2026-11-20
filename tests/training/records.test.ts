@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { RecordsCatalog } from "@/lib/domain/types";
 import {
   bestByLoad, bestByReps, bestByTarget, bestDistance, bestSetAbove, currentOneRm, epley, findRecordEntry, formatDuration,
-  formatTarget, parseDuration, recordEntries, recordFits, type RecordFields,
+  formatTarget, oneRmToAdd, parseDuration, recordEntries, recordFits, type RecordFields,
 } from "@/lib/training/records";
 
 const d = (day: number) => new Date(Date.UTC(2026, 9, day));
@@ -153,5 +153,23 @@ describe("durations", () => {
     expect(parseDuration("7:65")).toBeNull();
     expect(parseDuration("425")).toBeNull();
     expect(parseDuration("0:00")).toBeNull();
+  });
+});
+
+describe("oneRmToAdd", () => {
+  const percent: { reps: number; percent: number | null; kg: number | null }[] = [{ reps: 3, percent: 80, kg: null }];
+  const block = (movement: string | null, sets = percent) => ({ kind: "barbell", movement, sets });
+  const none = () => false;
+
+  it("names a catalog lift with percentage sets and no 1RM", () => {
+    expect(oneRmToAdd(block("Test Squat"), catalog, none)).toBe("Test Squat");
+  });
+
+  it("offers nothing outside the catalog, with a 1RM, or without percentages", () => {
+    expect(oneRmToAdd(block("Test Bench"), catalog, none)).toBeNull();
+    expect(oneRmToAdd(block("Test Pull"), catalog, none)).toBeNull();
+    expect(oneRmToAdd(block("Test Squat"), catalog, () => true)).toBeNull();
+    expect(oneRmToAdd(block("Test Squat", [{ reps: 3, percent: null, kg: 100 }]), catalog, none)).toBeNull();
+    expect(oneRmToAdd({ kind: "custom", movement: "Test Squat", sets: percent }, catalog, none)).toBeNull();
   });
 });
