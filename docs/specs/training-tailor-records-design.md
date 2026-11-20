@@ -19,12 +19,13 @@ This change:
 - Records the AI and the athlete can both read without guessing: a lift has its reps, a cardio time has its distance,
   and a gymnastic set has its added load.
 - The 1RM used for percentage blocks can also come from multi-rep sets, estimated with Epley and labelled as an estimate.
+- Only records that say something about the athlete's fitness and are common benchmarks, chosen in the library.
 
 ## Non-goals
 
 - Benchmark WODs (Fran, Murph…). They are a later phase.
-- Free distances or free rep counts for lifts and cardio: both come from fixed lists.
-- Calories, or metres covered in a set time, as cardio records.
+- Free distances, calories or rep counts for lifts and cardio: they come from fixed lists.
+- Metres or calories covered in a set time as cardio records, and max-time holds as gymnastic records.
 - Coach-side views of records. These stay unchanged: the admin still only counts them.
 - Renaming the route, the `prs` i18n namespace or `pr-actions`. Only the labels change.
 
@@ -33,64 +34,116 @@ This change:
 - An estimate shown or used as if it were a real 1RM.
 - Comparing marks that are not comparable: a 3RM with a 1RM, 18 strict pull-ups with 8 at +20 kg, or a 2 km row with a 5 km row.
 
-## Record kinds
+## The records catalog
 
-The published library decides which kind of record a movement accepts. The athlete never chooses it. One shared
-classifier, `recordKind(movement): "lift" | "reps" | "time" | null`, lives in `src/lib/training/records.ts`. The sub-tabs,
-validation, the detail page and the engine input all use it.
+Not every movement deserves a record. A record is worth keeping when it tells something about the athlete's fitness
+and is a common benchmark: nobody chases a max of air squats or a 1RM of a lunge. So the movements that accept a record
+are chosen by hand, not derived from equipment and patterns.
 
-The rules are applied in this order:
-1. Equipment includes `barbell` → `lift`. This is today's `isLift`.
-2. Equipment includes `jump_rope` → `reps`. Single-unders and double-unders are counted as unbroken reps, though the
-   library files them as `monostructural`.
-3. Any pattern is `monostructural` → `time`.
-4. Equipment includes none of `dumbbell`, `kettlebell`, `sandbag`, `d_ball`, `wall_ball` (`LOAD_EQUIPMENT`) → `reps`.
-   Every other equipment (`pullup_bar`, `rings`, `box`, `ghd`, `band`, `rope`, `jump_rope`, `bench`, `ramp`, and the
-   ergs when the movement is not monostructural) is bodyweight equipment.
-5. Otherwise `null`: the movement accepts no record.
+The choice lives in a new library document, `records`, edited in `/admin/library/documents/records` and published with
+the rest of the library. It is the only source of truth: no list in code, tests or docs (tests use `Test …` fixtures,
+examples use the demo library in `data/sample/library.json`).
 
-| Sub-tab | Kind | Fields | Bounds | Better is |
+```ts
+type RecordsCatalog = {
+  lift: RecordGroup<{ movement: string }>[];
+  gymnastics: RecordGroup<{ movement: string; measure: "reps"; weighted: boolean } | { movement: string; measure: "distance" }>[];
+  cardio: RecordGroup<{ movement: string; targets: ({ distanceM: number } | { calories: number })[] }>[];
+};
+type RecordGroup<E> = { label: { en: string; es: string }; entries: E[] };
+```
+
+- Each sub-tab shows its groups and entries in catalog order. A group's label is shown only when the sub-tab has more
+  than one group.
+- Every entry names a movement of the same library. Renames apply to the catalog at publish, as they do to goals.
+- Validation (a publish error, like the other reference checks):
+  - every movement exists;
+  - a movement appears at most once in the whole catalog;
+  - a `lift` entry is a barbell movement;
+  - a cardio entry has at least one target, targets are positive integers and none repeats.
+- The athlete never chooses the kind: the entry decides it.
+
+### Record kinds
+
+| Sub-tab | Catalog entry | Row kind | Fields | Better is |
 |---|---|---|---|---|
-| Levantamientos | `lift` | `kg` + `reps`, both required | `reps` ∈ `REP_OPTIONS`; `0 < kg ≤ 500` | heavier at the same reps |
-| Gimnásticos | `reps` | `reps` required, `kg` optional (added load; null = bodyweight) | `1 ≤ reps ≤ 500`; `0 < kg ≤ 200` | more reps at the same added load |
-| Cardio | `time` | `distanceM` + `seconds` | `distanceM` ∈ `DISTANCE_OPTIONS`; `1 ≤ seconds ≤ 86400` | lower time at the same distance |
+| Levantamientos | `lift` | `lift` | `kg` + `reps`; `reps` ∈ `REP_OPTIONS`; `0 < kg ≤ 500` | heavier at the same reps |
+| Gimnásticos | `measure: "reps"` | `reps` | `reps` (1–500); `kg` (0–200] only when the entry is `weighted`, else null | more reps at the same added load |
+| Gimnásticos | `measure: "distance"` | `distance` | `distanceM` (1–1000), unbroken | longer |
+| Cardio | `targets` | `time` | `seconds` (1–86400) + exactly one of `distanceM` / `calories`, which must be one of the entry's targets | lower time for the same target |
 
-- `REP_OPTIONS = [1, 2, 3, 5, 8, 10]`. My call: the usual xRM counts, and Epley stays reasonable up to 10.
-- `DISTANCE_OPTIONS = [500, 1000, 2000, 5000, 10000]` metres, the same for every cardio movement. My call.
-- Assisted (negative) load is out of scope. A banded pull-up is a different library movement.
-- The fixed lists are checked on the server only. The database check constraint enforces the field shape per kind and
-  that values are positive. That way, changing a list needs no migration.
+- `REP_OPTIONS = [1, 2, 3, 5, 8, 10]` stays in code: it is a mechanic (Epley stays reasonable up to 10), not library
+  content. `DISTANCE_OPTIONS` and the `recordKind` classifier are removed.
+- Assisted (negative) load is out of scope.
+- The targets are checked on the server only, so editing the catalog needs no migration.
+
+### Movements outside the catalog
+
+- `/prs` lists only catalog entries. `/prs/[movement]` is a 404 for a movement outside the catalog.
+- Rows of a movement that leaves the catalog are kept but hidden, and the engine doesn't receive them. If it comes
+  back, they show again.
+- A row whose kind no longer matches its entry (the admin moved it between sub-tabs) is shown on the movement page,
+  read-only and deletable, under the stored kind. The add form follows the entry.
+- A row of the right kind whose fields no longer fit the entry (a target the entry dropped, a load on an entry no
+  longer weighted) is still a real mark: it counts for the bests, the list summary and the engine. Only the add form
+  follows the entry. My call.
+- The log's PR offer only appears for a lift in the catalog.
+- My call: a coach can still program percentage sets on any barbell movement. When it's outside the catalog the athlete
+  has no 1RM for it, so the load shows as a percentage only, as it does today for an athlete with no 1RM.
+
+### Initial content
+
+The first catalog goes into a library draft on the dev database; the admin reviews it and publishes it. The movements it
+names that the library lacks are added in the same draft, with their stresses, substitutes and contraindication data:
+Sumo Deadlift, Hang Squat Snatch, Muscle Snatch, Muscle Clean, Power Clean & Jerk, Strict Bar Muscle-up, Strict Ring
+Muscle-up and Dip. The entries themselves were agreed in conversation and go straight into that draft; per
+AGENTS.md they are not copied into this document.
+
+My calls on the draft:
+- Group labels: Sentadilla / Squats, Peso muerto / Deadlifts, Presses, Snatch, Clean & Jerk; Con lastre / Weighted,
+  Máximas repeticiones / Max reps, Distancia / Distance. Cardio is a single unlabelled group.
+- The new movements' stresses, substitutes and contraindication data are written by the builder, modelled on their
+  closest existing movements (Deadlift, Hang Power Snatch, Push Press, Bar Muscle-up, Ring Dip…), for the admin to
+  review before publishing.
+- The draft is written with a one-off script kept out of the repo, through the same service the admin editor uses. If
+  an unpublished draft already exists, the catalog is added to it and the admin is told what else it holds.
+
+Until a version with a catalog is published, every sub-tab is empty. Deploying before that publish is acceptable in the
+closed beta.
 
 ## Data model (approach A)
 
-`PersonalRecord` gains typed columns:
+`PersonalRecord` has typed columns:
 
-- `kind`, an enum `lift | reps | time`. It is stored on the row, so re-categorising a movement in the library doesn't
+- `kind`, an enum `lift | reps | distance | time`. It is stored on the row, so moving a movement in the catalog doesn't
   change what its history means.
-- `kg Float?`, `reps Int?`, `distanceM Int?`, `seconds Int?`.
-- A database check constraint, by kind:
-  - `lift`: `kg` and `reps` are set; `distanceM` and `seconds` are null.
-  - `reps`: `reps` is set; `distanceM` and `seconds` are null.
-  - `time`: `distanceM` and `seconds` are set; `kg` and `reps` are null.
+- `kg Float?`, `reps Int?`, `distanceM Int?`, `calories Int?`, `seconds Int?`.
+- A database check constraint, by kind (each wrapped so a NULL fails it):
+  - `lift`: `kg` and `reps` set; the rest null.
+  - `reps`: `reps` set; `distanceM`, `calories`, `seconds` null.
+  - `distance`: `distanceM` set; the rest null.
+  - `time`: `seconds` set and exactly one of `distanceM` / `calories`; `kg` and `reps` null.
   - Every value that is set is greater than 0.
 - The index `[athleteId, movement]` stays.
 
-On insert, the server checks that the row's kind equals `recordKind` of the movement in the published library, and that
-the bounds above hold. This replaces `assertLiftMovement`.
+On insert, the server finds the movement's catalog entry, checks the row's kind and fields against it and the bounds
+above. This replaces `assertRecordKind`.
 
-### When the library changes a movement's kind
+`DomainLibraryVersion` gains `records Json` with an empty catalog as default; `DomainLibrarySchema`, the export format
+and `emptyLibrary()` include it.
 
-A publish is allowed, and the rows keep their stored kind. Everything below reads the stored kind of the rows, not the
-library:
-- A movement shows in the sub-tab of its library kind. It also shows in the sub-tab of any kind it has rows of.
-- `/prs/[movement]` opens if the movement has a library kind or has rows. It shows the rows grouped by their stored
-  kind, and every row can be deleted. The add form only offers the library's current kind; there is no form if that kind is null.
-- The engine input includes rows by their stored kind.
-
-The publish's existing `lift_in_use` check stays as it is. No new publish checks.
+The publish's existing `lift_in_use` check stays as it is.
 
 ### Approaches considered
 
+Which movements accept a record:
+- **Catalog document in the library** (chosen): hand-picked, grouped and ordered by the admin, published and
+  versioned with the rest of the library.
+- **Derived from equipment and patterns** (the first version): no upkeep, but it let in every bodyweight and barbell
+  movement, meaningful or not, and grouped them by pattern.
+- **Record fields on each movement**: no new document, but groups and order would be scattered across movements.
+
+How a row is stored:
 - **A. Typed columns per kind** (chosen): every value has its real type, and the 1RM code keeps reading `kg` with
   `kind = lift`. The cost is nullable columns.
 - **B. Generic `value` + `unit`**: more compact, but every reader has to interpret units, and the 1RM code would depend on `unit = kg`.
@@ -130,16 +183,22 @@ Today `singleAbove` only offers to record a single. It becomes `bestSetAbove(set
 
 - Bottom nav and page title: "Marcas" (en: "Records"). Only the labels change.
 - `/prs` has three sub-tabs: Levantamientos, Gimnásticos, Cardio.
-  - It opens on Levantamientos, and the sub-tab lives in `?tab=lift|reps|time`, so going back and links keep it.
+  - It opens on Levantamientos, and the sub-tab lives in `?tab=lift|gymnastics|cardio`, so going back and links keep it.
   - Search filters the open sub-tab only.
-  - Levantamientos is grouped by pattern, as now. Each row shows the current 1RM, labelled when estimated.
-  - Gimnásticos: each row shows the best bodyweight reps, or the best set with load if there is none at bodyweight.
-  - Cardio: each row shows the best time at the shortest distance recorded, with that distance (for example "2 km · 7:12").
+  - Every sub-tab follows the catalog's groups and order.
+  - Levantamientos: each row shows the current 1RM, labelled when estimated.
+  - Gimnásticos: a reps entry shows the best bodyweight reps, or the best set with load if there is none at bodyweight;
+    a distance entry shows the longest distance.
+  - Cardio: each row shows the best time for the entry's first target that has a record, with that target (for example
+    "2 km · 7:12" or "50 cal · 2:41").
 - `/prs/[movement]` adapts to the kind:
   - lift: the current or estimated 1RM, the best per rep count (1RM, 2RM, 3RM…), the add form (kg + reps select +
     date) and the full history.
-  - reps: the best per added load, bodyweight first; the add form (reps + optional kg + date); the history.
-  - time: the best per distance; the add form (distance select + time as `m:ss` or `h:mm:ss` + date); the history.
+  - reps: the best per added load, bodyweight first; the add form (reps, kg only when the entry is weighted, date);
+    the history.
+  - distance: the longest distance; the add form (metres + date); the history.
+  - time: the best per target; the add form (target select from the entry + time as `m:ss` or `h:mm:ss` + date); the
+    history.
 - The links to a movement's page from the log page keep working as they do today.
 - Profile: the "Marcas" section, its hint and `prsLink` are removed.
 
@@ -149,15 +208,19 @@ Today `singleAbove` only offers to record a single. It becomes `bestSetAbove(set
 - lift: the current 1RM per movement, as `{ kind: "1rm", value, unit: "kg", estimated, recordedAt }`.
 - reps: the best per movement and added load, as `{ kind: "max_reps", value, unit: "reps", addedKg: number | null, recordedAt }`.
   `null` means bodyweight.
-- time: the best per movement and distance, as `{ kind: "time", value, unit: "seconds", distanceM, recordedAt }`.
+- distance: the longest per movement, as `{ kind: "max_distance", value, unit: "meters", recordedAt }`.
+- time: the best per movement and target, as `{ kind: "time", value, unit: "seconds", distanceM | calories, recordedAt }`.
+
+Only rows of movements in the published catalog are sent.
 
 There is no count cap; the closed-beta volumes are small.
 
-`BenchmarkSchema` gains optional `estimated`, `addedKg` and `distanceM`. The tailor prompt's benchmark sentence adds
-three points:
+`BenchmarkSchema` gains optional `estimated`, `addedKg`, `distanceM` and `calories`, and the kind `max_distance`. The
+tailor prompt's benchmark sentence adds four points:
 - an estimated 1RM is a conservative guide;
 - max reps are unbroken reps at the stated added load;
-- a time is for the stated distance.
+- a time is for the stated distance or calories;
+- a max distance is unbroken.
 
 ## Profile schema
 
@@ -183,12 +246,19 @@ One Prisma migration in SQL, run on deploy. It needs no library:
    - skip entries where `floor(value) < 1`;
    - copy duplicates as they are, since they become history.
 
-   Every `max_reps` entry is copied whatever its movement. A row on a movement that isn't gymnastic in the library falls
-   under "When the library changes a movement's kind": it stays visible on its movement page and can be deleted.
+   Every `max_reps` entry is copied whatever its movement. A row on a movement outside the catalog falls under
+   "Movements outside the catalog": kept and hidden.
 3. Drop `time` benchmarks (they have no distance; dropping them was agreed for the closed beta) and stored `1rm`
    benchmarks (already ignored). Drop the benchmarks of profiles with no `AthleteAccount`: those users have no records
    page and already get no PR-based benchmarks.
 4. Remove the `benchmarks` key from every profile's JSON.
+
+A second migration, for the catalog (the first one is already applied on the dev database, so it is not edited):
+
+1. Add `distance` to the `RecordKind` enum and the `calories Int?` column, and replace the check constraint with the one
+   above. Existing rows already satisfy it.
+2. Add `records Json` to `DomainLibraryVersion`, defaulting to an empty catalog
+   (`{"lift":[],"gymnastics":[],"cardio":[]}`), so every existing version parses.
 
 ## Left to the builder
 
