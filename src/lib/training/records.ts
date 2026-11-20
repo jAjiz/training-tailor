@@ -1,25 +1,62 @@
-import type { Movement } from "@/lib/domain/types";
+import type { CardioTarget, RecordsCatalog } from "@/lib/domain/types";
 
-/** What a movement's records hold: a lift (kg × reps), unbroken reps (with optional added load) or a time over a distance. */
-export type RecordKind = "lift" | "reps" | "time";
+/** What a record holds: a lift (kg × reps), unbroken reps (optional added load), unbroken metres, or a time for a target. */
+export type RecordKind = "lift" | "reps" | "distance" | "time";
+export type RecordTab = "lift" | "gymnastics" | "cardio";
 
 export const REP_OPTIONS = [1, 2, 3, 5, 8, 10] as const;
-export const DISTANCE_OPTIONS = [500, 1000, 2000, 5000, 10000] as const;
-/** Equipment that loads a movement: without a barbell, a set's reps mean nothing without its weight. */
-export const LOAD_EQUIPMENT = ["dumbbell", "kettlebell", "sandbag", "d_ball", "wall_ball"] as const;
 
-export function recordKind(m: Pick<Movement, "equipment" | "patterns">): RecordKind | null {
-  if (m.equipment.includes("barbell")) return "lift";
-  // Rope skips are counted, not timed, though the library files them as monostructural.
-  if (m.equipment.includes("jump_rope")) return "reps";
-  if (m.patterns.includes("monostructural")) return "time";
-  if (m.equipment.some((e) => (LOAD_EQUIPMENT as readonly string[]).includes(e))) return null;
-  return "reps";
+/** A movement's entry in the records catalog, with the kind of record it takes. */
+export type RecordEntry =
+  | { tab: "lift"; kind: "lift"; movement: string }
+  | { tab: "gymnastics"; kind: "reps"; movement: string; weighted: boolean }
+  | { tab: "gymnastics"; kind: "distance"; movement: string }
+  | { tab: "cardio"; kind: "time"; movement: string; targets: CardioTarget[] };
+
+/** Every catalog entry, in catalog order. */
+export function recordEntries(catalog: RecordsCatalog): RecordEntry[] {
+  return [
+    ...catalog.lift.flatMap((g) => g.entries.map((e): RecordEntry => ({ tab: "lift", kind: "lift", movement: e.movement }))),
+    ...catalog.gymnastics.flatMap((g) => g.entries.map((e): RecordEntry => (e.measure === "reps"
+      ? { tab: "gymnastics", kind: "reps", movement: e.movement, weighted: e.weighted }
+      : { tab: "gymnastics", kind: "distance", movement: e.movement }))),
+    ...catalog.cardio.flatMap((g) => g.entries.map((e): RecordEntry => ({ tab: "cardio", kind: "time", movement: e.movement, targets: e.targets }))),
+  ];
 }
 
-export function recordKindOf(name: string, movements: readonly Movement[]): RecordKind | null {
-  const m = movements.find((x) => x.name === name);
-  return m ? recordKind(m) : null;
+export function findRecordEntry(catalog: RecordsCatalog, movement: string): RecordEntry | null {
+  return recordEntries(catalog).find((e) => e.movement === movement) ?? null;
+}
+
+export interface RecordFields {
+  kind: RecordKind;
+  kg: number | null;
+  reps: number | null;
+  distanceM: number | null;
+  calories: number | null;
+  seconds: number | null;
+}
+
+/** The target a time row is for, or null when it has none. */
+export function targetOf(row: { distanceM: number | null; calories: number | null }): CardioTarget | null {
+  if (row.distanceM !== null) return { distanceM: row.distanceM };
+  if (row.calories !== null) return { calories: row.calories };
+  return null;
+}
+
+export const sameTarget = (a: CardioTarget, b: CardioTarget) =>
+  ("distanceM" in a && "distanceM" in b && a.distanceM === b.distanceM)
+  || ("calories" in a && "calories" in b && a.calories === b.calories);
+
+/** Whether a stored or new row is one its catalog entry accepts: same kind, load only if weighted, a listed target. */
+export function recordFits(entry: RecordEntry | null, row: RecordFields): boolean {
+  if (!entry || entry.kind !== row.kind) return false;
+  if (entry.kind === "reps") return entry.weighted || row.kg === null;
+  if (entry.kind === "time") {
+    const target = targetOf(row);
+    return target !== null && entry.targets.some((t) => sameTarget(t, target));
+  }
+  return true;
 }
 
 /** Epley 1RM, rounded down to 0.5 kg so an estimate stays conservative. A single is itself. */
@@ -84,14 +121,28 @@ export function bestByLoad<T extends { reps: number; kg: number | null; achieved
   return [...best.values()].sort((a, b) => (a.kg ?? -1) - (b.kg ?? -1));
 }
 
-/** The lowest time per distance, the later on a tie; shortest distance first. */
-export function bestByDistance<T extends { distanceM: number; seconds: number; achievedOn: Date }>(rows: readonly T[]): T[] {
-  const best = new Map<number, T>();
+/** The lowest time per target, the later on a tie, in the order of `targets`; rows at other targets are left out. */
+export function bestByTarget<T extends { distanceM: number | null; calories: number | null; seconds: number; achievedOn: Date }>(
+  rows: readonly T[], targets: readonly CardioTarget[],
+): T[] {
+  return targets.flatMap((target) => {
+    let best: T | null = null;
+    for (const r of rows) {
+      const t = targetOf(r);
+      if (!t || !sameTarget(t, target)) continue;
+      if (!best || r.seconds < best.seconds || (r.seconds === best.seconds && r.achievedOn > best.achievedOn)) best = r;
+    }
+    return best ? [best] : [];
+  });
+}
+
+/** The longest unbroken distance, the later on a tie. */
+export function bestDistance<T extends { distanceM: number; achievedOn: Date }>(rows: readonly T[]): T | null {
+  let best: T | null = null;
   for (const r of rows) {
-    const b = best.get(r.distanceM);
-    if (!b || r.seconds < b.seconds || (r.seconds === b.seconds && r.achievedOn > b.achievedOn)) best.set(r.distanceM, r);
+    if (!best || r.distanceM > best.distanceM || (r.distanceM === best.distanceM && r.achievedOn > best.achievedOn)) best = r;
   }
-  return [...best.values()].sort((a, b) => a.distanceM - b.distanceM);
+  return best;
 }
 
 /** "7:05" or "1:02:05". */
@@ -112,7 +163,8 @@ export function parseDuration(text: string): number | null {
   return total > 0 ? total : null;
 }
 
-/** "500 m", "2 km". */
-export function formatDistance(metres: number): string {
-  return metres < 1000 ? `${metres} m` : `${metres / 1000} km`;
+/** "500 m", "2 km", "50 cal". */
+export function formatTarget(target: CardioTarget): string {
+  if ("calories" in target) return `${target.calories} cal`;
+  return target.distanceM < 1000 ? `${target.distanceM} m` : `${target.distanceM / 1000} km`;
 }

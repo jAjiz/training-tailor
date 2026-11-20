@@ -49,17 +49,9 @@ describe("records migration", () => {
     expect(rows).toEqual([{ kind: "lift", reps: 1, kg: 100 }]);
   });
 
-  it("copies whole max reps of athletes into records and drops the rest", async () => {
-    const { rows } = await db.query<{ movement: string; reps: number; kg: number | null; achievedOn: Date; today: boolean }>(
-      `SELECT "movement", "reps", "kg", "achievedOn", "achievedOn" = CURRENT_DATE AS today
-       FROM "PersonalRecord" WHERE "kind" = 'reps' ORDER BY "movement"`,
-    );
-    expect(rows.map((r) => [r.movement, r.reps, r.kg, r.today])).toEqual([
-      ["Test Dip", 15, null, true], ["Test Pull", 18, null, false], ["Test Push", 12, null, true],
-    ]);
-    expect(rows[1].achievedOn.toISOString().slice(0, 10)).toBe("2026-10-01");
-    const { rows: all } = await db.query(`SELECT count(*)::int AS n FROM "PersonalRecord"`);
-    expect(all).toEqual([{ n: 4 }]); // nothing for the user without an athlete account
+  it("drops profile benchmarks instead of converting them", async () => {
+    const { rows } = await db.query(`SELECT count(*)::int AS n FROM "PersonalRecord"`);
+    expect(rows).toEqual([{ n: 1 }]);
   });
 
   it("removes benchmarks from every profile and keeps the rest", async () => {
@@ -84,5 +76,24 @@ describe("records migration", () => {
       `INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "seconds", "achievedOn")
        VALUES ('nodist', 'a1', 'Test Row', 'time', 420, '2026-10-01')`,
     )).rejects.toThrow(/PersonalRecord_kind_fields/);
+    await expect(db.exec(
+      `INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "distanceM", "calories", "seconds", "achievedOn")
+       VALUES ('both', 'a1', 'Test Row', 'time', 2000, 50, 420, '2026-10-01')`,
+    )).rejects.toThrow(/PersonalRecord_kind_fields/);
+    await expect(db.exec(
+      `INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "distanceM", "reps", "achievedOn")
+       VALUES ('walkreps', 'a1', 'Test Walk', 'distance', 25, 3, '2026-10-01')`,
+    )).rejects.toThrow(/PersonalRecord_kind_fields/);
+  });
+
+  it("accepts calorie times and distances", async () => {
+    await db.exec(
+      `INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "calories", "seconds", "achievedOn")
+       VALUES ('cal', 'a1', 'Test Row', 'time', 50, 160, '2026-10-01');
+       INSERT INTO "PersonalRecord" ("id", "athleteId", "movement", "kind", "distanceM", "achievedOn")
+       VALUES ('walk', 'a1', 'Test Walk', 'distance', 25, '2026-10-01');`,
+    );
+    const { rows } = await db.query(`SELECT count(*)::int AS n FROM "PersonalRecord" WHERE "id" IN ('cal', 'walk')`);
+    expect(rows).toEqual([{ n: 2 }]);
   });
 });

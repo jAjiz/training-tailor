@@ -21,33 +21,47 @@ describe("records", () => {
     expect(await listPrs(tdb.prisma, a.id)).toHaveLength(2);
   });
 
-  it("stores bodyweight and weighted reps, and times over a distance", async () => {
+  it("stores bodyweight and weighted reps, distances, and times over a distance or calories", async () => {
     const a = await makeAthlete(tdb.prisma);
     await addPr(tdb.prisma, a, { kind: "reps", movement: "Test Pull-up", reps: 18, kg: null, achievedOn: "2026-09-01" });
     await addPr(tdb.prisma, a, { kind: "reps", movement: "Test Pull-up", reps: 8, kg: 20, achievedOn: "2026-09-02" });
+    await addPr(tdb.prisma, a, { kind: "distance", movement: "Test Walk", distanceM: 25, achievedOn: "2026-09-02" });
     await addPr(tdb.prisma, a, { kind: "time", movement: "Test Row", distanceM: 2000, seconds: 425, achievedOn: "2026-09-03" });
+    await addPr(tdb.prisma, a, { kind: "time", movement: "Test Row", calories: 50, seconds: 160, achievedOn: "2026-09-04" });
     const rows = await listPrs(tdb.prisma, a.id);
-    expect(rows.map((r) => [r.movement, r.kind, r.kg, r.reps, r.distanceM, r.seconds])).toEqual([
-      ["Test Pull-up", "reps", 20, 8, null, null],
-      ["Test Pull-up", "reps", null, 18, null, null],
-      ["Test Row", "time", null, null, 2000, 425],
+    expect(rows.map((r) => [r.movement, r.kind, r.kg, r.reps, r.distanceM, r.calories, r.seconds])).toEqual([
+      ["Test Pull-up", "reps", 20, 8, null, null, null],
+      ["Test Pull-up", "reps", null, 18, null, null, null],
+      ["Test Row", "time", null, null, null, 50, 160],
+      ["Test Row", "time", null, null, 2000, null, 425],
+      ["Test Walk", "distance", null, null, 25, null, null],
     ]);
   });
 
-  it("refuses a kind the library does not give the movement", async () => {
+  it("refuses a record that doesn't fit the movement's catalog entry", async () => {
     const a = await makeAthlete(tdb.prisma);
-    await expect(addPr(tdb.prisma, a, { kind: "reps", movement: "Test Back Squat", reps: 10, kg: null, achievedOn: "2026-09-01" }))
-      .rejects.toMatchObject({ code: "invalid_request" });
-    await expect(addPr(tdb.prisma, a, { kind: "reps", movement: "Test DB Snatch", reps: 10, kg: null, achievedOn: "2026-09-01" }))
-      .rejects.toMatchObject({ code: "invalid_request" });
-    await expect(addPr(tdb.prisma, a, { kind: "time", movement: "Test Pull-up", distanceM: 500, seconds: 90, achievedOn: "2026-09-01" }))
-      .rejects.toMatchObject({ code: "invalid_request" });
+    const refused = (input: Parameters<typeof addPr>[2]) =>
+      expect(addPr(tdb.prisma, a, input)).rejects.toMatchObject({ code: "invalid_request" });
+    // the wrong kind
+    await refused({ kind: "reps", movement: "Test Back Squat", reps: 10, kg: null, achievedOn: "2026-09-01" });
+    // a load on an unweighted entry
+    await refused({ kind: "reps", movement: "Test Air Squat", reps: 50, kg: 10, achievedOn: "2026-09-01" });
+    // a target the entry doesn't list
+    await refused({ kind: "time", movement: "Test Row", distanceM: 1000, seconds: 200, achievedOn: "2026-09-01" });
+    await refused({ kind: "time", movement: "Test Row", calories: 100, seconds: 400, achievedOn: "2026-09-01" });
+    // a movement outside the catalog, barbell or not
+    await refused({ kind: "reps", movement: "Test DB Snatch", reps: 10, kg: null, achievedOn: "2026-09-01" });
   });
 
-  it("accepts only listed rep counts and distances", () => {
+  it("checks the shape of each kind", () => {
+    const time = (over: object) => ({ kind: "time", movement: "Test Row", seconds: 300, achievedOn: "2026-09-01", ...over });
     expect(PrInput.safeParse(lift("Test Back Squat", 100, 4)).success).toBe(false);
     expect(PrInput.safeParse(lift("Test Back Squat", 100, 5)).success).toBe(true);
-    expect(PrInput.safeParse({ kind: "time", movement: "Test Row", distanceM: 1500, seconds: 300, achievedOn: "2026-09-01" }).success).toBe(false);
+    expect(PrInput.safeParse(time({ distanceM: 2000 })).success).toBe(true);
+    expect(PrInput.safeParse(time({ calories: 50 })).success).toBe(true);
+    expect(PrInput.safeParse(time({ distanceM: 2000, calories: 50 })).success).toBe(false);
+    expect(PrInput.safeParse(time({})).success).toBe(false);
+    expect(PrInput.safeParse({ kind: "distance", movement: "Test Walk", distanceM: 1001, achievedOn: "2026-09-01" }).success).toBe(false);
     expect(PrInput.safeParse({ kind: "reps", movement: "Test Pull-up", reps: 0, kg: null, achievedOn: "2026-09-01" }).success).toBe(false);
   });
 

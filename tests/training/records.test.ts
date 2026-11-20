@@ -1,34 +1,69 @@
 import { describe, it, expect } from "vitest";
+import type { RecordsCatalog } from "@/lib/domain/types";
 import {
-  bestByDistance, bestByLoad, bestByReps, bestSetAbove, currentOneRm, epley, formatDistance, formatDuration, parseDuration,
-  recordKind, recordKindOf,
+  bestByLoad, bestByReps, bestByTarget, bestDistance, bestSetAbove, currentOneRm, epley, findRecordEntry, formatDuration,
+  formatTarget, parseDuration, recordEntries, recordFits, type RecordFields,
 } from "@/lib/training/records";
-import { testMovement } from "../helpers/library-builders";
 
 const d = (day: number) => new Date(Date.UTC(2026, 9, day));
 
-describe("recordKind", () => {
-  it("puts barbell first, then monostructural, then bodyweight", () => {
-    expect(recordKind({ equipment: ["barbell"], patterns: ["monostructural"] })).toBe("lift");
-    expect(recordKind({ equipment: ["rower"], patterns: ["monostructural"] })).toBe("time");
-    expect(recordKind({ equipment: [], patterns: ["squat", "monostructural"] })).toBe("time");
-    expect(recordKind({ equipment: ["pullup_bar"], patterns: ["vertical_pull"] })).toBe("reps");
-    expect(recordKind({ equipment: [], patterns: ["core"] })).toBe("reps");
+const label = { en: "Test", es: "Test" };
+const catalog: RecordsCatalog = {
+  lift: [{ label, entries: [{ movement: "Test Squat" }] }],
+  gymnastics: [{ label, entries: [
+    { movement: "Test Pull", measure: "reps", weighted: true },
+    { movement: "Test Sit", measure: "reps", weighted: false },
+    { movement: "Test Walk", measure: "distance" },
+  ] }],
+  cardio: [{ label, entries: [{ movement: "Test Row", targets: [{ distanceM: 2000 }, { calories: 50 }] }] }],
+};
+const row = (over: Partial<RecordFields>): RecordFields =>
+  ({ kind: "lift", kg: null, reps: null, distanceM: null, calories: null, seconds: null, ...over });
+
+describe("catalog entries", () => {
+  it("resolves one entry per tab, in catalog order, and nothing for a movement outside it", () => {
+    expect(recordEntries(catalog).map((e) => [e.tab, e.kind, e.movement])).toEqual([
+      ["lift", "lift", "Test Squat"],
+      ["gymnastics", "reps", "Test Pull"], ["gymnastics", "reps", "Test Sit"], ["gymnastics", "distance", "Test Walk"],
+      ["cardio", "time", "Test Row"],
+    ]);
+    expect(findRecordEntry(catalog, "Test Pull")).toEqual({ tab: "gymnastics", kind: "reps", movement: "Test Pull", weighted: true });
+    expect(findRecordEntry(catalog, "Test Nope")).toBeNull();
   });
 
-  it("counts reps for a jump-rope movement, even when the library calls it monostructural", () => {
-    expect(recordKind({ equipment: ["jump_rope"], patterns: ["monostructural"] })).toBe("reps");
+  it("fits a row to its entry's kind, load and targets", () => {
+    const entry = (name: string) => findRecordEntry(catalog, name);
+    expect(recordFits(entry("Test Pull"), row({ kind: "reps", reps: 5, kg: 10 }))).toBe(true);
+    expect(recordFits(entry("Test Sit"), row({ kind: "reps", reps: 5, kg: 10 }))).toBe(false);
+    expect(recordFits(entry("Test Sit"), row({ kind: "reps", reps: 5 }))).toBe(true);
+    expect(recordFits(entry("Test Row"), row({ kind: "time", calories: 50, seconds: 160 }))).toBe(true);
+    expect(recordFits(entry("Test Row"), row({ kind: "time", distanceM: 500, seconds: 90 }))).toBe(false);
+    expect(recordFits(entry("Test Squat"), row({ kind: "reps", reps: 5 }))).toBe(false);
+    expect(recordFits(entry("Test Walk"), row({ kind: "distance", distanceM: 25 }))).toBe(true);
+    expect(recordFits(null, row({ kind: "lift", kg: 100, reps: 1 }))).toBe(false);
+  });
+});
+
+describe("cardio and distance bests", () => {
+  it("keeps the lowest time per target, in the entry's target order", () => {
+    const rows = [
+      { calories: 50, distanceM: null, seconds: 170, achievedOn: d(1) },
+      { calories: null, distanceM: 2000, seconds: 430, achievedOn: d(2) },
+      { calories: 50, distanceM: null, seconds: 160, achievedOn: d(3) },
+      { calories: null, distanceM: 500, seconds: 95, achievedOn: d(4) }, // not a target any more
+    ];
+    expect(bestByTarget(rows, [{ distanceM: 2000 }, { calories: 50 }]).map((r) => r.seconds)).toEqual([430, 160]);
   });
 
-  it("gives no kind to a movement with load equipment other than a barbell", () => {
-    expect(recordKind({ equipment: ["dumbbell"], patterns: ["hinge"] })).toBeNull();
-    expect(recordKind({ equipment: ["kettlebell", "box"], patterns: ["squat"] })).toBeNull();
+  it("keeps the longest distance, the later on a tie", () => {
+    expect(bestDistance([{ distanceM: 20, achievedOn: d(1) }, { distanceM: 25, achievedOn: d(2) }, { distanceM: 25, achievedOn: d(3) }]))
+      .toEqual({ distanceM: 25, achievedOn: d(3) });
+    expect(bestDistance([])).toBeNull();
   });
 
-  it("looks a movement up by name", () => {
-    const movements = [testMovement("Test Pull", { equipment: ["pullup_bar"], patterns: ["vertical_pull"] })];
-    expect(recordKindOf("Test Pull", movements)).toBe("reps");
-    expect(recordKindOf("Test Unknown", movements)).toBeNull();
+  it("formats targets", () => {
+    expect([formatTarget({ distanceM: 500 }), formatTarget({ distanceM: 2000 }), formatTarget({ calories: 50 })])
+      .toEqual(["500 m", "2 km", "50 cal"]);
   });
 });
 
@@ -105,17 +140,7 @@ describe("bestByLoad", () => {
   });
 });
 
-describe("bestByDistance", () => {
-  it("keeps the lowest time per distance, shortest distance first", () => {
-    const best = bestByDistance([
-      { distanceM: 2000, seconds: 430, achievedOn: d(1) }, { distanceM: 500, seconds: 95, achievedOn: d(1) },
-      { distanceM: 2000, seconds: 425, achievedOn: d(2) },
-    ]);
-    expect(best.map((r) => [r.distanceM, r.seconds])).toEqual([[500, 95], [2000, 425]]);
-  });
-});
-
-describe("durations and distances", () => {
+describe("durations", () => {
   it("formats seconds as m:ss or h:mm:ss", () => {
     expect(formatDuration(425)).toBe("7:05");
     expect(formatDuration(3725)).toBe("1:02:05");
@@ -128,10 +153,5 @@ describe("durations and distances", () => {
     expect(parseDuration("7:65")).toBeNull();
     expect(parseDuration("425")).toBeNull();
     expect(parseDuration("0:00")).toBeNull();
-  });
-
-  it("writes distances in metres below a kilometre", () => {
-    expect(formatDistance(500)).toBe("500 m");
-    expect(formatDistance(2000)).toBe("2 km");
   });
 });

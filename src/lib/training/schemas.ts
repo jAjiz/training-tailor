@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { isIsoDate, isMonday, isValidTimeZone } from "./dates";
 import { TrainingError } from "./errors";
-import { DISTANCE_OPTIONS, REP_OPTIONS } from "./records";
+import { REP_OPTIONS } from "./records";
 
 export const Scoring = z.enum(["none", "for_time", "amrap", "reps", "load", "calories", "distance", "max_time"]);
 export type Scoring = z.infer<typeof Scoring>;
@@ -130,13 +130,18 @@ export type ResultInputValue = z.output<typeof ResultInput>;
 
 const recordBase = { movement: z.string().trim().min(1).max(80), achievedOn: IsoDateString };
 const inList = (list: readonly number[]) => z.number().int().refine((n) => list.includes(n));
-/** One record: a lift (kg x listed reps), unbroken reps with an optional added load, or a time over a listed distance. */
+/** One record: a lift (kg × listed reps), unbroken reps with an optional added load, unbroken metres, or a time for a
+ * distance or calories. Whether the movement's catalog entry accepts it is checked by the service. */
 export const PrInput = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("lift"), ...recordBase, kg: z.number().positive().max(500), reps: inList(REP_OPTIONS) }),
   z.object({
     kind: z.literal("reps"), ...recordBase,
     reps: z.number().int().min(1).max(500), kg: z.number().positive().max(200).nullable(),
   }),
-  z.object({ kind: z.literal("time"), ...recordBase, distanceM: inList(DISTANCE_OPTIONS), seconds: z.number().int().min(1).max(86400) }),
+  z.object({ kind: z.literal("distance"), ...recordBase, distanceM: z.number().int().min(1).max(1000) }),
+  z.object({
+    kind: z.literal("time"), ...recordBase, seconds: z.number().int().min(1).max(86400),
+    distanceM: z.number().int().positive().optional(), calories: z.number().int().positive().optional(),
+  }).refine((r) => (r.distanceM === undefined) !== (r.calories === undefined)),
 ]);
 export type PrInputValue = z.output<typeof PrInput>;

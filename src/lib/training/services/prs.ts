@@ -2,7 +2,7 @@ import { toDbDate, todayIn } from "../dates";
 import { TrainingError } from "../errors";
 import type { PrInputValue } from "../schemas";
 import { currentOneRm, type OneRm } from "../records";
-import { assertRecordKind } from "./catalog";
+import { assertRecordFits, recordFieldsOf } from "./catalog";
 import type { Db } from "./types";
 
 export function listPrs(db: Db, athleteId: string) {
@@ -20,13 +20,11 @@ export function listMovementPrs(db: Db, athleteId: string, movement: string) {
 }
 
 export async function addPr(db: Db, athlete: { id: string; timezone: string }, input: PrInputValue, now: Date = new Date()) {
-  await assertRecordKind(db, input.movement, input.kind);
+  await assertRecordFits(db, input);
   if (input.achievedOn > todayIn(athlete.timezone, now)) throw new TrainingError("invalid_request");
-  const base = { athleteId: athlete.id, movement: input.movement, kind: input.kind, achievedOn: toDbDate(input.achievedOn) };
-  const fields = input.kind === "time"
-    ? { distanceM: input.distanceM, seconds: input.seconds }
-    : { kg: input.kg, reps: input.reps };
-  return db.personalRecord.create({ data: { ...base, ...fields } });
+  return db.personalRecord.create({
+    data: { athleteId: athlete.id, movement: input.movement, achievedOn: toDbDate(input.achievedOn), ...recordFieldsOf(input) },
+  });
 }
 
 export async function deletePr(db: Db, athleteId: string, prId: string) {

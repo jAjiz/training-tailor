@@ -70,8 +70,22 @@ export function serviceLibrary(): DomainLibrary {
         testMovement("Test Pull-up", { patterns: ["vertical_pull"], equipment: ["pullup_bar"] }),
         testMovement("Test Row", { patterns: ["monostructural"], equipment: ["rower"] }),
         testMovement("Test DB Snatch", { patterns: ["olympic"], equipment: ["dumbbell"] }),
+        testMovement("Test Walk", { patterns: ["carry"] }),
       ],
       contraindications: [testContraindication("test_injury")],
+      records: {
+        lift: [{ label: { en: "Test Lifts", es: "Test Levantamientos" }, entries: [{ movement: "Test Back Squat" }, { movement: "Test Deadlift" }] }],
+        gymnastics: [
+          { label: { en: "Test Weighted", es: "Test Con lastre" }, entries: [{ movement: "Test Pull-up", measure: "reps", weighted: true }] },
+          { label: { en: "Test Max", es: "Test Máximo" }, entries: [
+            { movement: "Test Air Squat", measure: "reps", weighted: false },
+            { movement: "Test Walk", measure: "distance" },
+          ] },
+        ],
+        cardio: [{ label: { en: "Test Cardio", es: "Test Cardio" }, entries: [
+          { movement: "Test Row", targets: [{ distanceM: 500 }, { distanceM: 2000 }, { calories: 50 }] },
+        ] }],
+      },
     }),
     expectations: [],
     evalCases: [],
