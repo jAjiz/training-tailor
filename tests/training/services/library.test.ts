@@ -3,11 +3,12 @@ import { createTestDb, type TestDb } from "../../helpers/db";
 import { makeAdmin } from "../../helpers/factories";
 import { testContraindication, testDomain, testMovement } from "../../helpers/library-builders";
 import { emptyLibrary, type DomainLibrary } from "@/lib/domain/library";
+import { emptyRecordsCatalog } from "@/lib/domain/types";
 import { validateLibrary } from "@/lib/domain/validate-library";
 import { toJson } from "@/lib/json";
 import {
   deleteMovement, discardDraft, ensureState, exportVersion, importLibrary, libraryOverview,
-  listVersions, openDraft, readDraft, renameMovement, restoreVersion, saveContraindication,
+  liveLibrary, listVersions, openDraft, readDraft, renameMovement, restoreVersion, saveContraindication,
   saveDocument, saveMovement,
 } from "@/lib/training/services/library";
 
@@ -82,6 +83,27 @@ describe("library drafts", () => {
     })).rejects.toMatchObject({ code: "library_conflict" });
     const after = await readDraft(tdb.prisma);
     expect(after?.library.movements.map((m) => m.name)).toEqual(["Test A", "Test B", "Test C"]);
+  });
+
+  it("reads a version stored without a records catalog as an empty one", async () => {
+    const row = await seedLive(testLibrary());
+    await tdb.prisma.domainLibraryVersion.update({ where: { id: row.id }, data: { records: {} } });
+    expect((await liveLibrary(tdb.prisma))?.records).toEqual(emptyRecordsCatalog());
+  });
+
+  it("rename rewrites the records catalog", async () => {
+    const admin = await makeAdmin(tdb.prisma);
+    await seedLive(testLibrary());
+    const draft = await openDraft(tdb.prisma, admin.id);
+    const label = { en: "Test", es: "Test" };
+    const revision = await saveDocument(tdb.prisma, admin.id, {
+      revision: draft.revision,
+      document: "records",
+      value: { lift: [], gymnastics: [{ label, entries: [{ movement: "Test A", measure: "distance" }] }], cardio: [] },
+    });
+    await renameMovement(tdb.prisma, admin.id, { revision, from: "Test A", to: "Test A2" });
+    const after = (await readDraft(tdb.prisma))!;
+    expect(after.library.records.gymnastics[0].entries[0].movement).toBe("Test A2");
   });
 
   it("rename rewrites references inside the draft and keeps the old name as an alias", async () => {

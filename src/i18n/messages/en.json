@@ -25,7 +25,7 @@
     "today": "Workout",
     "calendar": "Calendar",
     "board": "Announcements",
-    "prs": "PRs",
+    "prs": "Records",
     "me": "Me",
     "programs": "My programs",
     "main": "Main navigation",
@@ -96,10 +96,10 @@
   },
   "profile": {
     "title": "Training profile",
-    "intro": "What the engine knows about you when it adapts a block. Your 1RMs come from your PRs.",
+    "intro": "What the engine knows about you when it adapts a block. Your records come from Records.",
     "back": "Back to Me",
     "link": "Training profile",
-    "linkHint": "Injuries, equipment, benchmarks and goals for block adaptation.",
+    "linkHint": "Injuries, equipment and goals for block adaptation.",
     "about": "About you",
     "sex": "Loads",
     "level": "Level",
@@ -156,24 +156,7 @@
       "sandbag": "Sandbag",
       "d_ball": "Dead ball"
     },
-    "benchmarks": "Benchmarks",
-    "benchmarksHint": "Max reps and best times. 1RMs are read from your PRs.",
-    "prsLink": "Manage your PRs",
     "movement": "Movement",
-    "kind": "Type",
-    "value": "Value",
-    "unit": "Unit",
-    "kinds": {
-      "max_reps": "Max reps",
-      "time": "Time"
-    },
-    "units": {
-      "kg": "kg",
-      "lb": "lb",
-      "reps": "reps",
-      "seconds": "seconds"
-    },
-    "addBenchmark": "Add benchmark",
     "goals": "Goals",
     "goalPlaceholder": "e.g. first strict muscle-up",
     "goalMovement": "Movement (optional)",
@@ -241,19 +224,40 @@
       "calories": "Calories",
       "distance": "Distance (m)",
       "max_time": "Time (more is better)"
-    }
+    },
+    "estimatedOneRm": "Loads from your estimated 1RM ({kg} kg)"
   },
   "prs": {
-    "title": "PRs",
+    "title": "Records",
     "search": "Search an exercise",
     "noResults": "No exercise matches.",
     "current": "Current 1RM",
     "history": "History",
-    "empty": "You have not recorded a 1RM for this exercise yet.",
-    "add": "Add 1RM",
+    "empty": "You have not recorded anything for this exercise yet.",
+    "add": "Add record",
     "kg": "kg",
     "date": "Date",
-    "deleteConfirm": "Delete this entry?"
+    "deleteConfirm": "Delete this entry?",
+    "tabsLabel": "Record type",
+    "tabs": {
+      "lift": "Lifts",
+      "gymnastics": "Gymnastics",
+      "cardio": "Cardio"
+    },
+    "estimated": "estimated",
+    "bodyweight": "Bodyweight",
+    "addedKg": "+{kg} kg",
+    "repsCount": "{reps} reps",
+    "reps": "Reps",
+    "addedLoad": "Added load (kg)",
+    "time": "Time",
+    "timeHint": "m:ss",
+    "bestByReps": "Best by reps",
+    "bestByLoad": "Best by load",
+    "target": "Target",
+    "distanceRecord": "Metres",
+    "bestDistance": "Longest",
+    "bestByTarget": "Best by target"
   },
   "patterns": {
     "squat": "Squats",
@@ -445,8 +449,8 @@
     "delete": "Delete result",
     "deleteConfirm": "Delete your result?",
     "notLoggable": "This block cannot be logged yet.",
-    "singlePrompt": "Update your {movement} 1RM from {from} kg to {to} kg?",
-    "singlePromptFirst": "Save {to} kg as your {movement} 1RM?",
+    "singlePrompt": "Update your {movement} {reps}-rep record from {from} kg to {to} kg?",
+    "singlePromptFirst": "Save {to} kg × {reps} as your {movement} record?",
     "yes": "Yes, update",
     "no": "No"
   },
@@ -710,6 +714,7 @@
         "contraindication": "Contraindication",
         "taxonomy": "Taxonomy",
         "conversions": "Conversions",
+        "records": "Records",
         "expectation": "Expectation",
         "evalCase": "Eval case",
         "reference": "Stored reference"
@@ -745,6 +750,7 @@
         "contraindications": "Contraindications",
         "taxonomy": "Taxonomy",
         "conversions": "Conversions",
+        "records": "Records",
         "expectations": "Expectations",
         "evalCases": "Eval cases"
       },

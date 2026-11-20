@@ -255,7 +255,7 @@ export async function adaptTailor(
 ): Promise<PipelineResult> {
   const { block, messages, state } = await tailorable(db, athlete, blockId, now);
   const lifts = state.original.blocks.flatMap((b) => b.components.flatMap((c) => (c.percent1RM !== null && c.canonical ? [c.canonical] : [])));
-  const original = applyAthleteLoads(state.original, await oneRmMap(db, athlete.id, [...new Set(lifts)]));
+  const original = applyAthleteLoads(state.original, new Map([...await oneRmMap(db, athlete.id, [...new Set(lifts)])].map(([m, r]) => [m, r.kg])));
   const common = {
     confirmed: state.conditions, restrictions: state.restrictions, unavailableEquipment: state.unavailableEquipment,
     profile: ctx.profile, domain: ctx.domain, onProgress: ctx.onProgress, locale: ctx.locale, lockedFormats: lockedFormatsFor(block.scoring),

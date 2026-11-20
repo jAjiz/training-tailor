@@ -94,15 +94,25 @@ describe("results", () => {
     expect(board.entries[0]).toMatchObject({ bumps: 1, bumpedByViewer: true });
   });
 
-  it("offers to update the 1RM after a heavier single", async () => {
+  it("offers to record the logged set that beats its rep count with the highest estimate", async () => {
     const { program, ana } = await setup();
     const squat = await makeBarbellBlock(tdb.prisma, program.id, 2, "Test Back Squat", [{ reps: 1, percent: 90, kg: null }]);
-    await tdb.prisma.personalRecord.create({ data: { athleteId: ana.id, movement: "Test Back Squat", kg: 150, achievedOn: new Date("2026-09-01T00:00:00Z") } });
+    await tdb.prisma.personalRecord.create({ data: { athleteId: ana.id, movement: "Test Back Squat", kind: "lift", kg: 150, reps: 1, achievedOn: new Date("2026-09-01T00:00:00Z") } });
+    await tdb.prisma.personalRecord.create({ data: { athleteId: ana.id, movement: "Test Back Squat", kind: "lift", kg: 95, reps: 3, achievedOn: new Date("2026-09-01T00:00:00Z") } });
     const lighter = await log(ana, squat.id, { sets: [{ kg: 140, reps: 1 }] });
     expect(lighter.singlePrompt).toBeNull();
     const heavier = await log(ana, squat.id, { sets: [{ kg: 155, reps: 1 }] });
-    expect(heavier.singlePrompt).toEqual({ movement: "Test Back Squat", from: 150, to: 155 });
+    expect(heavier.singlePrompt).toEqual({ movement: "Test Back Squat", reps: 1, from: 150, to: 155 });
+    // 100x3 beats the stored 95x3 (estimate 110); 90x5 is a first 5RM but estimates only 105.
+    const triple = await log(ana, squat.id, { sets: [{ kg: 100, reps: 3 }, { kg: 90, reps: 5 }] });
+    expect(triple.singlePrompt).toEqual({ movement: "Test Back Squat", reps: 3, from: 95, to: 100 });
     expect((await getMyResult(tdb.prisma, ana.id, squat.id))?.division).toBe("rx");
+  });
+
+  it("offers no record for a barbell movement outside the records catalog", async () => {
+    const { program, ana } = await setup();
+    const bench = await makeBarbellBlock(tdb.prisma, program.id, 2, "Test Bench Press", [{ reps: 1, percent: null, kg: 100 }]);
+    expect((await log(ana, bench.id, { sets: [{ kg: 100, reps: 1 }] })).singlePrompt).toBeNull();
   });
 
   it("deletes a result and counts the day's scores", async () => {

@@ -191,3 +191,29 @@ export const ConversionsSchema = z.object({
   implementLoad: z.array(ImplementLoadSchema),
 });
 export type Conversions = z.infer<typeof ConversionsSchema>;
+
+// The records catalog: which movements accept a record, in which sub-tab, group and order.
+const RecordLabelSchema = z.object({ en: z.string().min(1), es: z.string().min(1) });
+export type RecordLabel = z.infer<typeof RecordLabelSchema>;
+
+export const CardioTargetSchema = z.union([
+  z.object({ distanceM: z.number().int().positive() }).strict(),
+  z.object({ calories: z.number().int().positive() }).strict(),
+]);
+export type CardioTarget = z.infer<typeof CardioTargetSchema>;
+
+const recordGroup = <E extends z.ZodType>(entry: E) => z.object({ label: RecordLabelSchema, entries: z.array(entry) });
+
+export const RecordsCatalogSchema = z.object({
+  lift: z.array(recordGroup(z.object({ movement: z.string().min(1) }))).default([]),
+  gymnastics: z.array(recordGroup(z.discriminatedUnion("measure", [
+    z.object({ movement: z.string().min(1), measure: z.literal("reps"), weighted: z.boolean() }),
+    z.object({ movement: z.string().min(1), measure: z.literal("distance") }),
+  ]))).default([]),
+  cardio: z.array(recordGroup(z.object({ movement: z.string().min(1), targets: z.array(CardioTargetSchema) }))).default([]),
+});
+export type RecordsCatalog = z.infer<typeof RecordsCatalogSchema>;
+
+export function emptyRecordsCatalog(): RecordsCatalog {
+  return { lift: [], gymnastics: [], cardio: [] };
+}

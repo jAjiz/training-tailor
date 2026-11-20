@@ -222,11 +222,35 @@ describe("adaptation conversation", () => {
     });
   });
 
+  it("loads percentage work from a 1RM estimated from a multi-rep lift", async () => {
+    const { program, athlete } = await setup();
+    const barbell = await makeBarbellBlock(tdb.prisma, program.id, 0, "Test Squat");
+    await tdb.prisma.personalRecord.create({
+      data: { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 95, reps: 3, achievedOn: new Date("2026-09-01T00:00:00Z") },
+    });
+    const draft: WorkoutDraft = {
+      name: null,
+      blocks: [{
+        title: "Test Squat", rawText: "Test Squat 5 @ 80%", day: null, format: "strength", scheme: "5 @ 80%",
+        timeDomainMinutes: 10, coachingNotes: null, stimulus: null,
+        components: [component("Test Squat", { reps: 5, percent1RM: 80 })],
+      }],
+    };
+    const tailored = toTailoringDraft({
+      name: null, rawText: "Test Squat 5 @ 80%", source: "paste",
+      blocks: [{ ...draft.blocks[0], components: [{ ...component("Test Squat", { reps: 5, percent1RM: 80 }), canonical: "Test Squat" }] }],
+    });
+    const p = new FakeProvider({ BlockAnalysis: draft, SituationAnalysis: situation(), TailoringResult: tailored });
+    await say(p, athlete, barbell.id, "tired today");
+    const pipeline = await tailorNow(p, athlete, barbell.id);
+    expect(pipeline.original.blocks[0].components[0].loadKg).toEqual({ male: 83.5, female: 83.5 }); // 80 % of 104.5
+  });
+
   it("keeps barbell results rx with a snapshot", async () => {
     const { program, athlete } = await setup();
     const barbell = await makeBarbellBlock(tdb.prisma, program.id, 0, "Test Squat");
     await tdb.prisma.personalRecord.create({
-      data: { athleteId: athlete.id, movement: "Test Squat", kg: 100, achievedOn: new Date("2026-09-01T00:00:00Z") },
+      data: { athleteId: athlete.id, movement: "Test Squat", kind: "lift", kg: 100, reps: 1, achievedOn: new Date("2026-09-01T00:00:00Z") },
     });
     const draft: WorkoutDraft = {
       name: null,

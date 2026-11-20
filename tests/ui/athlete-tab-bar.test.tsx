@@ -23,5 +23,6 @@ describe("AthleteTabBar", () => {
     expect(bars).toHaveLength(1);
     expect(bars[0]).toHaveClass("-skew-x-12", "h-1.5");
     expect(screen.getByRole("link", { name: en.nav.calendar })).toContainElement(bars[0] as HTMLElement);
+    expect(screen.getByRole("link", { name: "Records" })).toHaveAttribute("href", "/prs");
   });
 });

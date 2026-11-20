@@ -1,7 +1,7 @@
 import type { ActiveCondition } from "@/lib/domain/assess";
 import type { DomainData, DomainLibrary } from "@/lib/domain/library";
 import {
-  ContraindicationSchema, MovementSchema,
+  ContraindicationSchema, MovementSchema, emptyRecordsCatalog,
   type Contraindication, type Movement, type Severity, type Side, type StimulusDef,
 } from "@/lib/domain/types";
 import { EnergySystem, LoadIntensity, Quality } from "@/lib/engine/types";
@@ -48,6 +48,7 @@ export function testDomain(over: Partial<DomainData> = {}): DomainData {
       loadIntensities: defs(LoadIntensity.options),
     },
     conversions: { effort: [], implementLoad: [] },
+    records: emptyRecordsCatalog(),
     ...over,
   };
 }
@@ -58,7 +59,7 @@ export function active(
   return { contraindication, side, severity };
 }
 
-/** The library seeded for service tests: two barbell lifts, one non-lift. */
+/** The library seeded for service tests: two barbell lifts, bodyweight, cardio and dumbbell movements. */
 export function serviceLibrary(): DomainLibrary {
   return {
     ...testDomain({
@@ -66,8 +67,26 @@ export function serviceLibrary(): DomainLibrary {
         testMovement("Test Back Squat", { equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
         testMovement("Test Deadlift", { patterns: ["hinge"], equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
         testMovement("Test Air Squat", { substitutes: ["Test Back Squat"] }),
+        testMovement("Test Pull-up", { patterns: ["vertical_pull"], equipment: ["pullup_bar"] }),
+        testMovement("Test Row", { patterns: ["monostructural"], equipment: ["rower"] }),
+        testMovement("Test DB Snatch", { patterns: ["olympic"], equipment: ["dumbbell"] }),
+        testMovement("Test Walk", { patterns: ["carry"] }),
+        testMovement("Test Bench Press", { patterns: ["horizontal_push"], equipment: ["barbell"], substitutes: ["Test Air Squat"] }),
       ],
       contraindications: [testContraindication("test_injury")],
+      records: {
+        lift: [{ label: { en: "Test Lifts", es: "Test Levantamientos" }, entries: [{ movement: "Test Back Squat" }, { movement: "Test Deadlift" }] }],
+        gymnastics: [
+          { label: { en: "Test Weighted", es: "Test Con lastre" }, entries: [{ movement: "Test Pull-up", measure: "reps", weighted: true }] },
+          { label: { en: "Test Max", es: "Test Máximo" }, entries: [
+            { movement: "Test Air Squat", measure: "reps", weighted: false },
+            { movement: "Test Walk", measure: "distance" },
+          ] },
+        ],
+        cardio: [{ label: { en: "Test Cardio", es: "Test Cardio" }, entries: [
+          { movement: "Test Row", targets: [{ distanceM: 500 }, { distanceM: 2000 }, { calories: 50 }] },
+        ] }],
+      },
     }),
     expectations: [],
     evalCases: [],

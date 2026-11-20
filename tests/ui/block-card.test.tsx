@@ -55,6 +55,19 @@ describe("BlockCard (athlete)", () => {
     for (const item of items) expect(item).toHaveClass("slant", "before:bg-surface-2");
   });
 
+  it("says when percentage loads come from an estimated 1RM", () => {
+    const sets = [{ reps: 5, percent: 80, kg: null }];
+    const card = (estimated: boolean) => renderCard(
+      <BlockCard block={block({ kind: "barbell", movement: "Test Squat", sets })} oneRm={{ kg: 104.5, estimated }} />,
+    );
+    const view = card(true);
+    expect(screen.getByText("5 @ 80 % (83.5 kg)")).toBeInTheDocument();
+    expect(screen.getByText(/estimated 1RM/)).toHaveTextContent("104.5");
+    view.unmount();
+    card(false);
+    expect(screen.queryByText(/estimated 1RM/)).toBeNull();
+  });
+
   it("slants the coaching tips button", () => {
     const { container } = renderCard(<BlockCard block={block({ title: "Test WOD", coachingTips: "Test tip" })} />);
     const tips = screen.getByText(en.block.coachingTips, { selector: "summary" });

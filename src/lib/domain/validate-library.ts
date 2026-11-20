@@ -5,7 +5,7 @@ import type { DomainLibrary } from "./library";
 import { createMovementResolver, normalizeMovementName } from "./resolve";
 
 export type FindingEntity =
-  | "movement" | "contraindication" | "taxonomy" | "conversions" | "expectation" | "evalCase" | "reference";
+  | "movement" | "contraindication" | "taxonomy" | "conversions" | "expectation" | "evalCase" | "records" | "reference";
 
 export interface LibraryFinding {
   level: "error" | "warning";
@@ -233,6 +233,33 @@ function hangingWithoutGrip({ movements }: DomainLibrary): LibraryFinding[] {
     warning("hanging_without_grip", "movement", m.name, `"${m.name}" hangs but has no grip stress.`));
 }
 
+function recordFindings({ movements, records }: DomainLibrary): LibraryFinding[] {
+  const byName = new Map(movements.map((m) => [m.name, m]));
+  const out: LibraryFinding[] = [];
+  const seen = new Set<string>();
+  const entries = [
+    ...records.lift.flatMap((g) => g.entries.map((e) => ({ movement: e.movement, lift: true }))),
+    ...records.gymnastics.flatMap((g) => g.entries.map((e) => ({ movement: e.movement, lift: false }))),
+    ...records.cardio.flatMap((g) => g.entries.map((e) => ({ movement: e.movement, lift: false }))),
+  ];
+  for (const { movement, lift } of entries) {
+    const m = byName.get(movement);
+    if (!m) out.push(error("unknown_record_movement", "records", movement, `"${movement}" is not a library movement.`));
+    if (seen.has(movement)) out.push(error("duplicate_record_movement", "records", movement, `"${movement}" appears more than once in the records catalog.`));
+    seen.add(movement);
+    if (m && lift && !m.equipment.includes("barbell")) {
+      out.push(error("record_lift_not_barbell", "records", movement, `"${movement}" is a lift record but not a barbell movement.`));
+    }
+  }
+  for (const e of records.cardio.flatMap((g) => g.entries)) {
+    const keys = e.targets.map((t) => ("distanceM" in t ? `m${t.distanceM}` : `c${t.calories}`));
+    if (keys.length === 0 || new Set(keys).size !== keys.length) {
+      out.push(error("record_targets", "records", e.movement, `"${e.movement}" needs at least one target and no repeated ones.`));
+    }
+  }
+  return out;
+}
+
 export function validateLibrary(library: DomainLibrary): LibraryFinding[] {
   return [
     ...duplicateNames(library),
@@ -249,5 +276,6 @@ export function validateLibrary(library: DomainLibrary): LibraryFinding[] {
     ...noSubstitutes(library),
     ...fewAvailable(library),
     ...hangingWithoutGrip(library),
+    ...recordFindings(library),
   ];
 }

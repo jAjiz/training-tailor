@@ -1,9 +1,10 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { DomainLibrary, MovementRename } from "@/lib/domain/library";
 import { hasErrors, validateLibrary, type LibraryFinding } from "@/lib/domain/validate-library";
-import { AthleteProfileSchema, type AthleteProfile } from "@/lib/engine/types";
+import { StoredProfileSchema, type StoredProfile } from "@/lib/engine/types";
 import { toJson } from "@/lib/json";
 import { isLiftMovement } from "../barbell";
+import { findRecordEntry, recordFits } from "../records";
 import { TrainingError } from "../errors";
 import { writeAudit } from "./audit";
 import { ensureState, lockState, readDraft } from "./library";
@@ -24,29 +25,39 @@ function add(counts: Map<string, number>, name: string | null | undefined) {
   if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
 }
 
-async function storedProfiles(db: DbOrTx): Promise<{ id: string; profile: AthleteProfile }[]> {
+async function storedProfiles(db: DbOrTx): Promise<{ id: string; profile: StoredProfile }[]> {
   const all = await db.athleteProfile.findMany({ select: { id: true, data: true } });
   return all.flatMap(({ id, data }) => {
-    const parsed = AthleteProfileSchema.safeParse(data);
+    const parsed = StoredProfileSchema.safeParse(data);
     return parsed.success ? [{ id, profile: parsed.data }] : [];
   });
 }
 
-async function movementCounts(db: DbOrTx, profiles: { profile: AthleteProfile }[]) {
-  const [prs, blocks] = await Promise.all([
-    db.personalRecord.groupBy({ by: ["movement"], _count: { _all: true } }),
-    db.block.groupBy({ by: ["movement"], where: { kind: "barbell" }, _count: { _all: true } }),
-  ]);
+async function movementCounts(db: DbOrTx, profiles: { profile: StoredProfile }[]) {
+  const blocks = await db.block.groupBy({ by: ["movement"], where: { kind: "barbell" }, _count: { _all: true } });
+  // Records don't count: they follow the catalog, and the publish deletes those that no longer fit.
   const lifts = new Map<string, number>();
-  for (const row of [...prs, ...blocks]) {
-    if (row.movement) lifts.set(row.movement, (lifts.get(row.movement) ?? 0) + row._count._all);
-  }
+  for (const row of blocks) if (row.movement) lifts.set(row.movement, (lifts.get(row.movement) ?? 0) + row._count._all);
   const all = new Map(lifts);
   for (const { profile } of profiles) {
-    for (const b of profile.benchmarks) add(all, b.movement);
     for (const g of profile.goals) add(all, g.movement);
   }
   return { lifts, all };
+}
+
+/** The records the new catalog no longer accepts, by their movement's name before renames. */
+export async function staleRecords(
+  db: DbOrTx, library: DomainLibrary, renames: readonly MovementRename[],
+): Promise<Map<string, string[]>> {
+  const rows = await db.personalRecord.findMany({
+    select: { id: true, movement: true, kind: true, kg: true, reps: true, distanceM: true, calories: true, seconds: true },
+  });
+  const stale = new Map<string, string[]>();
+  for (const row of rows) {
+    if (recordFits(findRecordEntry(library.records, renamed(row.movement, renames)), row)) continue;
+    stale.set(row.movement, [...(stale.get(row.movement) ?? []), row.id]);
+  }
+  return stale;
 }
 
 /** Errors for stored rows (profiles, PRs, barbell blocks) the library would leave dangling. */
@@ -72,7 +83,7 @@ export async function referenceFindings(
   for (const [name, n] of all) {
     if (names.has(renamed(name, renames))) continue;
     findings.push(referenceError(
-      "movement_in_use", name, `"${name}" is used by ${rows(n)} (PRs, barbell blocks, profiles).`,
+      "movement_in_use", name, `"${name}" is used by ${rows(n)} (barbell blocks, profiles).`,
     ));
   }
 
@@ -80,9 +91,15 @@ export async function referenceFindings(
     const target = renamed(name, renames);
     if (names.has(target) && !isLiftMovement(target, library.movements)) {
       findings.push(referenceError(
-        "lift_in_use", target, `"${target}" has ${rows(n)} (PRs, barbell blocks) but is no longer a barbell movement.`,
+        "lift_in_use", target, `"${target}" has ${rows(n)} (barbell blocks) but is no longer a barbell movement.`,
       ));
     }
+  }
+  for (const [name, ids] of await staleRecords(db, library, renames)) {
+    findings.push({
+      level: "warning", code: "records_deleted", entity: "reference", ref: name,
+      message: `"${name}": ${rows(ids.length)} will be deleted.`,
+    });
   }
   return findings;
 }
@@ -93,12 +110,9 @@ async function applyRenames(tx: Prisma.TransactionClient, renames: readonly Move
     await tx.block.updateMany({ where: { kind: "barbell", movement: from }, data: { movement: to } });
   }
   for (const { id, profile } of await storedProfiles(tx)) {
-    const benchmarks = profile.benchmarks.map((b) => ({ ...b, movement: renamed(b.movement, renames) }));
     const goals = profile.goals.map((g) => ({ ...g, movement: g.movement && renamed(g.movement, renames) }));
-    const changed = benchmarks.some((b, i) => b.movement !== profile.benchmarks[i].movement)
-      || goals.some((g, i) => g.movement !== profile.goals[i].movement);
-    if (changed) {
-      await tx.athleteProfile.update({ where: { id }, data: { data: toJson({ ...profile, benchmarks, goals }) } });
+    if (goals.some((g, i) => g.movement !== profile.goals[i].movement)) {
+      await tx.athleteProfile.update({ where: { id }, data: { data: toJson({ ...profile, goals }) } });
     }
   }
 }
@@ -124,7 +138,9 @@ export async function publishDraft(
     ];
     if (hasErrors(findings) || (findings.length > 0 && !input.acceptWarnings)) return { ok: false, findings };
 
+    const stale = [...(await staleRecords(tx, draft.library, draft.renames)).values()].flat();
     await applyRenames(tx, draft.renames);
+    await tx.personalRecord.deleteMany({ where: { id: { in: stale } } });
     const { count } = await tx.domainLibraryVersion.updateMany({
       where: { id: draft.id, revision: input.revision },
       data: {

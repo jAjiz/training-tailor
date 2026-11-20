@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EvalCaseSchema } from "@/lib/eval/grade";
 import type { DomainLibrary, LibraryExpectation } from "@/lib/domain/library";
+import type { RecordsCatalog } from "@/lib/domain/types";
 import { hasErrors, validateLibrary, type LibraryFinding } from "@/lib/domain/validate-library";
 import { testContraindication, testDomain, testMovement } from "../helpers/library-builders";
 
@@ -273,5 +274,52 @@ describe("hasErrors", () => {
     expect(hasErrors([finding("warning")])).toBe(false);
     expect(hasErrors([finding("warning"), finding("error")])).toBe(true);
     expect(hasErrors([])).toBe(false);
+  });
+});
+
+describe("records catalog", () => {
+  const label = { en: "Test", es: "Test" };
+  const withCatalog = (records: RecordsCatalog): DomainLibrary => {
+    const lib = base();
+    lib.movements.push(testMovement("Test Barbell", { equipment: ["barbell"], substitutes: ["Test Squat"] }));
+    return { ...lib, records };
+  };
+  const recordCodes = (records: RecordsCatalog) => codes(withCatalog(records)).filter((c) => c.includes("record"));
+
+  it("accepts a valid catalog", () => {
+    expect(recordCodes({
+      lift: [{ label, entries: [{ movement: "Test Barbell" }] }],
+      gymnastics: [{ label, entries: [{ movement: "Test Row", measure: "reps", weighted: true }, { movement: "Test Carry", measure: "distance" }] }],
+      cardio: [{ label, entries: [{ movement: "Test Lunge", targets: [{ distanceM: 500 }, { calories: 50 }] }] }],
+    })).toEqual([]);
+  });
+
+  it("flags an unknown movement", () => {
+    expect(recordCodes({ lift: [], gymnastics: [{ label, entries: [{ movement: "Test Nope", measure: "distance" }] }], cardio: [] }))
+      .toContain("unknown_record_movement");
+  });
+
+  it("flags a movement listed twice, even across tabs", () => {
+    expect(recordCodes({
+      lift: [{ label, entries: [{ movement: "Test Barbell" }] }],
+      gymnastics: [{ label, entries: [{ movement: "Test Barbell", measure: "reps", weighted: false }] }],
+      cardio: [],
+    })).toContain("duplicate_record_movement");
+  });
+
+  it("flags a lift entry that is not a barbell movement", () => {
+    expect(recordCodes({ lift: [{ label, entries: [{ movement: "Test Squat" }] }], gymnastics: [], cardio: [] }))
+      .toContain("record_lift_not_barbell");
+  });
+
+  it("flags cardio entries with no targets or a repeated target", () => {
+    const found = validateLibrary(withCatalog({
+      lift: [], gymnastics: [],
+      cardio: [{ label, entries: [
+        { movement: "Test Lunge", targets: [] },
+        { movement: "Test Row", targets: [{ distanceM: 500 }, { distanceM: 500 }] },
+      ] }],
+    })).filter((f) => f.code === "record_targets");
+    expect(found.map((f) => [f.level, f.ref])).toEqual([["error", "Test Lunge"], ["error", "Test Row"]]);
   });
 });

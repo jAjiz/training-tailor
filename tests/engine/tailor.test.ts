@@ -165,6 +165,15 @@ describe("tailor", () => {
     expect(schema.safeParse(withChange("Test Invented")).success).toBe(false);
   });
 
+  it("tells the model how to read estimated 1RMs, max reps and times", async () => {
+    const provider = new FakeProvider({ TailoringResult: toTailoringDraft(couplet()) });
+    await tailor(provider, input());
+    const system = provider.calls[0].systemPrompt ?? "";
+    expect(system).toMatch(/"estimated" 1RM[^\n]*conservative guide/);
+    expect(system).toMatch(/max_reps[^\n]*unbroken[^\n]*"addedKg"/);
+    expect(system).toMatch(/time[^\n]*"distanceM"/);
+  });
+
   it("tells the model never to change a movement for pain the plan does not mark", async () => {
     const provider = new FakeProvider({ TailoringResult: toTailoringDraft(couplet()) });
     await tailor(provider, input());

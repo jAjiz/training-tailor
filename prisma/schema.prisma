@@ -302,12 +302,25 @@ model FistBump {
   @@id([resultId, athleteId])
 }
 
+enum RecordKind {
+  lift
+  reps
+  distance
+  time
+}
+
 model PersonalRecord {
   id         String         @id @default(cuid())
   athleteId  String
   athlete    AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   movement   String
-  kg         Float
+  // The shape of each kind is enforced by the "PersonalRecord_kind_fields" check constraint.
+  kind       RecordKind     @default(lift)
+  kg         Float? // lift: the load; reps: the added load (null = bodyweight)
+  reps       Int?
+  distanceM  Int? // distance: the unbroken metres; time: the target distance
+  calories   Int? // time: the target calories
+  seconds    Int?
   achievedOn DateTime       @db.Date
   createdAt  DateTime       @default(now())
 
@@ -402,6 +415,7 @@ model DomainLibraryVersion {
   conversions       Json
   expectations      Json
   evalCases         Json
+  records           Json      @default("{\"lift\":[],\"gymnastics\":[],\"cardio\":[]}")
   renames           Json      @default("[]")
   note              String?
   createdByUserId   String?

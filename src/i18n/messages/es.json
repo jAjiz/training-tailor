@@ -25,7 +25,7 @@
     "today": "Entreno",
     "calendar": "Calendario",
     "board": "Anuncios",
-    "prs": "RMs",
+    "prs": "Marcas",
     "me": "Perfil",
     "programs": "Mis programas",
     "main": "Navegación principal",
@@ -96,10 +96,10 @@
   },
   "profile": {
     "title": "Perfil de entrenamiento",
-    "intro": "Lo que el motor sabe de ti al adaptar un bloque. Tus 1RM salen de tus PRs.",
+    "intro": "Lo que el motor sabe de ti al adaptar un bloque. Tus marcas salen de la pestaña Marcas.",
     "back": "Volver a Perfil",
     "link": "Perfil de entrenamiento",
-    "linkHint": "Lesiones, material, marcas y objetivos para adaptar bloques.",
+    "linkHint": "Lesiones, material y objetivos para adaptar bloques.",
     "about": "Sobre ti",
     "sex": "Cargas",
     "level": "Nivel",
@@ -156,24 +156,7 @@
       "sandbag": "Saco de arena",
       "d_ball": "Balón medicinal sin bote"
     },
-    "benchmarks": "Marcas",
-    "benchmarksHint": "Repeticiones máximas y mejores tiempos. Los 1RM se leen de tus PRs.",
-    "prsLink": "Gestionar tus PRs",
     "movement": "Movimiento",
-    "kind": "Tipo",
-    "value": "Valor",
-    "unit": "Unidad",
-    "kinds": {
-      "max_reps": "Reps máximas",
-      "time": "Tiempo"
-    },
-    "units": {
-      "kg": "kg",
-      "lb": "lb",
-      "reps": "reps",
-      "seconds": "segundos"
-    },
-    "addBenchmark": "Añadir marca",
     "goals": "Objetivos",
     "goalPlaceholder": "p. ej. primer muscle-up estricto",
     "goalMovement": "Movimiento (opcional)",
@@ -241,19 +224,40 @@
       "calories": "Calorías",
       "distance": "Distancia (m)",
       "max_time": "Tiempo (más es mejor)"
-    }
+    },
+    "estimatedOneRm": "Cargas sobre tu 1RM estimado ({kg} kg)"
   },
   "prs": {
-    "title": "RMs",
+    "title": "Marcas",
     "search": "Buscar un ejercicio",
     "noResults": "Ningún ejercicio coincide.",
     "current": "1RM actual",
     "history": "Historial",
-    "empty": "Todavía no has registrado ningún 1RM de este ejercicio.",
-    "add": "Añadir 1RM",
+    "empty": "Todavía no has registrado ninguna marca de este ejercicio.",
+    "add": "Añadir marca",
     "kg": "kg",
     "date": "Fecha",
-    "deleteConfirm": "¿Borrar esta entrada?"
+    "deleteConfirm": "¿Borrar esta entrada?",
+    "tabsLabel": "Tipo de marca",
+    "tabs": {
+      "lift": "Levantamientos",
+      "gymnastics": "Gimnásticos",
+      "cardio": "Cardio"
+    },
+    "estimated": "estimado",
+    "bodyweight": "Peso corporal",
+    "addedKg": "+{kg} kg",
+    "repsCount": "{reps} reps",
+    "reps": "Repeticiones",
+    "addedLoad": "Lastre (kg)",
+    "time": "Tiempo",
+    "timeHint": "m:ss",
+    "bestByReps": "Mejor por repeticiones",
+    "bestByLoad": "Mejor por lastre",
+    "target": "Objetivo",
+    "distanceRecord": "Metros",
+    "bestDistance": "Máxima distancia",
+    "bestByTarget": "Mejor por objetivo"
   },
   "patterns": {
     "squat": "Sentadillas",
@@ -445,8 +449,8 @@
     "delete": "Borrar resultado",
     "deleteConfirm": "¿Borrar tu resultado?",
     "notLoggable": "Este bloque todavía no se puede registrar.",
-    "singlePrompt": "¿Actualizar tu 1RM de {movement} de {from} kg a {to} kg?",
-    "singlePromptFirst": "¿Guardar {to} kg como tu 1RM de {movement}?",
+    "singlePrompt": "¿Actualizar tu marca de {movement} a {reps} reps de {from} kg a {to} kg?",
+    "singlePromptFirst": "¿Guardar {to} kg × {reps} como tu marca de {movement}?",
     "yes": "Sí, actualizar",
     "no": "No"
   },
@@ -710,6 +714,7 @@
         "contraindication": "Contraindicación",
         "taxonomy": "Taxonomía",
         "conversions": "Conversiones",
+        "records": "Marcas",
         "expectation": "Expectativa",
         "evalCase": "Caso de evaluación",
         "reference": "Referencia guardada"
@@ -745,6 +750,7 @@
         "contraindications": "Contraindicaciones",
         "taxonomy": "Taxonomía",
         "conversions": "Conversiones",
+        "records": "Marcas",
         "expectations": "Expectativas",
         "evalCases": "Casos de evaluación"
       },

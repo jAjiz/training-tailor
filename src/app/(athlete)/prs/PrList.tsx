@@ -2,29 +2,53 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useLocale, useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/controls";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { formatDecimal } from "@/lib/format";
+import { Segmented } from "@/components/ui/Segmented";
+import type { RecordTab } from "@/lib/training/records";
 
-type Group = { pattern: string; label: string; movements: { name: string; kg: number | null }[] };
+export type RecordRow = { name: string; summary: string | null; estimated: boolean };
+export type RecordGroup = { label: string | null; movements: RecordRow[] };
+export type RecordTabs = Record<RecordTab, RecordGroup[]>;
 
-export function PrList({ groups }: { groups: Group[] }) {
+const TABS: RecordTab[] = ["lift", "gymnastics", "cardio"];
+const tabOf = (value: string | null): RecordTab => TABS.find((k) => k === value) ?? "lift";
+
+/**
+ * The records list, one sub-tab per catalog tab. The open tab lives in `?tab=` and is read from the URL, so going back (which
+ * can restore a page rendered for another tab) and links keep it.
+ */
+export function PrList({ tabs }: { tabs: RecordTabs }) {
   const t = useTranslations("prs");
-  const locale = useLocale();
+  const fromUrl = tabOf(useSearchParams().get("tab"));
+  const [tab, setTab] = useState<RecordTab>(fromUrl);
+  const [seen, setSeen] = useState(fromUrl);
+  if (seen !== fromUrl) {
+    setSeen(fromUrl);
+    setTab(fromUrl);
+  }
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const visible = groups
+  const visible = tabs[tab]
     .map((g) => ({ ...g, movements: g.movements.filter((m) => m.name.toLowerCase().includes(q)) }))
     .filter((g) => g.movements.length > 0);
+
+  function open(next: RecordTab) {
+    setTab(next);
+    window.history.replaceState(null, "", `?tab=${next}`);
+  }
+
   return (
     <div className="flex flex-col gap-5">
+      <Segmented label={t("tabsLabel")} value={tab} onChange={open} options={TABS.map((k) => ({ value: k, label: t(`tabs.${k}`) }))} />
       <Input type="search" aria-label={t("search")} placeholder={t("search")} value={query} onChange={(e) => setQuery(e.target.value)} />
       {visible.length === 0 && <EmptyState>{t("noResults")}</EmptyState>}
-      {visible.map((g) => (
-        <section key={g.pattern} className="flex flex-col gap-2">
-          <h2 className="px-1 text-xs tracking-wide text-muted">{g.label}</h2>
+      {visible.map((g, i) => (
+        <section key={g.label ?? i} className="flex flex-col gap-2">
+          {g.label && <h2 className="px-1 text-xs tracking-wide text-muted">{g.label}</h2>}
           <Card className="overflow-hidden">
             <ul className="flex flex-col divide-y">
               {g.movements.map((m) => (
@@ -32,7 +56,10 @@ export function PrList({ groups }: { groups: Group[] }) {
                   <Link href={`/prs/${encodeURIComponent(m.name)}`}
                     className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-foreground">
                     <span className="min-w-0 truncate text-[15px]">{m.name}</span>
-                    <span className="shrink-0 text-right font-semibold tabular-nums">{m.kg !== null ? `${formatDecimal(m.kg, locale)} ${t("kg")}` : ""}</span>
+                    <span className="flex shrink-0 flex-col items-end">
+                      <span className="font-semibold tabular-nums">{m.summary ?? ""}</span>
+                      {m.estimated && <span className="text-xs text-muted">{t("estimated")}</span>}
+                    </span>
                   </Link>
                 </li>
               ))}

@@ -168,6 +168,21 @@
           "mustKeepPatterns": ["squat"]
         }
       }
-    ]
+    ],
+    "records": {
+      "lift": [
+        { "label": { "en": "Squats", "es": "Sentadilla" }, "entries": [{ "movement": "Front Squat" }, { "movement": "Thruster" }] },
+        { "label": { "en": "Deadlifts", "es": "Peso muerto" }, "entries": [{ "movement": "Deadlift" }] }
+      ],
+      "gymnastics": [
+        { "label": { "en": "Max reps", "es": "Máximas repeticiones" }, "entries": [{ "movement": "Push-up", "measure": "reps", "weighted": false }] }
+      ],
+      "cardio": [
+        { "label": { "en": "Cardio", "es": "Cardio" }, "entries": [
+          { "movement": "Row (Erg)", "targets": [{ "distanceM": 500 }, { "distanceM": 2000 }, { "calories": 50 }] },
+          { "movement": "Run", "targets": [{ "distanceM": 1000 }, { "distanceM": 5000 }] }
+        ] }
+      ]
+    }
   }
 }

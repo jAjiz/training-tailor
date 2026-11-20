@@ -14,6 +14,7 @@ import { Pill } from "@/components/ui/Pill";
 import type { TailoringResult } from "@/lib/engine/types";
 import type { AdaptationMessage } from "@/lib/training/adaptation-types";
 import { describeSets } from "@/lib/training/barbell";
+import { formatDecimal } from "@/lib/format";
 import type { ErrorCode } from "@/lib/training/errors";
 import type { BarbellSet } from "@/lib/training/schemas";
 import { AdaptPanel } from "./AdaptPanel";
@@ -48,7 +49,10 @@ export type CardAdaptation = {
   messages: AdaptationMessage[];
 };
 
-function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number | null; compact: boolean }) {
+/** The athlete's 1RM for a barbell block's percentages; `estimated` when it comes from a multi-rep lift. */
+export type CardOneRm = { kg: number; estimated: boolean };
+
+function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: CardOneRm | null; compact: boolean }) {
   const t = useTranslations("block");
   const locale = useLocale();
   const text = compact ? "text-[13px] leading-snug" : "text-[15px] leading-relaxed";
@@ -67,11 +71,14 @@ function BlockBody({ block, oneRm, compact }: { block: CardBlock; oneRm: number 
         <div className={text}>
           {block.title && block.movement && <p className="font-semibold">{block.movement}</p>}
           {compact ? (
-            <ul className="text-foreground/80">{describeSets(block.sets ?? [], oneRm, locale).map((line, i) => <li key={i}>{line}</li>)}</ul>
+            <ul className="text-foreground/80">{describeSets(block.sets ?? [], oneRm?.kg ?? null, locale).map((line, i) => <li key={i}>{line}</li>)}</ul>
           ) : (
             <ul className="mt-1 flex flex-wrap gap-2 px-1 text-foreground/80">
-              {describeSets(block.sets ?? [], oneRm, locale).map((line, i) => <li key={i} className="slant px-2 py-0.5 before:bg-surface-2">{line}</li>)}
+              {describeSets(block.sets ?? [], oneRm?.kg ?? null, locale).map((line, i) => <li key={i} className="slant px-2 py-0.5 before:bg-surface-2">{line}</li>)}
             </ul>
+          )}
+          {oneRm?.estimated && block.sets?.some((x) => x.percent !== null) && (
+            <p className="mt-1 text-xs text-muted">{t("estimatedOneRm", { kg: formatDecimal(oneRm.kg, locale) })}</p>
           )}
           {block.instructions && <p className="mt-1 whitespace-pre-wrap text-foreground/80">{block.instructions}</p>}
         </div>
@@ -90,7 +97,7 @@ function collapsedTitle(block: CardBlock): string | null {
  * The athlete's card starts collapsed to its title and `summary` (e.g. their result); tapping the title opens it.
  */
 export function BlockCard({ block, oneRm = null, compact = false, summary, adaptation, children }: {
-  block: CardBlock; oneRm?: number | null; compact?: boolean; summary?: React.ReactNode;
+  block: CardBlock; oneRm?: CardOneRm | null; compact?: boolean; summary?: React.ReactNode;
   adaptation?: CardAdaptation; children?: React.ReactNode;
 }) {
   const t = useTranslations("block");
