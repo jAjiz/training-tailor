@@ -413,6 +413,7 @@ model DomainLibraryVersion {
   conversions       Json
   expectations      Json
   evalCases         Json
+  records           Json      @default("{\"lift\":[],\"gymnastics\":[],\"cardio\":[]}")
   renames           Json      @default("[]")
   note              String?
   createdByUserId   String?

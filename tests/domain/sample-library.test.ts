@@ -9,6 +9,13 @@ describe("sample library", () => {
     expect(validateLibrary(sampleLibrary())).toEqual([]);
   });
 
+  it("the sample has a records entry in every tab", () => {
+    const { records } = sampleLibrary();
+    expect([records.lift, records.gymnastics, records.cardio].map((groups) => groups.flatMap((g) => g.entries).length))
+      .toEqual([expect.any(Number), expect.any(Number), expect.any(Number)]);
+    expect(Math.min(...[records.lift, records.gymnastics, records.cardio].map((g) => g.flatMap((x) => x.entries).length))).toBeGreaterThan(0);
+  });
+
   it("the sample stays small", () => {
     const lib = sampleLibrary();
     expect(lib.movements.length).toBeLessThanOrEqual(15);

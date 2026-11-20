@@ -1,7 +1,7 @@
 import type { ActiveCondition } from "@/lib/domain/assess";
 import type { DomainData, DomainLibrary } from "@/lib/domain/library";
 import {
-  ContraindicationSchema, MovementSchema,
+  ContraindicationSchema, MovementSchema, emptyRecordsCatalog,
   type Contraindication, type Movement, type Severity, type Side, type StimulusDef,
 } from "@/lib/domain/types";
 import { EnergySystem, LoadIntensity, Quality } from "@/lib/engine/types";
@@ -48,6 +48,7 @@ export function testDomain(over: Partial<DomainData> = {}): DomainData {
       loadIntensities: defs(LoadIntensity.options),
     },
     conversions: { effort: [], implementLoad: [] },
+    records: emptyRecordsCatalog(),
     ...over,
   };
 }

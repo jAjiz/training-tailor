@@ -12,7 +12,7 @@ describe("library documents", () => {
       contraindications: [testContraindication("test-injury")],
     });
     expect(Object.keys(toDomainData(lib)).sort()).toEqual(
-      ["contraindications", "conversions", "movements", "taxonomy"],
+      ["contraindications", "conversions", "movements", "records", "taxonomy"],
     );
   });
 

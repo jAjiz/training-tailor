@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { EvalCaseSchema } from "@/lib/eval/grade";
 import {
-  ContraindicationSchema, ConversionsSchema, Equipment, MovementSchema, Severity, Side, Site,
-  StimulusDefSchema, StressMechanism,
-  type Contraindication, type Conversions, type Movement, type StimulusTaxonomy,
+  ContraindicationSchema, ConversionsSchema, Equipment, MovementSchema, RecordsCatalogSchema, Severity, Side, Site,
+  StimulusDefSchema, StressMechanism, emptyRecordsCatalog,
+  type Contraindication, type Conversions, type Movement, type RecordsCatalog, type StimulusTaxonomy,
 } from "./types";
 
 export interface DomainData {
@@ -11,6 +11,7 @@ export interface DomainData {
   contraindications: Contraindication[];
   taxonomy: StimulusTaxonomy;
   conversions: Conversions;
+  records: RecordsCatalog;
 }
 
 const note = z.string().optional();
@@ -103,6 +104,8 @@ export const DomainLibrarySchema = z.object({
   conversions: ConversionsSchema,
   expectations: z.array(LibraryExpectationSchema),
   evalCases: z.array(EvalCaseSchema),
+  // Versions and exports from before the catalog existed read as an empty one.
+  records: RecordsCatalogSchema.default(emptyRecordsCatalog),
 });
 export type DomainLibrary = z.infer<typeof DomainLibrarySchema>;
 
@@ -114,12 +117,12 @@ export const LibraryExportSchema = z.object({
 });
 export type LibraryExport = z.infer<typeof LibraryExportSchema>;
 
-export const LIBRARY_DOCUMENTS = ["taxonomy", "conversions", "expectations", "evalCases"] as const;
+export const LIBRARY_DOCUMENTS = ["taxonomy", "conversions", "records", "expectations", "evalCases"] as const;
 export type LibraryDocument = (typeof LIBRARY_DOCUMENTS)[number];
 
 export function toDomainData(library: DomainLibrary): DomainData {
-  const { movements, contraindications, taxonomy, conversions } = library;
-  return { movements, contraindications, taxonomy, conversions };
+  const { movements, contraindications, taxonomy, conversions, records } = library;
+  return { movements, contraindications, taxonomy, conversions, records };
 }
 
 export function emptyLibrary(): DomainLibrary {
@@ -130,5 +133,6 @@ export function emptyLibrary(): DomainLibrary {
     conversions: { effort: [], implementLoad: [] },
     expectations: [],
     evalCases: [],
+    records: emptyRecordsCatalog(),
   };
 }

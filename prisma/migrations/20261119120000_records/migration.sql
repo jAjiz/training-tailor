@@ -38,3 +38,6 @@ WHERE b->>'kind' = 'max_reps'
   AND jsonb_typeof(b->'movement') = 'string' AND length(b->>'movement') > 0;
 
 UPDATE "AthleteProfile" SET "data" = "data" - 'benchmarks' WHERE "data" ? 'benchmarks';
+
+-- The records catalog, a library document; versions from before it read as an empty catalog.
+ALTER TABLE "DomainLibraryVersion" ADD COLUMN "records" JSONB NOT NULL DEFAULT '{"lift":[],"gymnastics":[],"cardio":[]}';

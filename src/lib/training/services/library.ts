@@ -5,7 +5,7 @@ import {
   type DomainLibrary, type LibraryDocument, type LibraryExport, type LibraryExpectation, type MovementRename,
 } from "@/lib/domain/library";
 import { LibraryUnavailableError } from "@/lib/domain/library-reader";
-import { ContraindicationSchema, MovementSchema } from "@/lib/domain/types";
+import { ContraindicationSchema, MovementSchema, type RecordsCatalog } from "@/lib/domain/types";
 import { toJson } from "@/lib/json";
 import { TrainingError } from "../errors";
 import { writeAudit } from "./audit";
@@ -49,6 +49,7 @@ export function libraryOf(row: DomainLibraryVersion): DomainLibrary {
     conversions: row.conversions,
     expectations: row.expectations,
     evalCases: row.evalCases,
+    records: row.records,
   });
 }
 
@@ -60,6 +61,7 @@ function libraryColumns(library: DomainLibrary) {
     conversions: toJson(library.conversions),
     expectations: toJson(library.expectations),
     evalCases: toJson(library.evalCases),
+    records: toJson(library.records),
   };
 }
 
@@ -245,6 +247,15 @@ function renameIn(names: string[], from: string, to: string): string[] {
   return names.map((n) => (n === from ? to : n));
 }
 
+function renameInRecords(records: RecordsCatalog, from: string, to: string): RecordsCatalog {
+  const swap = <E extends { movement: string }>(e: E): E => (e.movement === from ? { ...e, movement: to } : e);
+  return {
+    lift: records.lift.map((g) => ({ ...g, entries: g.entries.map(swap) })),
+    gymnastics: records.gymnastics.map((g) => ({ ...g, entries: g.entries.map(swap) })),
+    cardio: records.cardio.map((g) => ({ ...g, entries: g.entries.map(swap) })),
+  };
+}
+
 function renameInExpectation(e: LibraryExpectation, from: string, to: string): LibraryExpectation {
   const list = (names: string[] | undefined) => names && renameIn(names, from, to);
   if (e.kind === "verdict") return { ...e, movements: renameIn(e.movements, from, to) };
@@ -294,6 +305,7 @@ export async function renameMovement(
             })),
           },
           expectations: library.expectations.map((e) => renameInExpectation(e, from, to)),
+          records: renameInRecords(library.records, from, to),
         },
         renames: [...draft.renames, { from, to }],
       };

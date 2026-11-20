@@ -712,6 +712,7 @@
         "contraindication": "Contraindicación",
         "taxonomy": "Taxonomía",
         "conversions": "Conversiones",
+        "records": "Marcas",
         "expectation": "Expectativa",
         "evalCase": "Caso de evaluación",
         "reference": "Referencia guardada"
@@ -747,6 +748,7 @@
         "contraindications": "Contraindicaciones",
         "taxonomy": "Taxonomía",
         "conversions": "Conversiones",
+        "records": "Marcas",
         "expectations": "Expectativas",
         "evalCases": "Casos de evaluación"
       },

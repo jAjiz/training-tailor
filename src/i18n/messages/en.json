@@ -712,6 +712,7 @@
         "contraindication": "Contraindication",
         "taxonomy": "Taxonomy",
         "conversions": "Conversions",
+        "records": "Records",
         "expectation": "Expectation",
         "evalCase": "Eval case",
         "reference": "Stored reference"
@@ -747,6 +748,7 @@
         "contraindications": "Contraindications",
         "taxonomy": "Taxonomy",
         "conversions": "Conversions",
+        "records": "Records",
         "expectations": "Expectations",
         "evalCases": "Eval cases"
       },
