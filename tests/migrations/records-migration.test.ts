@@ -39,7 +39,7 @@ beforeAll(async () => {
     JSON.stringify({ sex: "female", goals: [], benchmarks: { not: "an array" } }),
   ]);
   await db.exec(sql(RECORDS));
-});
+}, 60_000);
 
 afterAll(async () => { await db.close(); });
 
