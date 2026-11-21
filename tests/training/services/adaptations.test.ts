@@ -246,6 +246,28 @@ describe("adaptation conversation", () => {
     expect(pipeline.original.blocks[0].components[0].loadKg).toEqual({ male: 83.5, female: 83.5 }); // 80 % of 104.5
   });
 
+  it("writes a barbell proposal's text from its data, not the model's prose", async () => {
+    const { program, athlete } = await setup();
+    const barbell = await makeBarbellBlock(tdb.prisma, program.id, 0, "Test Squat");
+    const block = {
+      title: "Test Squat", rawText: "Test Squat 5 @ 80%", day: null, format: "strength" as const, scheme: null,
+      timeDomainMinutes: 10, coachingNotes: null, stimulus: null,
+    };
+    const tailored = toTailoringDraft({
+      name: null, rawText: "Test Squat 5 @ 80%", source: "paste",
+      blocks: [{ ...block, components: [{ ...component("Test Squat", { reps: 5, percent1RM: 80 }), canonical: "Test Squat" }] }],
+    }, { rawText: "Model prose at 90 %" });
+    const p = new FakeProvider({
+      BlockAnalysis: { name: null, blocks: [{ ...block, components: [component("Test Squat", { reps: 5, percent1RM: 80 })] }] },
+      SituationAnalysis: situation(), TailoringResult: tailored,
+    });
+    await say(p, athlete, barbell.id, "tired today");
+    await tailorNow(p, athlete, barbell.id);
+    const { messages } = (await getAdaptation(tdb.prisma, athlete.id, barbell.id))!;
+    const proposal = messages.find((m) => m.role === "proposal");
+    expect(proposal?.role === "proposal" && proposal.tailored.rawText).toBe("Test Squat: 5 @ 80 %");
+  });
+
   it("keeps barbell results rx with a snapshot", async () => {
     const { program, athlete } = await setup();
     const barbell = await makeBarbellBlock(tdb.prisma, program.id, 0, "Test Squat");
@@ -273,7 +295,7 @@ describe("adaptation conversation", () => {
     await acceptAdaptation(tdb.prisma, athlete, barbell.id, NOW);
     const row = await tdb.prisma.result.findUniqueOrThrow({ where: { id: result.id } });
     expect(row.division).toBe("rx");
-    expect(row.adaptation).toMatchObject({ text: "Test Squat 5 @ 80%", situation: ["tired today"] });
+    expect(row.adaptation).toMatchObject({ text: "Test Squat: 5 @ 80 % (80 kg)", situation: ["tired today"] });
   });
 
   it("discard keeps messages and leaves the result tagged", async () => {
