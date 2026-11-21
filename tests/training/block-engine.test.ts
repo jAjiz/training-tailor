@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import {
-  applyAthleteLoads, blockAnalysisText, blockMetadata, contentHash, lockedFormatsFor, workoutHash, type BlockFields,
+  applyAthleteLoads, blockAnalysisText, blockMetadata, contentHash, lockedFormatsFor, withBarbellText, workoutHash, type BlockFields,
 } from "@/lib/training/block-engine";
-import type { StructuredWorkout } from "@/lib/engine/types";
+import type { StructuredWorkout, TailoringResult, WorkoutComponent } from "@/lib/engine/types";
 import { component, coupletDraft } from "../fixtures/workouts";
 
 const custom: BlockFields = {
@@ -111,5 +111,43 @@ describe("lockedFormatsFor", () => {
     expect(lockedFormatsFor("amrap")).toEqual(["amrap"]);
     expect(lockedFormatsFor("load")).toBeNull();
     expect(lockedFormatsFor(null)).toBeNull();
+  });
+});
+
+describe("withBarbellText", () => {
+  const tailoredWith = (components: WorkoutComponent[], scheme: string | null = null): TailoringResult => ({
+    name: null, rawText: "Test Goblet 5 @ 80 %", droppedBlocks: [], changes: [], rationale: "r", safetyNote: null,
+    blocks: [{
+      ...coupletDraft().blocks[0], rawText: "Test Goblet 5 @ 80 %", format: "strength", scheme, sourceBlocks: [0], components,
+    }],
+  });
+  const comp = (movement: string, extra: Partial<WorkoutComponent> = {}): WorkoutComponent =>
+    ({ ...component(movement), canonical: movement, ...extra });
+
+  it("writes a replaced lift in kg from its data, never the model's percentage", () => {
+    const out = withBarbellText(tailoredWith([comp("Test Goblet", { reps: 5, load: "80 %", loadKg: { male: 20, female: 20 } })]), null, "en");
+    expect(out.rawText).toBe("Test Goblet: 5 @ 20 kg");
+    expect(out.blocks[0].rawText).toBe(out.rawText);
+  });
+
+  it("keeps a kept lift's percentage with the athlete's kg, in the locale's decimals", () => {
+    const out = withBarbellText(tailoredWith([comp("Test Squat", { reps: 5, percent1RM: 80, loadKg: { male: 83.5, female: 83.5 } })]), "male", "es");
+    expect(out.rawText).toBe("Test Squat: 5 @ 80 % (83,5 kg)");
+  });
+
+  it("picks the athlete's sex load, or both when the sex is unknown", () => {
+    const loads = [comp("Test Goblet", { reps: 8, loadKg: { male: 24, female: 16 } })];
+    expect(withBarbellText(tailoredWith(loads), "female", "en").rawText).toBe("Test Goblet: 8 @ 16 kg");
+    expect(withBarbellText(tailoredWith(loads), null, "en").rawText).toBe("Test Goblet: 8 @ 24/16 kg");
+  });
+
+  it("puts the scheme first and leaves out a load the data does not give", () => {
+    const out = withBarbellText(tailoredWith([comp("Test Goblet", { reps: "5-3-1" }), comp("Test Crawl", { distanceMeters: 20 })], "3 rounds"), null, "en");
+    expect(out.rawText).toBe("3 rounds\nTest Goblet: 5-3-1\nTest Crawl: 20 m");
+  });
+
+  it("leaves out a scheme that carries a percentage", () => {
+    const out = withBarbellText(tailoredWith([comp("Test Goblet", { reps: 5, loadKg: { male: 20, female: 20 } })], "5 × 5 @ 70 %"), null, "en");
+    expect(out.rawText).toBe("Test Goblet: 5 @ 20 kg");
   });
 });

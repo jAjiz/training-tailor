@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { BlockMetadata } from "@/lib/engine/analyze";
-import type { BlockFormat, StructuredWorkout } from "@/lib/engine/types";
+import type { BlockFormat, StructuredWorkout, TailoredBlock, TailoringResult, WorkoutComponent } from "@/lib/engine/types";
+import { formatDecimal } from "@/lib/format";
 import { describeSets, percentToKg } from "./barbell";
 import type { BarbellSet } from "./schemas";
 
@@ -70,7 +71,7 @@ export function lockedFormatsFor(scoring: string | null): BlockFormat[] | null {
 }
 
 /** Fills each percentage component's loadKg from the athlete's 1RMs, keyed by canonical movement name. */
-export function applyAthleteLoads(workout: StructuredWorkout, oneRms: Map<string, number>): StructuredWorkout {
+export function applyAthleteLoads<W extends { blocks: { components: WorkoutComponent[] }[] }>(workout: W, oneRms: Map<string, number>): W {
   return {
     ...workout,
     blocks: workout.blocks.map((b) => ({
@@ -83,4 +84,37 @@ export function applyAthleteLoads(workout: StructuredWorkout, oneRms: Map<string
       }),
     })),
   };
+}
+
+type Sex = "male" | "female";
+
+function componentLine(c: WorkoutComponent, sex: Sex | null, locale: string): string {
+  const num = (n: number) => formatDecimal(n, locale);
+  const { male, female } = c.loadKg ?? { male: null, female: null };
+  const kg = sex !== null ? (sex === "male" ? male : female)
+    : male !== null && female !== null && male !== female ? null : male ?? female;
+  const kgText = kg !== null ? `${num(kg)} kg` : male !== null && female !== null ? `${num(male)}/${num(female)} kg` : null;
+  const load = c.percent1RM !== null ? `${num(c.percent1RM)} %${kg !== null ? ` (${num(kg)} kg)` : ""}` : kgText;
+  const amount = [
+    c.reps !== null ? String(c.reps) : null,
+    c.distanceMeters !== null ? `${num(c.distanceMeters)} m` : null,
+    c.calories !== null ? `${num(c.calories)} cal` : null,
+    c.durationSeconds !== null ? `${num(c.durationSeconds)} s` : null,
+  ].filter((p): p is string => p !== null).join(" · ");
+  const detail = [amount || null, load !== null ? `@ ${load}` : null].filter(Boolean).join(" ");
+  return detail ? `${c.canonical ?? c.movement}: ${detail}` : (c.canonical ?? c.movement);
+}
+
+const blockText = (b: TailoredBlock, sex: Sex | null, locale: string) =>
+  [b.scheme?.includes("%") ? null : b.scheme, ...b.components.map((c) => componentLine(c, sex, locale))].filter((l): l is string => !!l).join("\n");
+
+/**
+ * A barbell block's adapted text, written from the tailored data instead of the model's prose: the prose can keep a
+ * percentage of 1RM that no longer applies (a lift replaced by dumbbells). Loads come from loadKg for the athlete's sex,
+ * and a percentage only where the data kept one; the free-text load, the notes and a scheme with a percentage are left
+ * out for the same reason.
+ */
+export function withBarbellText(tailored: TailoringResult, sex: Sex | null, locale: string): TailoringResult {
+  const blocks = tailored.blocks.map((b) => ({ ...b, rawText: blockText(b, sex, locale) || b.rawText }));
+  return { ...tailored, blocks, rawText: blocks.map((b) => b.rawText).join("\n\n") };
 }

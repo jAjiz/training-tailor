@@ -17,7 +17,7 @@ import { toJson } from "@/lib/json";
 import {
   AcceptedAdaptation, AdaptationMessage, AdaptationState, type AdaptationSnapshot, type AdaptMessageInput,
 } from "../adaptation-types";
-import { applyAthleteLoads, contentHash, lockedFormatsFor, workoutHash } from "../block-engine";
+import { applyAthleteLoads, contentHash, lockedFormatsFor, withBarbellText, workoutHash } from "../block-engine";
 import { TrainingError } from "../errors";
 import { weekIndexOf } from "../dates";
 import { ensureBlockAnalysis } from "./block-analysis";
@@ -271,7 +271,8 @@ export async function adaptTailor(
 ): Promise<PipelineResult> {
   const { block, messages, state } = await tailorable(db, athlete, blockId, now);
   const lifts = state.original.blocks.flatMap((b) => b.components.flatMap((c) => (c.percent1RM !== null && c.canonical ? [c.canonical] : [])));
-  const original = applyAthleteLoads(state.original, new Map([...await oneRmMap(db, athlete.id, [...new Set(lifts)])].map(([m, r]) => [m, r.kg])));
+  const oneRms = new Map([...await oneRmMap(db, athlete.id, [...new Set(lifts)])].map(([m, r]) => [m, r.kg]));
+  const original = applyAthleteLoads(state.original, oneRms);
   const common = {
     confirmed: state.conditions, restrictions: state.restrictions, unavailableEquipment: state.unavailableEquipment,
     profile: ctx.profile, domain: ctx.domain, onProgress: ctx.onProgress, locale: ctx.locale, lockedFormats: lockedFormatsFor(block.scoring),
@@ -290,6 +291,10 @@ export async function adaptTailor(
     await save(db, athlete.id, blockId, [...messages, { role: "error", at, code: errorCode(e) }], state)
       .catch((err) => console.error("adaptation error not stored", err));
     throw e;
+  }
+  // The model's prose can keep a percentage that no longer applies; a barbell block's text is written from its data.
+  if (block.kind === "barbell") {
+    result = { ...result, tailored: withBarbellText(applyAthleteLoads(result.tailored, oneRms), ctx.profile.sex, ctx.locale) };
   }
   const next: AdaptationState = {
     ...state, conditions: [], restrictions: [], unavailableEquipment: [], pendingQuestions: [], feedback: null, last: result,
