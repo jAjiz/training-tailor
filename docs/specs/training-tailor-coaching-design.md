@@ -24,6 +24,7 @@ Using the app is free: the money that moves through it is what athletes pay thei
 | 3. AI tailoring in the day view | "Tailor" on a session, using the engine | Later, own spec |
 | 4. Coach controls over AI | Enable/disable per program, see what athletes tailored, intent notes for the engine | Later, own spec |
 | 5. Coach payments | Coaches connect their own Stripe account and charge their athletes through the app (see "Phase 5 direction") | Later, own spec, after phases 3 and 4 |
+| 6. Coach edits an athlete's week | The coach opens one athlete's training week and edits it for that athlete, adapted or not | Later, own spec, after phase 5 |
 
 Phases 1 and 2 share this spec and one implementation plan, delivered as two PRs. Each phase
 ends with a browser verification of its main flows.
@@ -42,14 +43,14 @@ its own spec.
 | State in the app | Connect webhooks keep in the database which athlete is paid up with which coach; the redirect back from Checkout is never the source of truth. |
 | Prerequisite | The platform's Stripe account is activated for Connect (identity, business type, bank account), even with a 0 fee. |
 | What coaches sell | A program is free or paid; the coach sets the price per program. **Continuous**: a monthly subscription. **Closed**: one fixed price, paid once. |
-| Access | Paying is what enrolls the athlete in a paid program. A closed program, once paid, stays open for good. A continuous one is open while its subscription is active; when a payment fails (subscription `past_due` or later), the athlete loses access to that program. |
+| Access | Paying is what enrolls the athlete in a paid program. A closed program, once paid, stays open for good. A continuous one is open while its subscription is active or `past_due`: while Stripe retries a failed payment the athlete keeps access, and loses it when the subscription ends `canceled` or `unpaid`. How long the retries last is set by each coach in their own Stripe account; the app adds no grace period of its own. |
 | Blocked athlete | On opening the app, the athlete cannot see that program's schedule and is asked to pay to get back in. No separate notification (no push or email). |
+| Price change | A new price applies to existing subscribers from their next renewal, with no proration: the app moves each active subscription to the new price. |
 | Free to paid | When a coach makes a free program paid, its enrolled athletes are blocked the same way as after a failed payment, until they subscribe or pay. |
 
 | Coach UI | **Connect embedded components** inside `/coach`: account onboarding, payments, payouts and account notifications, styled with the app's theme. The coach does not need to leave the app; the full Stripe dashboard stays available to them. |
 
-**Open for the phase 5 spec:** what a price change does to existing subscribers; whether any
-grace period applies while Stripe retries a failed payment.
+**Settled after phases 3 and 4:** the price-change and failed-payment rows above.
 
 ## Decisions (locked)
 
