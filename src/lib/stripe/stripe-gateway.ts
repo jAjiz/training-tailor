@@ -24,7 +24,8 @@ function snapshot(sub: Stripe.Subscription): SubscriptionSnapshot {
     priceId: item?.price.id ?? "",
     itemId: item?.id ?? "",
     currentPeriodEnd: fromSeconds(periodEnd),
-    cancelAtPeriodEnd: sub.cancel_at_period_end,
+    // A scheduled end: the Customer Portal now sets `cancel_at` (the period end) instead of `cancel_at_period_end`.
+    cancelAtPeriodEnd: sub.cancel_at_period_end || sub.cancel_at !== null,
     cancellationReason: reason === "cancellation_requested" ? "cancellation_requested"
       : reason === "payment_failed" ? "payment_failed"
       : reason === "payment_disputed" ? "payment_disputed"
