@@ -1,3 +1,4 @@
+import { DiscountCodeTaken, DiscountInvalid } from "@/lib/stripe/gateway";
 import type {
   AccountSnapshot, CheckoutInput, DiscountInput, DiscountView, StripeGateway, SubscriptionSnapshot,
 } from "@/lib/stripe/gateway";
@@ -17,6 +18,8 @@ export type FakeStripeState = {
   portalConfigurations: Map<string, { acct: string }>;
   /** Method names that reject with an error, to simulate Stripe failing. */
   failing: Set<keyof StripeGateway>;
+  /** Makes `createDiscount` reject the discount's values, as Stripe does for an invalid one. */
+  rejectDiscounts: boolean;
 };
 
 /**
@@ -31,7 +34,7 @@ export function fakeStripe() {
   const state: FakeStripeState = {
     accounts: new Map(), products: new Map(), prices: new Map(), customers: new Map(),
     checkoutSessions: new Map(), subscriptions: new Map(), discounts: new Map(), refunds: [],
-    portalConfigurations: new Map(), failing: new Set(),
+    portalConfigurations: new Map(), failing: new Set(), rejectDiscounts: false,
   };
 
   function record<K extends keyof StripeGateway>(method: K, args: unknown[]) {
@@ -123,6 +126,10 @@ export function fakeStripe() {
     },
     async createDiscount(acct, d: DiscountInput) {
       record("createDiscount", [acct, d]);
+      if (state.rejectDiscounts) throw new DiscountInvalid();
+      if ([...state.discounts.values()].some((x) => x.acct === acct && x.view.active && x.view.code === d.code)) {
+        throw new DiscountCodeTaken();
+      }
       const promotionCodeId = nextId("promo");
       state.discounts.set(promotionCodeId, {
         acct,

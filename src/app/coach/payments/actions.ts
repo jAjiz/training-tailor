@@ -6,9 +6,10 @@ import { requireCoach } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { getStripeGateway } from "@/lib/stripe/client";
-import { parse } from "@/lib/training/schemas";
+import { DiscountCreateInput, parse } from "@/lib/training/schemas";
 import {
-  CONNECT_COUNTRIES, connectStripe, createCoachAccountSession, getStripeAccount, syncStripeAccount,
+  CONNECT_COUNTRIES, connectStripe, createCoachAccountSession, createDiscount, deactivateDiscount, getStripeAccount,
+  syncStripeAccount,
 } from "@/lib/training/services/payments";
 
 export async function connectStripeAction(country: unknown) {
@@ -35,6 +36,22 @@ export async function syncStripeAccountAction() {
     const account = await getStripeAccount(prisma, coach.id);
     if (!account) return;
     await syncStripeAccount(prisma, getStripeGateway(), account.stripeAccountId);
+    revalidatePath("/coach/payments");
+  });
+}
+
+export async function createDiscountAction(raw: unknown) {
+  return runAction("createDiscountAction", async () => {
+    const coach = await requireCoach();
+    await createDiscount(prisma, getStripeGateway(), coach.id, parse(DiscountCreateInput, raw));
+    revalidatePath("/coach/payments");
+  });
+}
+
+export async function deactivateDiscountAction(promotionCodeId: unknown) {
+  return runAction("deactivateDiscountAction", async () => {
+    const coach = await requireCoach();
+    await deactivateDiscount(prisma, getStripeGateway(), coach.id, parse(z.string().min(1), promotionCodeId));
     revalidatePath("/coach/payments");
   });
 }

@@ -59,6 +59,16 @@ export type DiscountView = {
   active: boolean;
 };
 
+/** `createDiscount` failed because the account already has a promotion code with that code. */
+export class DiscountCodeTaken extends Error {
+  constructor() { super("discount code already exists"); this.name = "DiscountCodeTaken"; }
+}
+
+/** `createDiscount` failed because Stripe rejected the discount's values. */
+export class DiscountInvalid extends Error {
+  constructor(message = "discount rejected by Stripe") { super(message); this.name = "DiscountInvalid"; }
+}
+
 export interface StripeGateway {
   createAccount(country: string): Promise<string>;
   retrieveAccount(acct: string): Promise<AccountSnapshot>;

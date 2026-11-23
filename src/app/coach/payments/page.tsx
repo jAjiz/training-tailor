@@ -3,15 +3,23 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Card } from "@/components/ui/Card";
 import { requireCoachPage } from "@/lib/accounts";
 import { prisma } from "@/lib/db";
-import { paymentsEnabled } from "@/lib/stripe/client";
-import { CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY, getStripeAccount } from "@/lib/training/services/payments";
+import { getStripeGateway, paymentsEnabled } from "@/lib/stripe/client";
+import {
+  CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY, getStripeAccount, listDiscounts,
+} from "@/lib/training/services/payments";
+import { listCoachPrograms } from "@/lib/training/services/programs";
 import { ConnectPanel } from "./ConnectPanel";
+import { DiscountCodes } from "./DiscountCodes";
 
 export default async function CoachPaymentsPage() {
   if (!paymentsEnabled()) notFound();
   const coach = await requireCoachPage();
   const t = await getTranslations("coach.payments");
   const account = await getStripeAccount(prisma, coach.id);
+  const ready = !!account?.chargesEnabled;
+  const programs = ready ? await listCoachPrograms(prisma, coach.id) : [];
+  // Stripe being down must not take the whole page with it.
+  const discounts = ready ? await listDiscounts(prisma, getStripeGateway(), coach.id).catch(() => null) : null;
 
   const names = new Intl.DisplayNames(await getLocale(), { type: "region" });
   const countries = CONNECT_COUNTRIES.map((code) => ({ code, name: names.of(code) ?? code }))
@@ -34,7 +42,13 @@ export default async function CoachPaymentsPage() {
       ) : (
         <>
           <ConnectPanel stage="ready" />
-          {/* Task 12: the coach's discount codes go here. */}
+          <DiscountCodes
+            discounts={discounts?.map((d) => ({ ...d, expiresAt: d.expiresAt?.toISOString() ?? null })) ?? null}
+            programs={programs.filter((p) => p.priceAmount !== null && p.stripeProductId && !p.archivedAt)
+              .map((p) => ({ id: p.id, name: p.name }))}
+            productNames={Object.fromEntries(programs.flatMap((p) => (p.stripeProductId ? [[p.stripeProductId, p.name]] : [])))}
+            currency={account.defaultCurrency}
+          />
         </>
       )}
     </section>

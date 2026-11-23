@@ -1,5 +1,13 @@
-import type Stripe from "stripe";
-import type { DiscountView, StripeGateway, SubscriptionSnapshot } from "@/lib/stripe/gateway";
+import Stripe from "stripe";
+import {
+  DiscountCodeTaken, DiscountInvalid, type DiscountView, type StripeGateway, type SubscriptionSnapshot,
+} from "@/lib/stripe/gateway";
+
+/** A Stripe validation error becomes a typed discount error: a duplicate code, or any other rejected value. */
+function discountError(e: unknown): unknown {
+  if (!(e instanceof Stripe.errors.StripeInvalidRequestError)) return e;
+  return e.code === "resource_already_exists" || e.param === "code" ? new DiscountCodeTaken() : new DiscountInvalid(e.message);
+}
 
 const fromSeconds = (s: number | null | undefined) => (s ? new Date(s * 1000) : null);
 const idOf = (x: string | { id: string }) => (typeof x === "string" ? x : x.id);
@@ -193,25 +201,39 @@ export function stripeGateway(stripe: Stripe): StripeGateway {
     },
 
     async createDiscount(acct, d) {
-      const coupon = await stripe.coupons.create(
-        {
-          ...(d.percentOff != null ? { percent_off: d.percentOff } : { amount_off: d.amountOff ?? 0, currency: d.currency }),
-          duration: d.duration,
-          ...(d.duration === "repeating" && d.durationInMonths ? { duration_in_months: d.durationInMonths } : {}),
-          ...(d.productIds.length ? { applies_to: { products: d.productIds } } : {}),
-        },
-        { stripeAccount: acct },
-      );
-      const promo = await stripe.promotionCodes.create(
-        {
-          promotion: { type: "coupon", coupon: coupon.id },
-          code: d.code,
-          ...(d.maxRedemptions ? { max_redemptions: d.maxRedemptions } : {}),
-          ...(d.expiresAt ? { expires_at: Math.floor(d.expiresAt.getTime() / 1000) } : {}),
-        },
-        { stripeAccount: acct },
-      );
-      return promo.id;
+      const options = { stripeAccount: acct };
+      let couponId: string;
+      try {
+        const coupon = await stripe.coupons.create(
+          {
+            ...(d.percentOff != null ? { percent_off: d.percentOff } : { amount_off: d.amountOff ?? 0, currency: d.currency }),
+            duration: d.duration,
+            ...(d.duration === "repeating" && d.durationInMonths ? { duration_in_months: d.durationInMonths } : {}),
+            ...(d.productIds.length ? { applies_to: { products: d.productIds } } : {}),
+          },
+          options,
+        );
+        couponId = coupon.id;
+      } catch (e) {
+        const error = discountError(e);
+        throw error instanceof DiscountCodeTaken ? new DiscountInvalid() : error;
+      }
+      try {
+        const promo = await stripe.promotionCodes.create(
+          {
+            promotion: { type: "coupon", coupon: couponId },
+            code: d.code,
+            ...(d.maxRedemptions ? { max_redemptions: d.maxRedemptions } : {}),
+            ...(d.expiresAt ? { expires_at: Math.floor(d.expiresAt.getTime() / 1000) } : {}),
+          },
+          options,
+        );
+        return promo.id;
+      } catch (e) {
+        // The coupon is useless without its code: remove it so a retry does not leave orphans.
+        await stripe.coupons.del(couponId, options).catch(() => {});
+        throw discountError(e);
+      }
     },
 
     async listDiscounts(acct) {

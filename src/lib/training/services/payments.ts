@@ -1,9 +1,11 @@
 import type { Prisma, ProgramPurchase } from "@/generated/prisma/client";
 import { platformFeePercent } from "@/lib/stripe/client";
-import type { AccountSnapshot, StripeGateway } from "@/lib/stripe/gateway";
+import {
+  DiscountCodeTaken, DiscountInvalid, type AccountSnapshot, type DiscountView, type StripeGateway,
+} from "@/lib/stripe/gateway";
 import { TrainingError } from "../errors";
 import { CANCELLABLE_SUBSCRIPTION, LIVE_SUBSCRIPTION, validatePrice } from "../payments";
-import type { ProgramPrice } from "../schemas";
+import type { DiscountCreate, ProgramPrice } from "../schemas";
 import { accessOnJoin, refreshAccess, refreshProgramAccess } from "./access-store";
 import { isJoinable } from "./enrollments";
 import { assertWritable, getOwnedProgram } from "./programs";
@@ -361,4 +363,51 @@ export async function getEnrollmentAccess(db: Db, athleteId: string, programId: 
   const enrollment = await db.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId } } });
   if (!enrollment || enrollment.removedAt || enrollment.leftAt) return null;
   return enrollment.access;
+}
+
+/**
+ * Creates a discount code on the coach's account. `programIds` (paid programs of the coach) become the Stripe
+ * products it applies to; none means every product. A fixed amount is in the account's currency. Stripe's refusals
+ * come back as `coupon_code_taken` (the code exists) or `coupon_invalid` (any other rejected value).
+ */
+export async function createDiscount(db: Db, gw: StripeGateway, coachId: string, input: DiscountCreate): Promise<void> {
+  const account = await getStripeAccount(db, coachId);
+  if (!account?.chargesEnabled) throw new TrainingError("stripe_not_ready");
+  if (input.amount !== null && !account.defaultCurrency) throw new TrainingError("stripe_not_ready");
+  const programIds = [...new Set(input.programIds)];
+  const programs = await db.program.findMany({
+    where: { id: { in: programIds }, coachId, stripeProductId: { not: null }, priceAmount: { not: null } },
+    select: { stripeProductId: true },
+  });
+  if (programs.length !== programIds.length) throw new TrainingError("invalid_request");
+  try {
+    await gw.createDiscount(account.stripeAccountId, {
+      code: input.code,
+      percentOff: input.percentOff,
+      amountOff: input.amount,
+      currency: account.defaultCurrency ?? "",
+      duration: input.duration,
+      durationInMonths: input.durationInMonths,
+      productIds: programs.map((p) => p.stripeProductId as string),
+      maxRedemptions: input.maxRedemptions,
+      expiresAt: input.expiresAt,
+    });
+  } catch (e) {
+    if (e instanceof DiscountCodeTaken) throw new TrainingError("coupon_code_taken");
+    if (e instanceof DiscountInvalid) throw new TrainingError("coupon_invalid");
+    throw e;
+  }
+}
+
+/** The coach's discount codes, read from Stripe; none before connecting. */
+export async function listDiscounts(db: Db, gw: StripeGateway, coachId: string): Promise<DiscountView[]> {
+  const account = await getStripeAccount(db, coachId);
+  return account ? gw.listDiscounts(account.stripeAccountId) : [];
+}
+
+/** Turns a discount code off (Stripe neither edits nor deletes them). Scoped to the coach's account: another coach's id fails in Stripe. */
+export async function deactivateDiscount(db: Db, gw: StripeGateway, coachId: string, promotionCodeId: string): Promise<void> {
+  const account = await getStripeAccount(db, coachId);
+  if (!account) throw new TrainingError("not_found");
+  await gw.deactivateDiscount(account.stripeAccountId, promotionCodeId);
 }

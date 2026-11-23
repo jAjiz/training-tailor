@@ -49,6 +49,30 @@ export type ProgramUpdate = z.output<typeof ProgramUpdateInput>;
 export const ProgramPriceInput = z.object({ paid: z.boolean(), amount: z.number().int().nullable() });
 export type ProgramPrice = z.output<typeof ProgramPriceInput>;
 
+const nullish = <T extends z.ZodType>(schema: T) => schema.nullish().transform((v) => v ?? null);
+
+/** `YYYY-MM-DD` to the end of that day in UTC; blank is no expiry. A day already over is refused. */
+const DiscountExpiry = z.union([z.literal("").transform(() => null), nullish(IsoDateString)])
+  .transform((v) => (v ? new Date(`${v}T23:59:59Z`) : null))
+  .refine((d) => d === null || d.getTime() > Date.now(), "expiry in the past");
+
+/**
+ * A discount code form. `amount` arrives in major units and leaves in minor units; exactly one of `percentOff` and
+ * `amount` is set. `programIds` empty means every program.
+ */
+export const DiscountCreateInput = z.object({
+  code: z.string().trim().transform((s) => s.toUpperCase()).pipe(z.string().regex(/^[A-Z0-9]{3,20}$/)),
+  percentOff: nullish(z.number().int().min(1).max(100)),
+  amount: nullish(z.number().min(0.01).max(1_000_000)).transform((v) => (v === null ? null : Math.round(v * 100))),
+  duration: z.enum(["once", "repeating", "forever"]),
+  durationInMonths: nullish(z.number().int().min(1).max(36)),
+  programIds: z.array(z.string().min(1)).max(100),
+  maxRedemptions: nullish(z.number().int().min(1).max(10_000)),
+  expiresAt: DiscountExpiry,
+}).refine((v) => (v.percentOff === null) !== (v.amount === null), "exactly one of percent or amount")
+  .refine((v) => (v.duration === "repeating") === (v.durationInMonths !== null), "months only for repeating");
+export type DiscountCreate = z.output<typeof DiscountCreateInput>;
+
 /** Major units as typed ("15", "15,50") to minor units; null when it is not a plain positive number. */
 export function parseMajorAmount(text: string): number | null {
   const normalized = text.trim().replace(",", ".");

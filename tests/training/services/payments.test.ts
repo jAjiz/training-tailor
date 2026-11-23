@@ -6,8 +6,10 @@ import {
 } from "../../helpers/factories";
 import {
   cancellableSubscribers, connectStripe, countLiveSubscriptions, countPendingCancellations, createCoachAccountSession,
+  createDiscount, deactivateDiscount, listDiscounts,
   countPendingPriceSync, getStripeAccount, retryCancellations, setAccessGranted, setProgramPrice, startCheckout, syncStripeAccount, syncSubscriptionPrices,
 } from "@/lib/training/services/payments";
+import type { DiscountCreate } from "@/lib/training/schemas";
 import { archiveProgram } from "@/lib/training/services/programs";
 
 let tdb: TestDb;
@@ -530,6 +532,99 @@ describe("setAccessGranted", () => {
     const { enrollment } = await paidProgram();
     const other = await makeCoach(tdb.prisma);
     await expect(setAccessGranted(tdb.prisma, gateway, other.id, enrollment.id, true))
+      .rejects.toMatchObject({ code: "not_found" });
+  });
+});
+
+describe("discount codes", () => {
+  const input = (over: Partial<DiscountCreate> = {}): DiscountCreate => ({
+    code: "SPRING20", percentOff: 20, amount: null, duration: "once", durationInMonths: null, programIds: [],
+    maxRedemptions: null, expiresAt: null, ...over,
+  });
+
+  async function setup(currency: string | null = "eur", gw = fakeStripe()) {
+    const coach = await makeCoach(tdb.prisma);
+    const acct = await connectStripe(tdb.prisma, gw.gateway, coach.id, "ES");
+    gw.state.accounts.set(acct, { chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true, defaultCurrency: currency });
+    await syncStripeAccount(tdb.prisma, gw.gateway, acct);
+    const paid = await makePaidContinuous(tdb.prisma, coach.id);
+    await tdb.prisma.program.update({ where: { id: paid.id }, data: { stripeProductId: "prod_paid" } });
+    return { gw, coach, acct, paid };
+  }
+
+  it("maps programs to product ids and creates the discount on the coach's account", async () => {
+    const { gw, coach, acct, paid } = await setup();
+    await createDiscount(tdb.prisma, gw.gateway, coach.id, input({ programIds: [paid.id], maxRedemptions: 5 }));
+    expect(gw.calls.filter((c) => c.method === "createDiscount")).toEqual([{
+      method: "createDiscount",
+      args: [acct, {
+        code: "SPRING20", percentOff: 20, amountOff: null, currency: "eur", duration: "once", durationInMonths: null,
+        productIds: ["prod_paid"], maxRedemptions: 5, expiresAt: null,
+      }],
+    }]);
+  });
+
+  it("a fixed amount uses the account currency and needs it", async () => {
+    const { gw, coach } = await setup();
+    await createDiscount(tdb.prisma, gw.gateway, coach.id, input({ percentOff: null, amount: 500 }));
+    expect([...gw.state.discounts.values()][0].view).toMatchObject({ percentOff: null, amountOff: 500, currency: "eur" });
+    const none = await setup(null, gw);
+    await expect(createDiscount(tdb.prisma, gw.gateway, none.coach.id, input({ percentOff: null, amount: 500 })))
+      .rejects.toMatchObject({ code: "stripe_not_ready" });
+  });
+
+  it("without a connected account is stripe_not_ready", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    await expect(createDiscount(tdb.prisma, fakeStripe().gateway, coach.id, input()))
+      .rejects.toMatchObject({ code: "stripe_not_ready" });
+  });
+
+  it("rejects another coach's program, a free program and an unknown one", async () => {
+    const { gw, coach } = await setup();
+    const other = await makeCoach(tdb.prisma);
+    const theirs = await makePaidContinuous(tdb.prisma, other.id);
+    await tdb.prisma.program.update({ where: { id: theirs.id }, data: { stripeProductId: "prod_theirs" } });
+    const free = await makeContinuous(tdb.prisma, coach.id);
+    for (const id of [theirs.id, free.id, "missing"]) {
+      await expect(createDiscount(tdb.prisma, gw.gateway, coach.id, input({ programIds: [id] })))
+        .rejects.toMatchObject({ code: "invalid_request" });
+    }
+    expect(gw.calls.filter((c) => c.method === "createDiscount")).toEqual([]);
+  });
+
+  it("a taken code is coupon_code_taken", async () => {
+    const { gw, coach } = await setup();
+    await createDiscount(tdb.prisma, gw.gateway, coach.id, input());
+    await expect(createDiscount(tdb.prisma, gw.gateway, coach.id, input())).rejects.toMatchObject({ code: "coupon_code_taken" });
+  });
+
+  it("other Stripe rejections are coupon_invalid", async () => {
+    const { gw, coach } = await setup();
+    gw.state.rejectDiscounts = true;
+    await expect(createDiscount(tdb.prisma, gw.gateway, coach.id, input())).rejects.toMatchObject({ code: "coupon_invalid" });
+  });
+
+  it("listDiscounts reads the coach's account; without one it is empty", async () => {
+    const { gw, coach, acct } = await setup();
+    await createDiscount(tdb.prisma, gw.gateway, coach.id, input());
+    expect((await listDiscounts(tdb.prisma, gw.gateway, coach.id)).map((d) => d.code)).toEqual(["SPRING20"]);
+    expect(gw.calls.filter((c) => c.method === "listDiscounts")).toEqual([{ method: "listDiscounts", args: [acct] }]);
+    expect(await listDiscounts(tdb.prisma, gw.gateway, (await makeCoach(tdb.prisma)).id)).toEqual([]);
+  });
+
+  it("deactivate calls the gateway on the coach's account", async () => {
+    const { gw, coach, acct } = await setup();
+    await createDiscount(tdb.prisma, gw.gateway, coach.id, input());
+    await deactivateDiscount(tdb.prisma, gw.gateway, coach.id, "promo_1");
+    expect(gw.calls.filter((c) => c.method === "deactivateDiscount")).toEqual([
+      { method: "deactivateDiscount", args: [acct, "promo_1"] },
+    ]);
+    expect([...gw.state.discounts.values()][0].view.active).toBe(false);
+  });
+
+  it("deactivating without an account is not_found", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    await expect(deactivateDiscount(tdb.prisma, fakeStripe().gateway, coach.id, "promo_1"))
       .rejects.toMatchObject({ code: "not_found" });
   });
 });
