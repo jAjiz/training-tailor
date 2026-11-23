@@ -1057,5 +1057,18 @@
       "engine_unavailable": "Adapting is not available right now. Try again later.",
       "internal": "Something went wrong. Try again."
     }
+  },
+  "coach": {
+    "payments": {
+      "nav": "Payments",
+      "title": "Payments",
+      "intro": "Connect Stripe to charge for your programs. Payments go straight to your Stripe account.",
+      "country": "Country of your business",
+      "countryHint": "It cannot be changed after connecting.",
+      "connect": "Connect Stripe",
+      "connecting": "Connecting...",
+      "onboardingTitle": "Finish setting up Stripe",
+      "onboardingIntro": "Stripe needs a few details before you can accept payments."
+    }
   }
 }

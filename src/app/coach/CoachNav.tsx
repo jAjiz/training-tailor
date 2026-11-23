@@ -5,16 +5,18 @@ import { UserMenu } from "./UserMenu";
 
 /** `impersonating`: no account menu, since its only item is sign-out; the banner's Exit ends the impersonation. */
 type Props = { user: { name: string; image: string | null } | null; approved: boolean; impersonating: boolean;
+  /** Whether Stripe is configured: shows the Payments link. */
+  payments?: boolean;
   /** The notification bell (an async Server Component, so the layout renders it). */
   bell?: React.ReactNode;
 };
 
-export function CoachNav({ user, approved, impersonating, bell }: Props) {
+export function CoachNav({ user, approved, impersonating, payments, bell }: Props) {
   return (
     <header className="sticky top-0 z-30 bg-chrome text-on-chrome">
       <div className="flex min-h-16 flex-wrap items-center gap-x-6 px-4 max-md:py-3.5 lg:px-8">
         <Link href="/coach" className="flex rounded-lg focus-visible:outline-2 focus-visible:outline-on-chrome"><Brand onChrome compactWordmark className="whitespace-nowrap" /></Link>
-        {approved && <CoachNavLinks />}
+        {approved && <CoachNavLinks payments={payments} />}
         {user && (
           <div className="ml-auto flex items-center gap-2">
             {approved && bell}

@@ -1057,5 +1057,18 @@
       "engine_unavailable": "La adaptación no está disponible ahora. Inténtalo más tarde.",
       "internal": "Algo ha fallado. Inténtalo de nuevo."
     }
+  },
+  "coach": {
+    "payments": {
+      "nav": "Pagos",
+      "title": "Pagos",
+      "intro": "Conecta Stripe para cobrar tus programas. Los pagos van directamente a tu cuenta de Stripe.",
+      "country": "País de tu negocio",
+      "countryHint": "No se puede cambiar después de conectar.",
+      "connect": "Conectar Stripe",
+      "connecting": "Conectando...",
+      "onboardingTitle": "Termina de configurar Stripe",
+      "onboardingIntro": "Stripe necesita algunos datos antes de que puedas aceptar pagos."
+    }
   }
 }
