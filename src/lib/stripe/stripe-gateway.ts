@@ -36,15 +36,16 @@ function snapshot(sub: Stripe.Subscription): SubscriptionSnapshot {
 export function stripeGateway(stripe: Stripe): StripeGateway {
   return {
     async createAccount(country, email) {
-      const account = await stripe.accounts.create({
-        country,
-        email,
-        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-        controller: {
-          stripe_dashboard: { type: "full" },
-          fees: { payer: "account" },
-          losses: { payments: "stripe" },
-          requirement_collection: "stripe",
+      // Accounts v2: Stripe refuses v1 account creation for new Connect platforms. Same setup as the spec's
+      // Standard-style account: full Stripe dashboard, Stripe collects its fees from the coach and owns losses.
+      const account = await stripe.v2.core.accounts.create({
+        contact_email: email,
+        identity: { country },
+        dashboard: "full",
+        defaults: { responsibilities: { fees_collector: "stripe", losses_collector: "stripe" } },
+        configuration: {
+          merchant: { capabilities: { card_payments: { requested: true } } },
+          recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } },
         },
       });
       return account.id;
