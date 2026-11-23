@@ -108,18 +108,22 @@ export async function setProgramPrice(
   }
   const account = await getStripeAccount(db, coachId);
   if (!account?.chargesEnabled || !account.defaultCurrency) throw new TrainingError("stripe_not_ready");
-  validatePrice(input.amount, account.defaultCurrency);
+  const currency = program.currency ?? account.defaultCurrency;
+  if (currency !== account.defaultCurrency) throw new TrainingError("invalid_request"); // fixed once set
+  validatePrice(input.amount, currency);
   const acct = account.stripeAccountId;
-  const productId = program.stripeProductId ?? (await gw.createProduct(acct, program.name));
+  let productId = program.stripeProductId;
+  if (!productId) {
+    productId = await gw.createProduct(acct, program.name);
+    // Stored before the price so a failed createPrice does not orphan the product on retry.
+    await db.program.update({ where: { id: programId }, data: { stripeProductId: productId } });
+  }
   const priceId = await gw.createPrice(acct, {
-    productId, amount: input.amount, currency: account.defaultCurrency, monthly: program.kind === "continuous",
+    productId, amount: input.amount, currency, monthly: program.kind === "continuous",
   });
   await db.program.update({
     where: { id: programId },
-    data: {
-      priceAmount: input.amount, currency: account.defaultCurrency, stripeProductId: productId,
-      stripePriceId: priceId, paidSince: new Date(),
-    },
+    data: { priceAmount: input.amount, currency, stripePriceId: priceId, paidSince: new Date() },
   });
   await refreshProgramAccess(db, programId);
   return none;

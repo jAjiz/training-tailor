@@ -170,6 +170,37 @@ describe("setProgramPrice", () => {
     expect((await tdb.prisma.enrollment.findFirstOrThrow()).access).toBe("free");
   });
 
+  it("the currency stays fixed once set", async () => {
+    const gw = fakeStripe();
+    const { coach, acct } = await chargingCoach(gw);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 });
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: false, amount: null });
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 2000 });
+    expect(await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).toMatchObject({ currency: "eur", priceAmount: 2000 });
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: false, amount: null });
+    gw.state.accounts.set(acct, { chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true, defaultCurrency: "usd" });
+    await syncStripeAccount(tdb.prisma, gw.gateway, acct);
+    await expect(setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 2000 }))
+      .rejects.toMatchObject({ code: "invalid_request" });
+    expect((await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).currency).toBe("eur");
+  });
+
+  it("a failed createPrice keeps the product, and a retry reuses it", async () => {
+    const gw = fakeStripe();
+    const { coach } = await chargingCoach(gw);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    gw.state.failing.add("createPrice");
+    await expect(setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 })).rejects.toThrow();
+    expect(await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).toMatchObject({
+      stripeProductId: "prod_1", priceAmount: null,
+    });
+    gw.state.failing.delete("createPrice");
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 });
+    expect(gw.calls.filter((c) => c.method === "createProduct")).toHaveLength(1);
+    expect([...gw.state.prices.values()][0].productId).toBe("prod_1");
+  });
+
   it("an archived program is rejected", async () => {
     const gw = fakeStripe();
     const { coach } = await chargingCoach(gw);
