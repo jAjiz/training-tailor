@@ -303,8 +303,11 @@ New codes, translated in es/en: `payments_unavailable`, `stripe_not_ready` (acco
 - The coach disconnects or loses charges (`chargesEnabled` false): existing subscriptions follow Stripe; new
   Checkouts are refused with `stripe_not_ready` on the join page.
 - Archive while subscriptions are set to cancel: they are cancelled at once.
-- An athlete removed between opening Checkout and paying: the webhook records the purchase but does not restore the
-  enrollment; it is refunded with `endedReason = "coach_removed"`.
+- A Checkout completed after things changed: the webhook records the purchase, enrolls nobody, and cancels and
+  refunds it, with `endedReason` `coach_removed` (athlete removed), `coach_deleted`, `archived`, `made_free` or
+  `granted`. Checkout sessions expire after 31 minutes to keep this window short.
+- An athlete who is leaving (subscription set to end at period end) when the app ends the subscription early (made
+  free, archive, grant, coach deletion) leaves at that moment: `leftAt` is set.
 - Rejoining a closed program after leaving: the paid purchase still counts, so the link rejoins without paying.
 - Coach deleted: after cancelling, `priceAmount`, `stripePriceId` and `paidSince` are cleared on the programs that
   stay, so `programAccess` needs no "no coach" rule.
