@@ -217,7 +217,24 @@
     "archiveConfirm": "¿Archivar este programa? Desaparecerá para tus atletas y el enlace dejará de funcionar.",
     "startDateLockedHint": "La fecha de inicio no puede cambiar porque ya hay semanas publicadas.",
     "tailoring": "Adaptación con IA",
-    "tailoringHint": "Tus atletas verán un botón «Adaptar» en cada bloque para ajustarlo a su situación. Está disponible porque el administrador la activó para ti."
+    "tailoringHint": "Tus atletas verán un botón «Adaptar» en cada bloque para ajustarlo a su situación. Está disponible porque el administrador la activó para ti.",
+    "price": {
+      "title": "Precio",
+      "free": "Gratis",
+      "paid": "De pago",
+      "amount": "Precio",
+      "currency": "Moneda",
+      "perMonth": "Se cobra cada mes hasta que el atleta cancele.",
+      "oneTime": "Pago único.",
+      "notReady": "Tu cuenta de Stripe aún no puede cobrar.",
+      "goToPayments": "Configúrala en Pagos",
+      "save": "Guardar precio",
+      "freeConfirmTitle": "¿Hacer gratis este programa?",
+      "freeConfirm": "{count, plural, =0 {Todos conservan el acceso.} one {Se cancelará # suscripción.} other {Se cancelarán # suscripciones.}}",
+      "freeConfirmLabel": "Hacer gratis",
+      "cancelFailed": "{count, plural, one {No se pudo cancelar # suscripción.} other {No se pudieron cancelar # suscripciones.}}",
+      "locked": "El precio de un programa de pago aún no se puede cambiar."
+    }
   },
   "block": {
     "untitled": "Bloque",

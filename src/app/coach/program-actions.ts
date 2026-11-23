@@ -6,8 +6,10 @@ import { requireCoach } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { dispatch } from "@/lib/notifications/dispatch";
-import type { ActionResult } from "@/lib/training/errors";
-import { ProgramCreateInput, ProgramUpdateInput, parse } from "@/lib/training/schemas";
+import { getStripeGateway } from "@/lib/stripe/client";
+import { TrainingError, type ActionResult } from "@/lib/training/errors";
+import { ProgramCreateInput, ProgramUpdateInput, parse, parseMajorAmount } from "@/lib/training/schemas";
+import { setProgramPrice } from "@/lib/training/services/payments";
 import {
   archiveProgram, createProgram, regenerateInvite, setProgramPublished, setWeekPublished, updateProgram,
 } from "@/lib/training/services/programs";
@@ -76,5 +78,19 @@ export async function setProgramTailoringAction(raw: unknown): Promise<ActionRes
     const { programId, enabled } = parse(z.object({ programId: Id, enabled: z.boolean() }), raw);
     await setProgramTailoring(prisma, coach.id, programId, enabled);
     revalidatePath(`/coach/programs/${programId}`, "layout");
+  });
+}
+
+/** `amount` is what the coach typed, in major units ("15" or "15,50"); null when making the program free. */
+export async function setProgramPriceAction(raw: unknown): Promise<ActionResult<{ failed: string[] }>> {
+  return runAction("setProgramPriceAction", async () => {
+    const coach = await requireCoach();
+    const { programId, paid, amount } = parse(
+      z.object({ programId: Id, paid: z.boolean(), amount: z.string().max(20).nullable() }), raw);
+    const minor = paid ? parseMajorAmount(amount ?? "") : null;
+    if (paid && minor === null) throw new TrainingError("price_invalid");
+    const { failed } = await setProgramPrice(prisma, getStripeGateway(), coach.id, programId, { paid, amount: minor });
+    revalidatePath(`/coach/programs/${programId}`, "layout");
+    return { failed };
   });
 }

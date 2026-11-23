@@ -217,7 +217,24 @@
     "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
     "startDateLockedHint": "The start date cannot change because some weeks are already published.",
     "tailoring": "AI tailoring",
-    "tailoringHint": "Athletes see an \"Adapt\" button on each block to adjust it to their own situation. It is available because the administrator enabled it for you."
+    "tailoringHint": "Athletes see an \"Adapt\" button on each block to adjust it to their own situation. It is available because the administrator enabled it for you.",
+    "price": {
+      "title": "Price",
+      "free": "Free",
+      "paid": "Paid",
+      "amount": "Price",
+      "currency": "Currency",
+      "perMonth": "Charged every month until the athlete cancels.",
+      "oneTime": "One-time payment.",
+      "notReady": "Your Stripe account cannot charge yet.",
+      "goToPayments": "Set it up in Payments",
+      "save": "Save price",
+      "freeConfirmTitle": "Make this program free?",
+      "freeConfirm": "{count, plural, =0 {Everyone keeps access.} one {# subscription will be cancelled.} other {# subscriptions will be cancelled.}}",
+      "freeConfirmLabel": "Make free",
+      "cancelFailed": "{count, plural, one {# subscription could not be cancelled.} other {# subscriptions could not be cancelled.}}",
+      "locked": "The price of a paid program cannot be changed yet."
+    }
   },
   "block": {
     "untitled": "Block",

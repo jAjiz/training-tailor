@@ -1,5 +1,9 @@
 import type { StripeGateway } from "@/lib/stripe/gateway";
 import { TrainingError } from "../errors";
+import { LIVE_SUBSCRIPTION, validatePrice } from "../payments";
+import type { ProgramPrice } from "../schemas";
+import { refreshProgramAccess } from "./access-store";
+import { assertWritable, getOwnedProgram } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
 /** Countries a coach can connect from: Stripe Connect's EU members, the UK and the US (our call). */
@@ -48,4 +52,75 @@ export async function syncStripeAccount(db: DbOrTx, gw: StripeGateway, acct: str
       defaultCurrency: snapshot.defaultCurrency,
     },
   });
+}
+
+const liveSubscriptions = (programId: string) => ({
+  programId, kind: "subscription", status: { in: [...LIVE_SUBSCRIPTION] },
+});
+
+/** How many athletes have a live subscription to the program (what making it free would cancel). */
+export function countLiveSubscriptions(db: Db, programId: string): Promise<number> {
+  return db.programPurchase.count({ where: liveSubscriptions(programId) });
+}
+
+/**
+ * Makes a program paid or free. Going free ends every live subscription: the database is updated first, then
+ * Stripe is asked to cancel each one; a cancellation that fails is returned (subscription ids), never thrown.
+ * Changing the amount of a paid program is not supported yet.
+ */
+export async function setProgramPrice(
+  db: Db, gw: StripeGateway, coachId: string, programId: string, input: ProgramPrice,
+): Promise<{ cancelled: number; failed: string[] }> {
+  const program = await getOwnedProgram(db, coachId, programId);
+  assertWritable(program);
+  const none = { cancelled: 0, failed: [] as string[] };
+
+  if (!input.paid) {
+    if (program.priceAmount === null) return none;
+    const live = await db.programPurchase.findMany({ where: liveSubscriptions(programId) });
+    await db.$transaction([
+      db.programPurchase.updateMany({
+        where: { id: { in: live.map((p) => p.id) } }, data: { endedReason: "made_free" },
+      }),
+      db.program.update({
+        where: { id: programId }, data: { priceAmount: null, stripePriceId: null, paidSince: null },
+      }),
+    ]);
+    await refreshProgramAccess(db, programId);
+    const failed: string[] = [];
+    let cancelled = 0;
+    for (const purchase of live) {
+      if (!purchase.stripeSubscriptionId) continue;
+      try {
+        await gw.cancelSubscription(purchase.stripeAccountId, purchase.stripeSubscriptionId);
+        cancelled++;
+      } catch {
+        failed.push(purchase.stripeSubscriptionId);
+      }
+    }
+    return { cancelled, failed };
+  }
+
+  if (input.amount === null) throw new TrainingError("invalid_request");
+  if (program.priceAmount !== null) {
+    if (program.priceAmount === input.amount) return none;
+    throw new TrainingError("invalid_request"); // changing the amount arrives with price changes
+  }
+  const account = await getStripeAccount(db, coachId);
+  if (!account?.chargesEnabled || !account.defaultCurrency) throw new TrainingError("stripe_not_ready");
+  validatePrice(input.amount, account.defaultCurrency);
+  const acct = account.stripeAccountId;
+  const productId = program.stripeProductId ?? (await gw.createProduct(acct, program.name));
+  const priceId = await gw.createPrice(acct, {
+    productId, amount: input.amount, currency: account.defaultCurrency, monthly: program.kind === "continuous",
+  });
+  await db.program.update({
+    where: { id: programId },
+    data: {
+      priceAmount: input.amount, currency: account.defaultCurrency, stripeProductId: productId,
+      stripePriceId: priceId, paidSince: new Date(),
+    },
+  });
+  await refreshProgramAccess(db, programId);
+  return none;
 }

@@ -45,6 +45,17 @@ export const ProgramUpdateInput = z.object({
 });
 export type ProgramUpdate = z.output<typeof ProgramUpdateInput>;
 
+/** `amount` in minor units; `null` when free. */
+export const ProgramPriceInput = z.object({ paid: z.boolean(), amount: z.number().int().nullable() });
+export type ProgramPrice = z.output<typeof ProgramPriceInput>;
+
+/** Major units as typed ("15", "15,50") to minor units; null when it is not a plain positive number. */
+export function parseMajorAmount(text: string): number | null {
+  const normalized = text.trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
+  return Math.round(Number(normalized) * 100);
+}
+
 export const BarbellSetSchema = z.object({
   reps: z.number().int().min(1).max(100),
   percent: z.number().positive().max(150).nullable(),
