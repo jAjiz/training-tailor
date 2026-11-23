@@ -115,3 +115,39 @@ describe("notifications schema", () => {
     await expect(row("k")).rejects.toMatchObject({ code: "P2002" });
   });
 });
+
+describe("payments schema", () => {
+  const purchase = (programId: string, athleteId: string, checkoutSessionId: string) =>
+    tdb.prisma.programPurchase.create({
+      data: {
+        programId, athleteId, kind: "payment", stripeAccountId: "acct_1", checkoutSessionId,
+        status: "pending", stripePriceId: "price_1", amount: 1000, currency: "eur",
+      },
+    });
+
+  it("an enrollment defaults to free access", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    const enrollment = await enroll(tdb.prisma, program.id, athlete.id);
+    expect(enrollment.access).toBe("free");
+    expect(enrollment.accessGrantedAt).toBeNull();
+  });
+
+  it("a purchase cascades with its program", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    await purchase(program.id, athlete.id, "cs_1");
+    await tdb.prisma.program.delete({ where: { id: program.id } });
+    expect(await tdb.prisma.programPurchase.count()).toBe(0);
+  });
+
+  it("a checkout session id is unique", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    await purchase(program.id, athlete.id, "cs_1");
+    await expect(purchase(program.id, athlete.id, "cs_1")).rejects.toMatchObject({ code: "P2002" });
+  });
+});

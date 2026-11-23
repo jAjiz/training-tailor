@@ -72,6 +72,15 @@
     "day_passed": "Ese día ya pasó y no se puede adaptar.",
     "block_changed": "El coach ha cambiado este bloque. Vuelve a empezar la adaptación.",
     "invalid_state": "Ese paso no es posible ahora. Recarga e inténtalo de nuevo.",
+    "payments_unavailable": "Los pagos no están disponibles ahora mismo.",
+    "stripe_not_ready": "Tu cuenta de Stripe aún no puede cobrar. Termina de configurarla en Pagos.",
+    "price_invalid": "Introduce un precio válido.",
+    "already_paid": "Ya tienes acceso a este programa.",
+    "checkout_failed": "No se pudo iniciar el pago. Inténtalo de nuevo.",
+    "coupon_invalid": "Ese código de descuento no es válido.",
+    "coupon_code_taken": "Ese código de descuento ya existe.",
+    "subscription_sync_failed": "No se pudo actualizar la suscripción. Inténtalo de nuevo.",
+    "payment_required": "Este programa requiere un pago.",
     "note_too_long": "El texto de {target} superaría los 2000 caracteres."
   },
   "onboarding": {

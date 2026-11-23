@@ -72,6 +72,15 @@
     "day_passed": "That day has passed and can no longer be adapted.",
     "block_changed": "The coach changed this block. Start the adaptation again.",
     "invalid_state": "That step is not possible right now. Reload and try again.",
+    "payments_unavailable": "Payments are not available right now.",
+    "stripe_not_ready": "Your Stripe account cannot charge yet. Finish setting it up in Payments.",
+    "price_invalid": "Enter a valid price.",
+    "already_paid": "You already have access to this program.",
+    "checkout_failed": "The payment could not be started. Try again.",
+    "coupon_invalid": "That discount code is not valid.",
+    "coupon_code_taken": "That discount code already exists.",
+    "subscription_sync_failed": "The subscription could not be updated. Try again.",
+    "payment_required": "This program requires a payment.",
     "note_too_long": "The text for {target} would exceed 2000 characters."
   },
   "onboarding": {
