@@ -95,9 +95,13 @@ async function checkoutCompleted(
 ): Promise<NotificationIntent[]> {
   const sessionId = str(session.id);
   const stored = sessionId ? await tx.programPurchase.findUnique({ where: { checkoutSessionId: sessionId } }) : null;
+  if (stored && stored.stripeAccountId !== acct) {
+    console.warn("stripe webhook: checkout session from another account than its purchase", sessionId, acct);
+    return [];
+  }
   const purchase = stored ?? (sessionId ? await purchaseFromMetadata(tx, acct, sessionId, session) : null);
   if (!purchase) {
-    console.warn("stripe webhook: checkout session without a purchase or valid metadata", sessionId);
+    console.warn("stripe webhook: checkout session without a purchase or valid metadata", sessionId, acct);
     return [];
   }
   const amount = typeof session.amount_total === "number" ? session.amount_total : purchase.amount;
@@ -109,6 +113,11 @@ async function checkoutCompleted(
       where: { id: purchase.id }, data: { stripeSubscriptionId: snapshot.id, amount, promotionCode },
     });
     await applySubscription(tx, linked, snapshot, now);
+    if (snapshot.status === "canceled") {
+      // Delivered after the subscription ended: enrolling would undo a leftAt the cancellation just set.
+      await refreshAccess(tx, purchase.programId, purchase.athleteId);
+      return [];
+    }
   } else {
     if (!PAID_SESSION.includes(str(session.payment_status) ?? "")) return [];
     await tx.programPurchase.update({
@@ -121,7 +130,11 @@ async function checkoutCompleted(
   return intents;
 }
 
-/** A completed session the app has no row for (e.g. its insert failed after Stripe created it): built from its metadata. */
+/**
+ * A completed session the app has no row for (e.g. its insert failed after Stripe created it): built from its
+ * metadata. Metadata is written by whoever created the session, and a coach can create sessions on their own
+ * account, so it is trusted only for a program of the coach who owns the event's account, in that program's mode.
+ */
 async function purchaseFromMetadata(tx: DbOrTx, acct: string, sessionId: string, session: Json) {
   const metadata = obj(session.metadata);
   const programId = str(metadata?.programId);
@@ -131,7 +144,10 @@ async function purchaseFromMetadata(tx: DbOrTx, acct: string, sessionId: string,
   // One query at a time: a transaction holds a single connection.
   const program = await tx.program.findUnique({ where: { id: programId } });
   const athlete = await tx.athleteAccount.findUnique({ where: { id: athleteId }, select: { id: true } });
-  if (!program?.stripePriceId || !program.currency || !athlete) return null;
+  if (!program?.stripePriceId || !program.currency || !program.coachId || !athlete) return null;
+  if (kind !== (program.kind === "continuous" ? "subscription" : "payment")) return null;
+  const account = await tx.stripeAccount.findUnique({ where: { coachId: program.coachId } });
+  if (account?.stripeAccountId !== acct) return null;
   return tx.programPurchase.create({
     data: {
       programId, athleteId, kind, stripeAccountId: acct, checkoutSessionId: sessionId, status: "pending",

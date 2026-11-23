@@ -136,6 +136,99 @@ describe("checkout.session.completed", () => {
     expect(await tdb.prisma.programPurchase.count()).toBe(1);
   });
 
+  it("a session from another account with valid metadata is ignored", async () => {
+    const gw = fakeStripe();
+    const { program } = await paidProgram(gw);
+    const other = await paidProgram(gw);
+    const athlete = await payer();
+    subscription(gw, "sub_9");
+    const intents = await handleStripeEvent(tdb.prisma, gw.gateway, event("checkout.session.completed", other.acct, {
+      id: "cs_forged", mode: "subscription", payment_status: "paid", subscription: "sub_9", amount_total: 1500,
+      metadata: { programId: program.id, athleteId: athlete.id },
+    }));
+    expect(intents).toEqual([]);
+    expect(await tdb.prisma.programPurchase.count()).toBe(0);
+    expect(await tdb.prisma.enrollment.count()).toBe(0);
+  });
+
+  it("a session whose mode does not match the program's kind is ignored", async () => {
+    const gw = fakeStripe();
+    const { acct, program } = await paidProgram(gw); // continuous: subscription only
+    const athlete = await payer();
+    await handleStripeEvent(tdb.prisma, gw.gateway, event("checkout.session.completed", acct, {
+      id: "cs_mode", mode: "payment", payment_status: "paid", payment_intent: "pi_m", amount_total: 100,
+      metadata: { programId: program.id, athleteId: athlete.id },
+    }));
+    expect(await tdb.prisma.programPurchase.count()).toBe(0);
+    expect(await tdb.prisma.enrollment.count()).toBe(0);
+  });
+
+  it("a pending purchase receiving the session from a different account is not changed", async () => {
+    const gw = fakeStripe();
+    const { program } = await paidProgram(gw, "closed");
+    const other = await paidProgram(gw, "closed");
+    const athlete = await payer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    const before = await purchaseOf(program.id, athlete.id);
+    await handleStripeEvent(tdb.prisma, gw.gateway, event("checkout.session.completed", other.acct, {
+      id: before.checkoutSessionId, mode: "payment", payment_status: "paid", payment_intent: "pi_x", amount_total: 100,
+      metadata: { programId: program.id, athleteId: athlete.id },
+    }));
+    expect(await purchaseOf(program.id, athlete.id)).toEqual(before);
+    expect(await tdb.prisma.enrollment.count()).toBe(0);
+  });
+
+  it("a completed checkout delivered after its subscription ended does not enroll again", async () => {
+    const gw = fakeStripe();
+    const { acct, program } = await paidProgram(gw);
+    const athlete = await payer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    const e = await enroll(tdb.prisma, program.id, athlete.id);
+    await leave(tdb.prisma, e.id);
+    subscription(gw, "sub_1", { status: "canceled", cancelAtPeriodEnd: true, cancellationReason: "cancellation_requested" });
+    const intents = await handleStripeEvent(tdb.prisma, gw.gateway, event("checkout.session.completed", acct, {
+      id: "cs_1", mode: "subscription", payment_status: "paid", subscription: "sub_1", amount_total: 1500,
+      metadata: { programId: program.id, athleteId: athlete.id },
+    }));
+    expect(intents).toEqual([]);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "canceled", endedReason: "athlete" });
+    expect(await enrollmentOf(program.id, athlete.id)).toMatchObject({ leftAt: expect.any(Date), access: "blocked" });
+  });
+
+  it("a failure inside the transaction rolls back the event, and the redelivery applies it", async () => {
+    const gw = fakeStripe();
+    const { acct, program } = await paidProgram(gw, "closed");
+    const athlete = await payer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    const completed = event("checkout.session.completed", acct, {
+      id: "cs_1", mode: "payment", payment_status: "paid", payment_intent: "pi_1", amount_total: 4000,
+      metadata: { programId: program.id, athleteId: athlete.id },
+    });
+    // Enrolling fails once: after the StripeEvent insert and the purchase update.
+    let armed = true;
+    const failing = new Proxy(tdb.prisma, {
+      get(target, prop) {
+        if (prop !== "$transaction") return Reflect.get(target, prop);
+        return (fn: (tx: object) => Promise<unknown>) => target.$transaction((tx) => fn(new Proxy(tx, {
+          get(t, p) {
+            if (p === "enrollment" && armed) {
+              armed = false;
+              return new Proxy({}, { get: () => () => Promise.reject(new Error("boom")) });
+            }
+            return Reflect.get(t, p);
+          },
+        })));
+      },
+    });
+    await expect(handleStripeEvent(failing, gw.gateway, completed)).rejects.toThrow("boom");
+    expect(await tdb.prisma.stripeEvent.count()).toBe(0);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "pending" });
+
+    expect(await handleStripeEvent(tdb.prisma, gw.gateway, completed)).toHaveLength(1);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "paid" });
+    expect(await enrollmentOf(program.id, athlete.id)).toMatchObject({ access: "paid" });
+  });
+
   it("the same event twice changes nothing and returns no intents the second time", async () => {
     const gw = fakeStripe();
     const { acct, program } = await paidProgram(gw);
