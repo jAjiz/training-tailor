@@ -77,7 +77,7 @@ export function countLiveSubscriptions(db: Db, programId: string): Promise<numbe
 }
 
 /** Why the app ended a subscription; the webhook keeps the reason when Stripe confirms the cancellation. */
-export const APP_ENDED_REASONS = ["coach_removed", "archived", "made_free", "coach_deleted"] as const;
+export const APP_ENDED_REASONS = ["coach_removed", "archived", "made_free", "coach_deleted", "granted"] as const;
 export type AppEndedReason = (typeof APP_ENDED_REASONS)[number];
 
 /** Subscriptions the app ended (for `reasons`) whose cancellation in Stripe has not gone through yet. */
@@ -140,6 +140,31 @@ export function countPendingCancellations(
   db: Db, programId: string, reasons: readonly AppEndedReason[] = APP_ENDED_REASONS,
 ): Promise<number> {
   return db.programPurchase.count({ where: pendingCancellations(programId, reasons) });
+}
+
+/** The athletes of the program with a subscription Stripe could still charge (what granting access would cancel). */
+export async function cancellableSubscribers(db: Db, programId: string): Promise<Set<string>> {
+  const rows = await db.programPurchase.findMany({ where: cancellableSubscriptions({ programId }), select: { athleteId: true } });
+  return new Set(rows.map((p) => p.athleteId));
+}
+
+/**
+ * Grants or revokes the athlete's free access to a paid program. Granting ends their subscription at once
+ * (`granted`, no refund); a cancellation Stripe rejects is returned in `failed` (for `retryCancellations`), never
+ * thrown: the grant applies anyway. Revoking leaves purchases alone, so the athlete is blocked unless they paid.
+ */
+export async function setAccessGranted(
+  db: Db, gw: StripeGateway | null, coachId: string, enrollmentId: string, granted: boolean,
+): Promise<{ cancelledSubscription: boolean; failed: string[] }> {
+  const e = await db.enrollment.findFirst({ where: { id: enrollmentId, program: { coachId } }, include: { program: true } });
+  if (!e) throw new TrainingError("not_found");
+  if (e.removedAt || e.program.priceAmount === null) throw new TrainingError("invalid_request");
+  const change = db.enrollment.update({ where: { id: e.id }, data: { accessGrantedAt: granted ? new Date() : null } });
+  let result = { cancelled: 0, failed: [] as string[] };
+  if (granted) result = await endSubscriptions(db, gw, { programId: e.programId, athleteId: e.athleteId }, "granted", [change]);
+  else await change;
+  await refreshAccess(db, e.programId, e.athleteId);
+  return { cancelledSubscription: result.cancelled > 0, failed: result.failed };
 }
 
 /** The date each athlete's subscription to the program ends, for those set to cancel at period end (leaving). */

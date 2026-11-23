@@ -437,7 +437,12 @@
       "granted": "Granted"
     },
     "leavingOn": "Leaving on {date}",
-    "removeConfirmPaid": "Remove this athlete from the program? Their subscription is cancelled now, without a refund. Their results are kept."
+    "removeConfirmPaid": "Remove this athlete from the program? Their subscription is cancelled now, without a refund. Their results are kept.",
+    "grant": "Grant access",
+    "revoke": "Remove granted access",
+    "grantTitle": "Grant access to {name}",
+    "grantConfirmPaid": "This athlete pays through the app. Granting access cancels their subscription now, without a refund.",
+    "grantConfirm": "Let this athlete follow the program without paying through the app."
   },
   "today": {
     "noPrograms": "You do not follow any program yet. Ask your coach for their invitation link.",

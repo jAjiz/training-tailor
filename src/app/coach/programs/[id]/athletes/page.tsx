@@ -8,7 +8,7 @@ import { formatDay } from "@/lib/format";
 import { paymentsEnabled } from "@/lib/stripe/client";
 import { fromDbDate } from "@/lib/training/dates";
 import { listRoster } from "@/lib/training/services/enrollments";
-import { countPendingCancellations, subscriptionEndings } from "@/lib/training/services/payments";
+import { cancellableSubscribers, countPendingCancellations, subscriptionEndings } from "@/lib/training/services/payments";
 import { getOwnedProgram } from "@/lib/training/services/programs";
 import { CancellationRetry } from "../CancellationRetry";
 import { ProgramHeader } from "../ProgramHeader";
@@ -29,7 +29,8 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   // The Access column only means something on a paid program.
   const paid = payments && program.priceAmount !== null;
   const endings = paid ? await subscriptionEndings(prisma, program.id) : new Map<string, Date>();
-  const pendingCancellations = payments ? await countPendingCancellations(prisma, program.id, ["coach_removed"]) : 0;
+  const subscribers = paid ? await cancellableSubscribers(prisma, program.id) : new Set<string>();
+  const pendingCancellations = payments ? await countPendingCancellations(prisma, program.id, ["coach_removed", "granted"]) : 0;
   const dateFormat = { day: "numeric", month: "short", year: "numeric" } as const;
   const t = await getTranslations();
   const locale = await getLocale();
@@ -37,7 +38,8 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   const accessOf = (e: (typeof roster)[number]): RosterAccess | null => {
     if (!paid || e.removedAt || e.leftAt) return null;
     const endsOn = endings.get(e.athleteId);
-    return { access: e.access as RosterAccess["access"], leavingOn: endsOn ? formatDay(fromDbDate(endsOn), locale, dateFormat) : null };
+    return { access: e.access as RosterAccess["access"], leavingOn: endsOn ? formatDay(fromDbDate(endsOn), locale, dateFormat) : null,
+      subscribed: subscribers.has(e.athleteId) };
   };
   return (
     <section className="flex flex-col gap-6">

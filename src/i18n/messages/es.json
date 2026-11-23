@@ -437,7 +437,12 @@
       "granted": "Acceso concedido"
     },
     "leavingOn": "Se va el {date}",
-    "removeConfirmPaid": "¿Quitar a este atleta del programa? Su suscripción se cancela ahora, sin reembolso. Sus resultados se conservan."
+    "removeConfirmPaid": "¿Quitar a este atleta del programa? Su suscripción se cancela ahora, sin reembolso. Sus resultados se conservan.",
+    "grant": "Conceder acceso",
+    "revoke": "Quitar acceso concedido",
+    "grantTitle": "Conceder acceso a {name}",
+    "grantConfirmPaid": "Este atleta paga por la app. Conceder acceso cancela su suscripción ahora, sin reembolso.",
+    "grantConfirm": "Permitir que este atleta siga el programa sin pagar por la app."
   },
   "today": {
     "noPrograms": "Todavía no sigues ningún programa. Pide a tu coach su enlace de invitación.",

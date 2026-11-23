@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { fakeStripe } from "../../helpers/fake-stripe";
-import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous } from "../../helpers/factories";
 import {
-  connectStripe, countLiveSubscriptions, createCoachAccountSession, getStripeAccount, setProgramPrice, startCheckout,
-  syncStripeAccount,
+  enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, makePaidContinuous, makeSubscriptionPurchase,
+} from "../../helpers/factories";
+import {
+  cancellableSubscribers, connectStripe, countLiveSubscriptions, countPendingCancellations, createCoachAccountSession,
+  getStripeAccount, retryCancellations, setAccessGranted, setProgramPrice, startCheckout, syncStripeAccount,
 } from "@/lib/training/services/payments";
 import { archiveProgram } from "@/lib/training/services/programs";
 
@@ -345,5 +347,103 @@ describe("startCheckout", () => {
     await enroll(tdb.prisma, program.id, athlete.id);
     await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
     await expect(startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls)).resolves.toMatch(/^https:/);
+  });
+});
+
+describe("setAccessGranted", () => {
+  const acct = "acct_test";
+
+  async function paidProgram() {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const program = await makePaidContinuous(db, coach.id);
+    const athlete = await makeAthlete(db);
+    const enrollment = await enroll(db, program.id, athlete.id);
+    return { coach, program, athlete, enrollment };
+  }
+  const enrollmentOf = (id: string) => tdb.prisma.enrollment.findUniqueOrThrow({ where: { id } });
+
+  it("granting gives access without a purchase", async () => {
+    const { gateway, calls } = fakeStripe();
+    const { coach, enrollment } = await paidProgram();
+    expect(await setAccessGranted(tdb.prisma, gateway, coach.id, enrollment.id, true))
+      .toEqual({ cancelledSubscription: false, failed: [] });
+    expect(await enrollmentOf(enrollment.id)).toMatchObject({ access: "granted" });
+    expect((await enrollmentOf(enrollment.id)).accessGrantedAt).not.toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("granting cancels a live subscription with granted", async () => {
+    const gw = fakeStripe();
+    const { coach, program, athlete, enrollment } = await paidProgram();
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1");
+    gw.addSubscription("sub_1");
+    expect(await setAccessGranted(tdb.prisma, gw.gateway, coach.id, enrollment.id, true))
+      .toEqual({ cancelledSubscription: true, failed: [] });
+    expect(gw.calls.filter((c) => c.method === "cancelSubscription")).toEqual([
+      { method: "cancelSubscription", args: [acct, "sub_1"] },
+    ]);
+    expect(await tdb.prisma.programPurchase.findUniqueOrThrow({ where: { checkoutSessionId: "cs_1" } }))
+      .toMatchObject({ endedReason: "granted", status: "canceled" });
+    expect(await enrollmentOf(enrollment.id)).toMatchObject({ access: "granted" });
+  });
+
+  it("a failed cancellation still grants and is retried with the granted reason", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const gw = fakeStripe();
+    const { coach, program, athlete, enrollment } = await paidProgram();
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1");
+    gw.addSubscription("sub_1");
+    gw.state.failing.add("cancelSubscription");
+    expect(await setAccessGranted(tdb.prisma, gw.gateway, coach.id, enrollment.id, true))
+      .toEqual({ cancelledSubscription: false, failed: ["sub_1"] });
+    expect(await enrollmentOf(enrollment.id)).toMatchObject({ access: "granted" });
+    expect(await countPendingCancellations(tdb.prisma, program.id, ["granted"])).toBe(1);
+    gw.state.failing.delete("cancelSubscription");
+    expect(await retryCancellations(tdb.prisma, gw.gateway, program.id)).toEqual([]);
+    expect(await countPendingCancellations(tdb.prisma, program.id)).toBe(0);
+    error.mockRestore();
+  });
+
+  it("cancellableSubscribers lists the athletes with a subscription Stripe could still charge", async () => {
+    const { program, athlete } = await paidProgram();
+    expect(await cancellableSubscribers(tdb.prisma, program.id)).toEqual(new Set());
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1");
+    expect(await cancellableSubscribers(tdb.prisma, program.id)).toEqual(new Set([athlete.id]));
+  });
+
+  it("revoking without a purchase blocks", async () => {
+    const { gateway } = fakeStripe();
+    const { coach, enrollment } = await paidProgram();
+    await setAccessGranted(tdb.prisma, gateway, coach.id, enrollment.id, true);
+    expect(await setAccessGranted(tdb.prisma, gateway, coach.id, enrollment.id, false))
+      .toEqual({ cancelledSubscription: false, failed: [] });
+    expect(await enrollmentOf(enrollment.id)).toMatchObject({ access: "blocked", accessGrantedAt: null });
+  });
+
+  it("granting on a free program is invalid_request", async () => {
+    const { gateway } = fakeStripe();
+    const coach = await makeCoach(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    const athlete = await makeAthlete(tdb.prisma);
+    const enrollment = await enroll(tdb.prisma, program.id, athlete.id);
+    await expect(setAccessGranted(tdb.prisma, gateway, coach.id, enrollment.id, true))
+      .rejects.toMatchObject({ code: "invalid_request" });
+  });
+
+  it("granting a removed enrollment is invalid_request", async () => {
+    const { gateway } = fakeStripe();
+    const { coach, enrollment } = await paidProgram();
+    await tdb.prisma.enrollment.update({ where: { id: enrollment.id }, data: { removedAt: new Date() } });
+    await expect(setAccessGranted(tdb.prisma, gateway, coach.id, enrollment.id, true))
+      .rejects.toMatchObject({ code: "invalid_request" });
+  });
+
+  it("another coach's enrollment is not_found", async () => {
+    const { gateway } = fakeStripe();
+    const { enrollment } = await paidProgram();
+    const other = await makeCoach(tdb.prisma);
+    await expect(setAccessGranted(tdb.prisma, gateway, other.id, enrollment.id, true))
+      .rejects.toMatchObject({ code: "not_found" });
   });
 });
