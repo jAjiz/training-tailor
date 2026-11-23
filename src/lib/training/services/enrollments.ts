@@ -81,7 +81,8 @@ export async function getEnrollmentStatus(db: Db, athleteId: string, programId: 
   const e = await db.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId } } });
   if (!e) return null;
   if (e.removedAt) return "removed" as const;
-  return e.leftAt ? ("left" as const) : ("active" as const);
+  if (e.leftAt) return "left" as const;
+  return e.access === "blocked" ? ("blocked" as const) : ("active" as const);
 }
 
 /** The athlete's enrollment status in the program a block belongs to (null: unknown block or never enrolled), for dead inbox links. */
@@ -103,6 +104,7 @@ export async function setEnrollmentRemoved(db: Db, coachId: string, enrollmentId
   await db.enrollment.update({ where: { id: enrollmentId }, data: { removedAt: removed ? new Date() : null } });
 }
 
+/** The athlete's active programs, blocked ones included (`access` tells them apart). */
 export function listAthletePrograms(db: Db, athleteId: string) {
   return db.enrollment.findMany({
     where: { athleteId, removedAt: null, leftAt: null, program: { archivedAt: null } },

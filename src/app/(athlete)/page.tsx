@@ -7,7 +7,7 @@ import { EnablePushCard } from "@/components/notifications/EnablePushCard";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { requireAthletePage } from "@/lib/accounts";
-import { orNotFound } from "@/lib/actions";
+import { orBlocked } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { getDomainData } from "@/lib/domain/repository";
 import { getSessionContext } from "@/lib/session";
@@ -25,7 +25,8 @@ import { oneRmMap } from "@/lib/training/services/prs";
 import { getDayResults } from "@/lib/training/services/results";
 import { isAdaptableDay, tailoringOn } from "@/lib/training/services/tailoring";
 import { AnnouncementText } from "@/components/notifications/AnnouncementText";
-import { AthleteHeader } from "./AthleteHeader";
+import { AthleteHeader, programOptions } from "./AthleteHeader";
+import { BlockedScreen } from "./BlockedScreen";
 import { WeekNoteButton } from "./WeekNoteButton";
 import { WeekStrip } from "./WeekStrip";
 
@@ -52,14 +53,24 @@ export default async function TodayPage({ searchParams }: Props) {
 
   if (enrollments.length === 0) return <div className="pt-8"><EmptyState>{t("noPrograms")}</EmptyState></div>;
 
-  const programId = enrollments.some((e) => e.programId === programParam) ? programParam as string : enrollments[0].programId;
+  const enrollment = enrollments.find((e) => e.programId === programParam) ?? enrollments[0];
+  const programId = enrollment.programId;
   const today = todayIn(athlete.timezone);
   const date = dateParam && isIsoDate(dateParam) ? dateParam : today;
   const monday = mondayOf(date);
-  const [day, withBlocks] = await Promise.all([
-    orNotFound(getAthleteDay(prisma, athlete.id, programId, date, today)),
+  const loaded = await orBlocked(Promise.all([
+    getAthleteDay(prisma, athlete.id, programId, date, today),
     getVisibleDays(prisma, athlete.id, programId, monday, addDays(monday, 6)),
-  ]);
+  ]));
+  if (!loaded) {
+    return (
+      <>
+        <AthleteHeader programs={programOptions(enrollments)} selected={programId} page="today" />
+        <BlockedScreen program={enrollment.program} />
+      </>
+    );
+  }
+  const [day, withBlocks] = loaded;
   const movements = day.blocks.flatMap((b) => (b.movement ? [b.movement] : []));
   // The selected day decides the week: in a closed program the strip can span two program weeks.
   let weekNote: { body: string; title: string } | null = null;
@@ -84,7 +95,7 @@ export default async function TodayPage({ searchParams }: Props) {
 
   return (
     <>
-      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={programId} page="today"
+      <AthleteHeader programs={programOptions(enrollments)} selected={programId} page="today"
         start={weekNote !== null ? <WeekNoteButton note={weekNote.body} title={weekNote.title} /> : undefined}>
         <WeekStrip programId={programId} selected={date} today={today} withBlocks={withBlocks} locale={locale}
           labels={{ prev: t("prevWeek"), next: t("nextWeek") }} />

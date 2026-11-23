@@ -800,6 +800,10 @@
     "notInProgram": "You are no longer in this program",
     "toToday": "Go to today"
   },
+  "blocked": {
+    "title": "Your access to {program} is pending payment",
+    "pending": "payment pending"
+  },
   "notifications": {
     "locale": "en",
     "title": "Notifications",

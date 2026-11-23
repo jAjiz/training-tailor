@@ -20,7 +20,7 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
   const user = await getSessionUser();
   const athlete = user ? await getAthleteByUserId(prisma, user.id) : null;
   const status = athlete ? await getEnrollmentStatus(prisma, athlete.id, program.id) : null;
-  if (status === "active") redirect(`/?program=${program.id}`);
+  if (status === "active" || status === "blocked") redirect(`/?program=${program.id}`);
 
   return (
     <section className="flex min-h-[70vh] flex-col justify-center">

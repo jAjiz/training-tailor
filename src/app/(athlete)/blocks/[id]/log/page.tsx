@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconButton } from "@/components/ui/IconButton";
 import { requireAthletePage } from "@/lib/accounts";
-import { orNotFound } from "@/lib/actions";
+import { orBlocked } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { blockLabel } from "@/lib/training/block-label";
 import { logDraftFor } from "@/lib/training/log-draft";
@@ -12,12 +12,15 @@ import { scoreTarget } from "@/lib/training/scoring";
 import type { OneRm } from "@/lib/training/records";
 import { oneRmMap } from "@/lib/training/services/prs";
 import { adaptationToKeep, getMyResult, getVisibleBlock } from "@/lib/training/services/results";
+import { BlockedBlockScreen } from "../../../BlockedScreen";
 import { LogForm } from "./LogForm";
 
 export default async function LogPage({ params }: { params: Promise<{ id: string }> }) {
   const athlete = await requireAthletePage();
   const { id } = await params;
-  const { block, date, loggable } = await orNotFound(getVisibleBlock(prisma, athlete, id));
+  const visible = await orBlocked(getVisibleBlock(prisma, athlete, id));
+  if (!visible) return <BlockedBlockScreen athleteId={athlete.id} blockId={id} />;
+  const { block, date, loggable } = visible;
   const [t, tc, tb] = await Promise.all([getTranslations("log"), getTranslations("common"), getTranslations()]);
   const backHref = `/?program=${block.programId}&date=${date}`;
   const back = <IconButton href={backHref} label={tc("back")}><ChevronLeft size={20} aria-hidden /></IconButton>;

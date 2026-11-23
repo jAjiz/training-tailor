@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, makeResult, makeCustomBlock, makeUser, publishWeek } from "../../helpers/factories";
+import { blockAccess, enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, makeResult, makeCustomBlock, makeUser, publishWeek } from "../../helpers/factories";
 import { listCoachPrograms } from "@/lib/training/services/programs";
 import { getDayResults, getLeaderboard, getVisibleBlock } from "@/lib/training/services/results";
 import {
@@ -257,5 +257,29 @@ describe("getBlockEnrollmentStatus", () => {
   it("is null for an unknown block", async () => {
     const athlete = await makeAthlete(tdb.prisma);
     expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, "nope")).toBeNull();
+  });
+});
+
+describe("blocked enrollments", () => {
+  it("getEnrollmentStatus returns blocked", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id);
+    const e = await enroll(tdb.prisma, p.id, athlete.id);
+    await blockAccess(tdb.prisma, e.id);
+    expect(await getEnrollmentStatus(tdb.prisma, athlete.id, p.id)).toBe("blocked");
+    await leave(tdb.prisma, e.id);
+    expect(await getEnrollmentStatus(tdb.prisma, athlete.id, p.id)).toBe("left");
+  });
+
+  it("listAthletePrograms includes blocked programs with access", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const free = await makeContinuous(tdb.prisma, coach.id);
+    const paid = await makeContinuous(tdb.prisma, coach.id);
+    await enroll(tdb.prisma, free.id, athlete.id);
+    await blockAccess(tdb.prisma, (await enroll(tdb.prisma, paid.id, athlete.id)).id);
+    const listed = await listAthletePrograms(tdb.prisma, athlete.id);
+    expect(Object.fromEntries(listed.map((e) => [e.programId, e.access]))).toEqual({ [free.id]: "free", [paid.id]: "blocked" });
   });
 });

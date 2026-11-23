@@ -8,12 +8,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { IconButton } from "@/components/ui/IconButton";
 import { Pill } from "@/components/ui/Pill";
 import { requireAthletePage } from "@/lib/accounts";
-import { orNotFound } from "@/lib/actions";
+import { orBlocked } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
 import { blockLabel } from "@/lib/training/block-label";
 import { getBlockEnrollmentStatus } from "@/lib/training/services/enrollments";
 import { getLeaderboard } from "@/lib/training/services/results";
+import { BlockedBlockScreen } from "../../../BlockedScreen";
 import { FistBumpButton } from "./FistBumpButton";
 
 export default async function LeaderboardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +27,9 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ id
   }
   const [t, tc, tl, tb] = await Promise.all([getTranslations("leaderboard"), getTranslations("common"), getTranslations("log"), getTranslations()]);
   const locale = await getLocale();
-  const { block, date, entries } = await orNotFound(getLeaderboard(prisma, { athlete }, id, locale));
+  const board = await orBlocked(getLeaderboard(prisma, { athlete }, id, locale));
+  if (!board) return <BlockedBlockScreen athleteId={athlete.id} blockId={id} />;
+  const { block, date, entries } = board;
   return (
     <section className="flex flex-col gap-5 pt-4">
       <div>

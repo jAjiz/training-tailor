@@ -10,6 +10,7 @@ export async function loadAthleteTimeline(db: Db, athleteId: string, programId: 
     include: { program: { include: { coach: true } } },
   });
   if (!enrollment) throw new TrainingError("not_found");
+  if (enrollment.access === "blocked") throw new TrainingError("payment_required");
   const timeline = athleteTimeline(enrollment.program, enrollment, await publishedWeeks(db, programId));
   return { enrollment, program: enrollment.program, timeline };
 }

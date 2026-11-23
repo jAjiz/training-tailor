@@ -6,13 +6,14 @@ import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
 import { IconButton } from "@/components/ui/IconButton";
 import { requireAthletePage } from "@/lib/accounts";
-import { orNotFound } from "@/lib/actions";
+import { orBlocked } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
 import { addMonths, monthGrid, todayIn } from "@/lib/training/dates";
 import { getVisibleDays } from "@/lib/training/services/athlete-view";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
-import { AthleteHeader } from "../AthleteHeader";
+import { AthleteHeader, programOptions } from "../AthleteHeader";
+import { BlockedScreen } from "../BlockedScreen";
 
 // The page opens with the navy AthleteHeader: the browser bar matches it in both themes.
 export const viewport: Viewport = { themeColor: "#0f172a" };
@@ -31,12 +32,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const today = todayIn(athlete.timezone);
   const month = monthParam && MONTH.test(monthParam) ? monthParam : today.slice(0, 7);
   const weeks = monthGrid(month);
-  const withBlocks = await orNotFound(getVisibleDays(prisma, athlete.id, enrollment.programId, weeks[0][0], weeks.at(-1)![6]));
+  const withBlocks = await orBlocked(getVisibleDays(prisma, athlete.id, enrollment.programId, weeks[0][0], weeks.at(-1)![6]));
+  const header = <AthleteHeader programs={programOptions(enrollments)} selected={enrollment.programId} page="calendar" />;
+  if (!withBlocks) return <>{header}<BlockedScreen program={enrollment.program} /></>;
   const href = (m: string) => `/calendar?program=${enrollment.programId}&month=${m}`;
 
   return (
     <>
-      <AthleteHeader programs={enrollments.map((e) => ({ id: e.programId, name: e.program.name }))} selected={enrollment.programId} page="calendar" />
+      {header}
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <IconButton href={href(addMonths(month, -1))} label={t("prevMonth")}><ChevronLeft size={20} aria-hidden /></IconButton>

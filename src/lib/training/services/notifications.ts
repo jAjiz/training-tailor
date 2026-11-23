@@ -2,15 +2,16 @@ import type { Notification } from "@/generated/prisma/client";
 import { ALWAYS_ON, AUDIENCE, NOTIFICATION_KINDS, type Audience, type NotificationKind } from "@/lib/notifications/kinds";
 import type { Recipient } from "@/lib/notifications/notify";
 import type { PushTarget } from "@/lib/notifications/push";
+import { canSeeProgram } from "../access";
 import { TrainingError } from "../errors";
 import type { Db, DbOrTx } from "./types";
 
 const kindsOf = (audience: Audience) => NOTIFICATION_KINDS.filter((k) => AUDIENCE[k] === audience);
 
-/** Athletes with an active enrollment in the program whose account is not disabled. */
+/** Athletes with an active enrollment not blocked by payment, whose account is not disabled. */
 export async function activeAthleteRecipients(db: DbOrTx, programId: string, excludeUserId: string | null = null): Promise<Recipient[]> {
   const rows = await db.enrollment.findMany({
-    where: { programId, removedAt: null, leftAt: null, athlete: { disabledAt: null } },
+    where: { programId, ...canSeeProgram(), athlete: { disabledAt: null } },
     select: { athlete: { select: { userId: true, locale: true } } },
   });
   return rows.map((r) => ({ userId: r.athlete.userId, locale: r.athlete.locale })).filter((r) => r.userId !== excludeUserId);

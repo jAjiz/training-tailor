@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, publishWeek } from "../../helpers/factories";
+import { blockAccess, enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, publishWeek } from "../../helpers/factories";
 import { runWeeklyJob, weekReminderIntents } from "@/lib/training/services/reminders";
 
 let tdb: TestDb;
@@ -28,6 +28,13 @@ describe("weekReminderIntents", () => {
       data: { programId: program.id, programName: "Daily", monday: "2026-10-26", weekIndex: 3 },
     });
     expect(intents[0].recipients.map((r) => r.userId)).toEqual([coach.userId]);
+  });
+
+  it("skips a program whose only athletes are blocked", async () => {
+    const { program } = await setup();
+    const e = await tdb.prisma.enrollment.findFirstOrThrow({ where: { programId: program.id } });
+    await blockAccess(tdb.prisma, e.id);
+    expect(await weekReminderIntents(tdb.prisma, SUNDAY)).toEqual([]);
   });
 
   it("is silent once the week is published", async () => {

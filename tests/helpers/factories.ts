@@ -98,3 +98,8 @@ export async function makeSubscription(db: PrismaClient, userId: string, endpoin
 export async function leave(db: PrismaClient, enrollmentId: string) {
   return db.enrollment.update({ where: { id: enrollmentId }, data: { leftAt: new Date() } });
 }
+
+/** Stores `blocked` access, as `refreshAccess` does for a paid program without a live purchase. */
+export async function blockAccess(db: PrismaClient, enrollmentId: string) {
+  return db.enrollment.update({ where: { id: enrollmentId }, data: { access: "blocked" } });
+}

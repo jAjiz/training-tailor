@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { enroll, makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, publishWeek } from "../../helpers/factories";
+import { blockAccess, enroll, makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, publishWeek } from "../../helpers/factories";
 import { setDayNote, setWeekNote } from "@/lib/training/services/notes";
 import { getAthleteDay, getAthleteWeekNote, getVisibleDays, loadAthleteTimeline } from "@/lib/training/services/athlete-view";
 
@@ -107,5 +107,21 @@ describe("athlete view", () => {
     await publishWeek(tdb.prisma, program.id, 0);
     const days = await getVisibleDays(tdb.prisma, athlete.id, program.id, "2026-10-01", "2026-10-18");
     expect([...days]).toEqual(["2026-10-09"]);
+  });
+});
+
+describe("athlete view, payment access", () => {
+  it("a blocked athlete gets payment_required from getAthleteDay", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id, "2026-10-05");
+    const e = await enroll(tdb.prisma, program.id, athlete.id);
+    await publishWeek(tdb.prisma, program.id, 0);
+    await blockAccess(tdb.prisma, e.id);
+    await expect(getAthleteDay(tdb.prisma, athlete.id, program.id, "2026-10-07", "2026-10-07"))
+      .rejects.toMatchObject({ code: "payment_required" });
+    await expect(getVisibleDays(tdb.prisma, athlete.id, program.id, "2026-10-05", "2026-10-11"))
+      .rejects.toMatchObject({ code: "payment_required" });
+    await expect(getAthleteWeekNote(tdb.prisma, athlete.id, program.id, 2)).rejects.toMatchObject({ code: "payment_required" });
   });
 });

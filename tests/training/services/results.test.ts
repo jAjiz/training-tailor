@@ -371,3 +371,38 @@ describe("results with adaptations", () => {
     expect(coachView.entries?.find((e) => e.athleteId === ben.id)?.adaptation).toBeNull();
   });
 });
+
+describe("results, payment access", () => {
+  const blockOf = (programId: string, athleteId: string) => tdb.prisma.enrollment.update({
+    where: { programId_athleteId: { programId, athleteId } }, data: { access: "blocked" },
+  });
+
+  it("a blocked athlete cannot log or edit a result (payment_required)", async () => {
+    const { program, ana, wod } = await setup();
+    await log(ana, wod.id, { seconds: 600 });
+    await blockOf(program.id, ana.id);
+    await expect(log(ana, wod.id, { seconds: 580 })).rejects.toMatchObject({ code: "payment_required" });
+    await expect(deleteResult(tdb.prisma, ana, wod.id, NOW)).rejects.toMatchObject({ code: "payment_required" });
+    await expect(getLeaderboard(tdb.prisma, { athlete: ana }, wod.id)).rejects.toMatchObject({ code: "payment_required" });
+    expect((await getMyResult(tdb.prisma, ana.id, wod.id))?.sortKey).toBe(-600);
+  });
+
+  it("a blocked athlete's existing result stays on the leaderboard", async () => {
+    const { program, ana, ben, wod } = await setup();
+    await log(ana, wod.id, { seconds: 600 });
+    await log(ben, wod.id, { seconds: 700 });
+    await blockOf(program.id, ana.id);
+    const board = await getLeaderboard(tdb.prisma, { athlete: ben }, wod.id);
+    expect(board.entries.map((e) => e.athleteId)).toEqual([ana.id, ben.id]);
+    const { counts } = await getDayResults(tdb.prisma, ben.id, program.id, [wod.id]);
+    expect(counts.get(wod.id)).toBe(2);
+  });
+
+  it("a fist bump on a blocked athlete's result notifies nobody", async () => {
+    const { program, ana, ben, wod } = await setup();
+    await log(ana, wod.id, { seconds: 600 });
+    await blockOf(program.id, ana.id);
+    const anaResult = await tdb.prisma.result.findFirstOrThrow({ where: { athleteId: ana.id } });
+    expect(await toggleFistBump(tdb.prisma, ben, anaResult.id)).toMatchObject({ bumped: true, count: 1, intents: [] });
+  });
+});
