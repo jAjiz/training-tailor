@@ -63,7 +63,7 @@ Stripe dashboard; Connect embedded components have no coupon management.
 | Discount codes | The coach creates codes in `/coach/payments`: code, percent **or** fixed amount, duration (once / N months / forever), optional programs, optional redemption limit, optional expiry. Listed with their redemptions; deactivated, never edited. Checkout always shows the code field. |
 | Leaving | Leaving a paid continuous program sets the subscription to cancel at period end; the athlete keeps access until then, and the enrollment gets `leftAt` when the subscription ends. Cancelling in the Customer Portal has the same effect. |
 | Removal by the coach | Cancels the subscription at once, without an automatic refund (the coach refunds in Stripe if they want). Restoring the athlete does not restore payment: they pay again or are granted access. |
-| Archive, coach deletion | Archiving a paid program cancels all its subscriptions at once. Deleting a coach (admin) cancels the subscriptions of all their programs first; the programs that stay become free, since there is no account left to charge (our call). |
+| Archive, coach deletion | Archiving a paid program cancels all its subscriptions at once. Deleting a coach (admin) cancels the subscriptions of all their programs first; the programs that stay become free, since there is no account left to charge (our call). Deleting an athlete (admin) cancels their subscriptions first (`athlete_deleted`, no refund). |
 | Paid to free | Cancels all the program's subscriptions at once; every enrollment becomes free. |
 | Free to paid | **Continuous:** enrolled athletes without a grant are blocked until they pay (direction). **Closed:** athletes already enrolled keep free access; only those who join afterwards pay. A closed program is sold as a whole, and charging someone halfway through is unfair. |
 | Price change | Continuous: every live subscription moves to the new price from its next renewal, no proration (direction). Closed: only new buyers pay the new price. |
@@ -131,7 +131,7 @@ model ProgramPurchase {
   promotionCode         String?            // the code text, for the history
   currentPeriodEnd      DateTime?
   cancelAtPeriodEnd     Boolean  @default(false)
-  endedReason           String?            // "athlete" | "coach_removed" | "archived" | "made_free" | "coach_deleted" | "granted" | "payment_failed" | "coach_stripe" | "duplicate"
+  endedReason           String?            // "athlete" | "coach_removed" | "archived" | "made_free" | "coach_deleted" | "granted" | "athlete_deleted" | "payment_failed" | "coach_stripe" | "duplicate"
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   @@index([programId, athleteId])

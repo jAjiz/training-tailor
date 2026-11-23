@@ -5,10 +5,12 @@ import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
-import { paymentsEnabled } from "@/lib/stripe/client";
+import { paymentsEnabled } from "@/lib/stripe/config";
 import { fromDbDate } from "@/lib/training/dates";
 import { listRoster } from "@/lib/training/services/enrollments";
-import { cancellableSubscribers, countPendingCancellations, subscriptionEndings } from "@/lib/training/services/payments";
+import {
+  cancellableSubscribers, countPendingCancellations, ROSTER_ENDED_REASONS, subscriptionEndings,
+} from "@/lib/training/services/payments";
 import { getOwnedProgram } from "@/lib/training/services/programs";
 import { CancellationRetry } from "../CancellationRetry";
 import { ProgramHeader } from "../ProgramHeader";
@@ -30,7 +32,7 @@ export default async function RosterPage({ params }: { params: Promise<{ id: str
   const paid = payments && program.priceAmount !== null;
   const endings = paid ? await subscriptionEndings(prisma, program.id) : new Map<string, Date>();
   const subscribers = paid ? await cancellableSubscribers(prisma, program.id) : new Set<string>();
-  const pendingCancellations = payments ? await countPendingCancellations(prisma, program.id, ["coach_removed", "granted"]) : 0;
+  const pendingCancellations = payments ? await countPendingCancellations(prisma, program.id, ROSTER_ENDED_REASONS) : 0;
   const dateFormat = { day: "numeric", month: "short", year: "numeric" } as const;
   const t = await getTranslations();
   const locale = await getLocale();

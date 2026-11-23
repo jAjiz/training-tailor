@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Card } from "@/components/ui/Card";
 import { prisma } from "@/lib/db";
-import { paymentsEnabled } from "@/lib/stripe/client";
+import { paymentsEnabled } from "@/lib/stripe/config";
 import { formatPrice } from "@/lib/training/payments";
 import { getBlockEnrollmentStatus, listAthletePrograms } from "@/lib/training/services/enrollments";
-import { canCharge, latestSubscriptionPurchase } from "@/lib/training/services/payments";
+import { canCharge, hasUnpaidSubscription } from "@/lib/training/services/payments";
 import { CheckoutButton } from "./CheckoutButton";
 import { PortalButton } from "./PortalButton";
 
@@ -24,7 +24,7 @@ export async function BlockedScreen({ athleteId, program }: { athleteId: string;
   const enabled = paymentsEnabled();
   const canPay = price !== null && enabled && (await canCharge(prisma, program.coachId));
   // A subscription whose payment failed for good is fixed in the portal; a new Checkout would start a second one.
-  const unpaid = subscription && enabled && (await latestSubscriptionPurchase(prisma, athleteId, program.id))?.status === "unpaid";
+  const unpaid = subscription && enabled && (await hasUnpaidSubscription(prisma, athleteId, program.id));
   return (
     <div className="pt-8">
       <Card className="flex flex-col items-center gap-3 px-6 py-10 text-center">

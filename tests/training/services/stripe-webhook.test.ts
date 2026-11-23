@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { fakeStripe } from "../../helpers/fake-stripe";
-import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous } from "../../helpers/factories";
+import { enroll, leave, makeAdmin, makeAthlete, makeClosed, makeCoach, makeContinuous } from "../../helpers/factories";
 import type { SubscriptionSnapshot } from "@/lib/stripe/gateway";
 import { toDbDate } from "@/lib/training/dates";
-import { connectStripe, getStripeAccount, setProgramPrice, startCheckout, syncStripeAccount } from "@/lib/training/services/payments";
+import { deleteCoach } from "@/lib/training/services/admin";
+import { leaveProgram } from "@/lib/training/services/enrollments";
+import {
+  connectStripe, countPendingCancellations, getStripeAccount, retryCancellations, ROSTER_ENDED_REASONS, setAccessGranted,
+  setProgramPrice, startCheckout, syncStripeAccount,
+} from "@/lib/training/services/payments";
+import { archiveProgram } from "@/lib/training/services/programs";
 import { handleStripeEvent, type WebhookEvent } from "@/lib/training/services/stripe-webhook";
 
 let tdb: TestDb;
@@ -324,6 +330,116 @@ describe("checkout.session.completed", () => {
   });
 });
 
+describe("a checkout completed after the program changed", () => {
+  const completedSubscription = (acct: string, programId: string, athleteId: string) =>
+    event("checkout.session.completed", acct, {
+      id: "cs_1", mode: "subscription", payment_status: "paid", subscription: "sub_1", amount_total: 1500,
+      metadata: { programId, athleteId },
+    });
+
+  it("made free: the subscription is cancelled and refunded as made_free, without enrolling", async () => {
+    const gw = fakeStripe();
+    const { acct, coach, program } = await paidProgram(gw);
+    const athlete = await payer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: false, amount: null });
+    subscription(gw, "sub_1");
+    expect(await handleStripeEvent(tdb.prisma, gw.gateway, completedSubscription(acct, program.id, athlete.id))).toEqual([]);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ stripeSubscriptionId: "sub_1", endedReason: "made_free" });
+    expect(gw.state.subscriptions.get("sub_1")!.status).toBe("canceled");
+    expect(gw.state.refunds).toEqual([{ acct, subscriptionId: "sub_1" }]);
+    expect(await tdb.prisma.enrollment.count()).toBe(0);
+  });
+
+  it("archived: the payment is refunded as archived, without enrolling", async () => {
+    const gw = fakeStripe();
+    const { acct, coach, program } = await paidProgram(gw, "closed");
+    const athlete = await payer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    await archiveProgram(tdb.prisma, gw.gateway, coach.id, program.id);
+    expect(await handleStripeEvent(tdb.prisma, gw.gateway, event("checkout.session.completed", acct, {
+      id: "cs_1", mode: "payment", payment_status: "paid", payment_intent: "pi_1", amount_total: 4000,
+      metadata: { programId: program.id, athleteId: athlete.id },
+    }))).toEqual([]);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "paid", endedReason: "archived" });
+    expect(gw.state.refunds).toEqual([{ acct, paymentIntentId: "pi_1" }]);
+    expect(await tdb.prisma.enrollment.count()).toBe(0);
+  });
+
+  it("coach deleted: the subscription is cancelled and refunded as coach_deleted, without enrolling", async () => {
+    const gw = fakeStripe();
+    const { acct, coach, program } = await paidProgram(gw);
+    const athlete = await payer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    const admin = await makeAdmin(tdb.prisma);
+    const user = await tdb.prisma.user.findUniqueOrThrow({ where: { id: coach.userId } });
+    await deleteCoach(tdb.prisma, gw.gateway, admin.id, coach.id, user.email);
+    subscription(gw, "sub_1");
+    expect(await handleStripeEvent(tdb.prisma, gw.gateway, completedSubscription(acct, program.id, athlete.id))).toEqual([]);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ stripeSubscriptionId: "sub_1", endedReason: "coach_deleted" });
+    expect(gw.state.subscriptions.get("sub_1")!.status).toBe("canceled");
+    expect(gw.state.refunds).toEqual([{ acct, subscriptionId: "sub_1" }]);
+    expect(await tdb.prisma.enrollment.count()).toBe(0);
+  });
+
+  it("granted: the subscription is cancelled and refunded as granted, the enrollment unchanged", async () => {
+    const gw = fakeStripe();
+    const { acct, coach, program } = await paidProgram(gw);
+    const athlete = await payer();
+    const e = await enroll(tdb.prisma, program.id, athlete.id);
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls); // from the blocked screen
+    await setAccessGranted(tdb.prisma, gw.gateway, coach.id, e.id, true);
+    const before = await enrollmentOf(program.id, athlete.id);
+    subscription(gw, "sub_1");
+    expect(await handleStripeEvent(tdb.prisma, gw.gateway, completedSubscription(acct, program.id, athlete.id))).toEqual([]);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ stripeSubscriptionId: "sub_1", endedReason: "granted" });
+    expect(gw.state.subscriptions.get("sub_1")!.status).toBe("canceled");
+    expect(gw.state.refunds).toEqual([{ acct, subscriptionId: "sub_1" }]);
+    expect(await enrollmentOf(program.id, athlete.id)).toEqual(before);
+  });
+});
+
+describe("a leaving athlete whose subscription the app ends", () => {
+  /** The athlete pays, then leaves: the subscription is set to cancel at period end and they are still active. */
+  async function leaving(gw: Gw) {
+    const { acct, coach, program } = await paidProgram(gw);
+    const athlete = await payer();
+    await pay(gw, acct, program.id, athlete);
+    expect((await leaveProgram(tdb.prisma, gw.gateway, athlete, program.id)).endsOn).toEqual(new Date("2026-12-23T00:00:00Z"));
+    expect((await enrollmentOf(program.id, athlete.id)).leftAt).toBeNull();
+    return { acct, coach, program, athlete };
+  }
+
+  it("made free: the athlete leaves now, and Stripe's confirmation keeps it", async () => {
+    const gw = fakeStripe();
+    const { acct, coach, program, athlete } = await leaving(gw);
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: false, amount: null });
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "canceled", endedReason: "made_free" });
+    const left = await enrollmentOf(program.id, athlete.id);
+    expect(left.leftAt).toEqual(expect.any(Date));
+    await handleStripeEvent(tdb.prisma, gw.gateway, subscriptionEvent("deleted", acct));
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "canceled", endedReason: "made_free" });
+    expect((await enrollmentOf(program.id, athlete.id)).leftAt).toEqual(left.leftAt);
+  });
+
+  it("archived: the athlete leaves now", async () => {
+    const gw = fakeStripe();
+    const { coach, program, athlete } = await leaving(gw);
+    await archiveProgram(tdb.prisma, gw.gateway, coach.id, program.id);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "canceled", endedReason: "archived" });
+    expect((await enrollmentOf(program.id, athlete.id)).leftAt).toEqual(expect.any(Date));
+  });
+
+  it("an athlete who is not leaving stays when the program is made free", async () => {
+    const gw = fakeStripe();
+    const { acct, coach, program } = await paidProgram(gw);
+    const athlete = await payer();
+    await pay(gw, acct, program.id, athlete);
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: false, amount: null });
+    expect(await enrollmentOf(program.id, athlete.id)).toMatchObject({ leftAt: null, access: "free" });
+  });
+});
+
 describe("customer.subscription.*", () => {
   async function subscribed(gw: Gw) {
     const { acct, program } = await paidProgram(gw);
@@ -393,12 +509,28 @@ describe("customer.subscription.*", () => {
     expect((await enrollmentOf(program.id, athlete.id)).leftAt).toBeNull();
   });
 
-  it("an unknown subscription is ignored", async () => {
+  it("an unknown subscription is recorded and ignored, without calling Stripe", async () => {
     const gw = fakeStripe();
     const { acct } = await paidProgram(gw);
     subscription(gw, "sub_stranger");
-    await expect(handleStripeEvent(tdb.prisma, gw.gateway, subscriptionEvent("updated", acct, "sub_stranger"))).resolves.toEqual([]);
+    const unknown = subscriptionEvent("updated", acct, "sub_stranger");
+    await expect(handleStripeEvent(tdb.prisma, gw.gateway, unknown)).resolves.toEqual([]);
     expect(await tdb.prisma.programPurchase.count()).toBe(0);
+    expect(gw.calls.filter((c) => c.method === "retrieveSubscription")).toEqual([]);
+    expect(await tdb.prisma.stripeEvent.count({ where: { id: unknown.id } })).toBe(1);
+  });
+
+  it("a subscription event from another account than its purchase changes nothing, without calling Stripe", async () => {
+    const gw = fakeStripe();
+    const { program, athlete } = await subscribed(gw);
+    const other = await paidProgram(gw);
+    const retrieved = gw.calls.filter((c) => c.method === "retrieveSubscription").length;
+    setSub(gw, { status: "canceled" });
+    const forged = subscriptionEvent("deleted", other.acct);
+    await handleStripeEvent(tdb.prisma, gw.gateway, forged);
+    expect(await purchaseOf(program.id, athlete.id)).toMatchObject({ status: "active", endedReason: null });
+    expect(gw.calls.filter((c) => c.method === "retrieveSubscription")).toHaveLength(retrieved);
+    expect(await tdb.prisma.stripeEvent.count({ where: { id: forged.id } })).toBe(1);
   });
 });
 
@@ -555,6 +687,27 @@ describe("refunds, disputes and duplicates", () => {
     }
     expect(await bySession("cs_2")).toMatchObject({ status: "active", endedReason: "duplicate" });
     expect(await tdb.prisma.stripeEvent.count({ where: { id: second.id } })).toBe(1);
+    expect((await enrollmentOf(program.id, athlete.id)).access).toBe("paid");
+  });
+
+  it("a duplicate whose cancellation failed is retried from the roster with the program's pending cancellations", async () => {
+    const gw = fakeStripe();
+    const { program, athlete, second } = await twoTabs(gw);
+    gw.state.failing.add("cancelSubscription");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await handleStripeEvent(tdb.prisma, gw.gateway, second);
+      expect(await countPendingCancellations(tdb.prisma, program.id, ROSTER_ENDED_REASONS)).toBe(1);
+
+      gw.state.failing.delete("cancelSubscription");
+      expect(await retryCancellations(tdb.prisma, gw.gateway, program.id)).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
+    expect(await bySession("cs_2")).toMatchObject({ status: "canceled", endedReason: "duplicate" });
+    expect(gw.state.subscriptions.get("sub_2")!.status).toBe("canceled");
+    expect(gw.state.subscriptions.get("sub_1")!.status).toBe("active");
+    expect(await countPendingCancellations(tdb.prisma, program.id, ROSTER_ENDED_REASONS)).toBe(0);
     expect((await enrollmentOf(program.id, athlete.id)).access).toBe("paid");
   });
 });

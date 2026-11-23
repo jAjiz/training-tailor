@@ -1,5 +1,5 @@
 import type { Prisma, ProgramPurchase } from "@/generated/prisma/client";
-import { platformFeePercent } from "@/lib/stripe/client";
+import { platformFeePercent } from "@/lib/stripe/config";
 import {
   DiscountCodeTaken, DiscountInvalid, type AccountSnapshot, type DiscountView, type StripeGateway,
 } from "@/lib/stripe/gateway";
@@ -11,9 +11,12 @@ import { isJoinable } from "./enrollments";
 import { assertWritable, getOwnedProgram } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
-/** Countries a coach can connect from: Stripe Connect's EU members, the UK and the US (our call). */
+/**
+ * Countries a coach can connect from: Stripe Connect's EU members, the UK and the US (our call). Hungary is left out:
+ * Stripe's HUF minimum charge does not fit the 50–100000 minor-unit price bounds.
+ */
 export const CONNECT_COUNTRIES = [
-  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
   "PL", "PT", "RO", "SK", "SI", "ES", "SE", "GB", "US",
 ] as const;
 export const DEFAULT_CONNECT_COUNTRY = "ES";
@@ -78,9 +81,17 @@ export function countLiveSubscriptions(db: Db, programId: string): Promise<numbe
   return db.programPurchase.count({ where: cancellableSubscriptions({ programId }) });
 }
 
-/** Why the app ended a subscription; the webhook keeps the reason when Stripe confirms the cancellation. */
-export const APP_ENDED_REASONS = ["coach_removed", "archived", "made_free", "coach_deleted", "granted"] as const;
+/**
+ * Why the app ended a subscription; the webhook keeps the reason when Stripe confirms the cancellation. `duplicate`
+ * is set by the webhook (a second checkout), never by a coach action; its failed cancellation is retried like the rest.
+ */
+export const APP_ENDED_REASONS = [
+  "coach_removed", "archived", "made_free", "coach_deleted", "granted", "athlete_deleted", "duplicate",
+] as const;
 export type AppEndedReason = (typeof APP_ENDED_REASONS)[number];
+
+/** The pending cancellations the roster page offers to retry: those of its own actions, and duplicates. */
+export const ROSTER_ENDED_REASONS: readonly AppEndedReason[] = ["coach_removed", "granted", "duplicate"];
 
 /** Subscriptions the app ended (for `reasons`) whose cancellation in Stripe has not gone through yet. */
 const pendingCancellations = (programId: string, reasons: readonly AppEndedReason[] = APP_ENDED_REASONS) =>
@@ -88,7 +99,9 @@ const pendingCancellations = (programId: string, reasons: readonly AppEndedReaso
 
 /**
  * Ends the subscriptions matching `where` that Stripe could still charge: marks them with `reason` (in one transaction with `alongside`, the
- * app-side change that ends them), then asks Stripe to cancel each one at once. Stripe never rolls back or blocks the
+ * app-side change that ends them), then asks Stripe to cancel each one at once. An athlete who was leaving (set to
+ * cancel at period end) leaves now, in the same transaction: the webhook keeps the app's reason and would never set
+ * `leftAt`. A removed athlete (`coach_removed`) is not one who left. Stripe never rolls back or blocks the
  * app-side change: a failed cancellation is logged and its subscription id returned in `failed`, for
  * `retryCancellations`. Without a gateway (payments off) nothing is sent to Stripe.
  */
@@ -97,9 +110,14 @@ export async function endSubscriptions(
   alongside: Prisma.PrismaPromise<unknown>[] = [],
 ): Promise<{ cancelled: number; failed: string[] }> {
   const running = await db.programPurchase.findMany({ where: cancellableSubscriptions(where) });
+  const leaving = reason === "coach_removed" ? [] : running.filter((p) => p.cancelAtPeriodEnd);
+  const now = new Date();
   await db.$transaction([
     ...alongside,
     db.programPurchase.updateMany({ where: { id: { in: running.map((p) => p.id) } }, data: { endedReason: reason } }),
+    ...leaving.map((p) => db.enrollment.updateMany({
+      where: { programId: p.programId, athleteId: p.athleteId, removedAt: null, leftAt: null }, data: { leftAt: now },
+    })),
   ]);
   return cancelEach(db, gw, running);
 }
@@ -201,6 +219,14 @@ export function latestSubscriptionPurchase(db: Db, athleteId: string, programId:
     where: { athleteId, programId, kind: "subscription" },
     orderBy: { createdAt: "desc" },
   });
+}
+
+/**
+ * Whether the athlete's newest subscription to the program failed for good (`unpaid`): it is fixed in the Customer
+ * Portal, as a new Checkout would start a second subscription.
+ */
+export async function hasUnpaidSubscription(db: Db, athleteId: string, programId: string): Promise<boolean> {
+  return (await latestSubscriptionPurchase(db, athleteId, programId))?.status === "unpaid";
 }
 
 /**
@@ -352,6 +378,12 @@ async function customerFor(db: Db, gw: StripeGateway, athlete: PayingAthlete, ac
 }
 
 /**
+ * How long a Checkout Session stays open: Stripe's shortest (30 minutes from creation), plus a minute for the request
+ * to reach Stripe. A short window limits checkouts completed after the program changed (made free, archived...).
+ */
+const CHECKOUT_LIFETIME_MS = 31 * 60_000;
+
+/**
  * Opens a Checkout Session on the coach's account for the program's current price and returns its URL. The athlete
  * reaches it through a joinable invitation or an enrollment they already have (the blocked screen). Access is never
  * granted here: the webhook does that when the session completes.
@@ -385,6 +417,7 @@ export async function startCheckout(
     metadata: { programId, athleteId: athlete.id },
     feePercent: platformFeePercent(),
     amount: program.priceAmount,
+    expiresAt: new Date(Date.now() + CHECKOUT_LIFETIME_MS),
   });
   await db.programPurchase.create({
     data: {

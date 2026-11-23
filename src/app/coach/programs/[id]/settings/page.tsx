@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/Card";
 import { requireCoachPage } from "@/lib/accounts";
 import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
-import { paymentsEnabled } from "@/lib/stripe/client";
+import { paymentsEnabled } from "@/lib/stripe/config";
 import { fromDbDate } from "@/lib/training/dates";
 import { countLiveSubscriptions, countPendingCancellations, countPendingPriceSync, getStripeAccount } from "@/lib/training/services/payments";
 import { getOwnedProgram, publishedWeeks } from "@/lib/training/services/programs";

@@ -3,7 +3,8 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Card } from "@/components/ui/Card";
 import { requireCoachPage } from "@/lib/accounts";
 import { prisma } from "@/lib/db";
-import { getStripeGateway, paymentsEnabled } from "@/lib/stripe/client";
+import { getStripeGateway } from "@/lib/stripe/client";
+import { paymentsEnabled } from "@/lib/stripe/config";
 import {
   CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY, getStripeAccount, listDiscounts,
 } from "@/lib/training/services/payments";

@@ -645,7 +645,8 @@
       "empty": "Ningún atleta coincide.",
       "enrollments": "Programas",
       "active": "Activo",
-      "disabled": "Deshabilitado"
+      "disabled": "Deshabilitado",
+      "cancelFailed": "Atleta borrado, pero {count, plural, one {no se pudo cancelar # suscripción} other {no se pudieron cancelar # suscripciones}} en Stripe. Cancélalas desde el panel de Stripe."
     },
     "athlete": {
       "back": "Atletas",

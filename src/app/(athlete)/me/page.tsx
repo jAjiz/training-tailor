@@ -10,7 +10,7 @@ import { requireAthletePage } from "@/lib/accounts";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format";
 import { getSessionContext } from "@/lib/session";
-import { paymentsEnabled } from "@/lib/stripe/client";
+import { paymentsEnabled } from "@/lib/stripe/config";
 import { fromDbDate } from "@/lib/training/dates";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { getPreferences } from "@/lib/training/services/notifications";

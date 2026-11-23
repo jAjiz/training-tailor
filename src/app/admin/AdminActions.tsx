@@ -161,7 +161,11 @@ export function AthleteActions({ athlete }: { athlete: Athlete }) {
       ] } : r;
     },
     remove: (email) => deleteAthleteAction(athlete.id, email),
-    onDeleted: () => { router.push("/admin/athletes"); router.refresh(); },
+    // Subscriptions Stripe could not cancel are counted on the athletes list, the page left behind no longer existing.
+    onDeleted: ({ cancelFailed }) => {
+      router.push(cancelFailed > 0 ? `/admin/athletes?cancelFailed=${cancelFailed}` : "/admin/athletes");
+      router.refresh();
+    },
   });
 
   async function toggle() {

@@ -115,6 +115,7 @@ export function stripeGateway(stripe: Stripe): StripeGateway {
           client_reference_id: input.clientReferenceId,
           metadata: input.metadata,
           allow_promotion_codes: true,
+          expires_at: Math.floor(input.expiresAt.getTime() / 1000),
           ...(input.mode === "subscription"
             ? {
                 subscription_data: {

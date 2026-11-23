@@ -359,7 +359,7 @@ describe("athlete administration", () => {
   it("refuses a missing profile", async () => {
     const admin = await makeAdmin(tdb.prisma);
     await expect(setAthleteDisabled(tdb.prisma, admin.id, "nope", true)).rejects.toMatchObject({ code: "not_found" });
-    await expect(deleteAthlete(tdb.prisma, admin.id, "nope", "x@test.local")).rejects.toMatchObject({ code: "not_found" });
+    await expect(deleteAthlete(tdb.prisma, null, admin.id, "nope", "x@test.local")).rejects.toMatchObject({ code: "not_found" });
     await expect(previewAthleteDeletion(tdb.prisma, "nope")).rejects.toMatchObject({ code: "not_found" });
   });
 
@@ -383,11 +383,12 @@ describe("athlete administration", () => {
     await db.personalRecord.create({ data: { athleteId: athlete.id, movement: "Test Back Squat", kind: "lift", kg: 100, reps: 1, achievedOn: new Date("2026-10-05T00:00:00Z") } });
 
     expect(await previewAthleteDeletion(db, athlete.id)).toEqual({ enrollments: 1, results: 1, prs: 1 });
-    await expect(deleteAthlete(db, admin.id, athlete.id, "wrong@test.local")).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(deleteAthlete(db, null, admin.id, athlete.id, "wrong@test.local")).rejects.toMatchObject({ code: "invalid_request" });
     expect(await db.adminAuditLog.count()).toBe(0);
 
-    const preview = await deleteAthlete(db, admin.id, athlete.id, ` ${user.email.toUpperCase()} `);
+    const { preview, failed } = await deleteAthlete(db, null, admin.id, athlete.id, ` ${user.email.toUpperCase()} `);
     expect(preview).toEqual({ enrollments: 1, results: 1, prs: 1 });
+    expect(failed).toEqual([]);
     expect(await db.athleteAccount.findUnique({ where: { id: athlete.id } })).toBeNull();
     expect(await db.enrollment.count({ where: { athleteId: athlete.id } })).toBe(0);
     expect(await db.result.findUnique({ where: { id: mine.id } })).toBeNull();
@@ -412,7 +413,7 @@ describe("athlete administration", () => {
     await db.notification.create({ data: { userId: user.id, audience: "coach", kind: "athlete_joined", data: {} } });
     await db.notificationPreference.create({ data: { userId: user.id, kind: "announcement", enabled: false } });
     await db.notificationPreference.create({ data: { userId: user.id, kind: "athlete_joined", enabled: false } });
-    await deleteAthlete(db, admin.id, athlete.id, user.email);
+    await deleteAthlete(db, null, admin.id, athlete.id, user.email);
     expect((await db.notification.findMany({ where: { userId: user.id } })).map((n) => n.audience)).toEqual(["coach"]);
     expect((await db.notificationPreference.findMany({ where: { userId: user.id } })).map((p) => p.kind)).toEqual(["athlete_joined"]);
   });
@@ -423,9 +424,65 @@ describe("athlete administration", () => {
     const athlete = await makeAthlete(db);
     const user = await db.user.findUniqueOrThrow({ where: { id: athlete.userId } });
     await makeSession(db, user.id);
-    await deleteAthlete(db, admin.id, athlete.id, user.email);
+    await deleteAthlete(db, null, admin.id, athlete.id, user.email);
     expect(await db.user.findUnique({ where: { id: user.id } })).toBeNull();
     expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("deleting an athlete cancels their subscriptions Stripe could still charge, without refunds", async () => {
+    const db = tdb.prisma;
+    const gw = fakeStripe();
+    const admin = await makeAdmin(db);
+    const athlete = await makeAthlete(db);
+    const user = await db.user.findUniqueOrThrow({ where: { id: athlete.userId } });
+    const coach = await makeCoach(db);
+    const program = await makePaidContinuous(db, coach.id);
+    const other = await makePaidContinuous(db, (await makeCoach(db)).id);
+    await enroll(db, program.id, athlete.id);
+    await enroll(db, other.id, athlete.id);
+    await makeSubscriptionPurchase(db, program.id, athlete.id, "acct_coach", "1");
+    gw.addSubscription("sub_1");
+    // An unpaid subscription on another coach's account is cancelled too; an ended one is left alone.
+    await makeSubscriptionPurchase(db, other.id, athlete.id, "acct_other", "2", { status: "unpaid" });
+    gw.addSubscription("sub_2", { status: "unpaid" });
+    await makeSubscriptionPurchase(db, program.id, athlete.id, "acct_coach", "3", { status: "canceled" });
+    // Another athlete's subscription is not touched.
+    const stays = await makeAthlete(db);
+    await enroll(db, program.id, stays.id);
+    await makeSubscriptionPurchase(db, program.id, stays.id, "acct_coach", "4");
+    gw.addSubscription("sub_4");
+
+    // A wrong confirmation cancels nothing.
+    await expect(deleteAthlete(db, gw.gateway, admin.id, athlete.id, "someone@test.local")).rejects.toMatchObject({ code: "invalid_request" });
+    expect(gw.calls).toEqual([]);
+
+    expect((await deleteAthlete(db, gw.gateway, admin.id, athlete.id, user.email)).failed).toEqual([]);
+    expect(gw.calls.map((c) => [c.method, ...c.args]).sort()).toEqual([
+      ["cancelSubscription", "acct_coach", "sub_1"], ["cancelSubscription", "acct_other", "sub_2"],
+    ]);
+    expect(gw.state.refunds).toEqual([]);
+    expect(await db.athleteAccount.findUnique({ where: { id: athlete.id } })).toBeNull();
+    expect(await db.programPurchase.findMany({ select: { athleteId: true, status: true, endedReason: true } })).toEqual([
+      { athleteId: stays.id, status: "active", endedReason: null },
+    ]);
+  });
+
+  it("a failed cancellation does not stop the athlete's deletion and is reported", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const db = tdb.prisma;
+    const gw = fakeStripe();
+    const admin = await makeAdmin(db);
+    const athlete = await makeAthlete(db);
+    const user = await db.user.findUniqueOrThrow({ where: { id: athlete.userId } });
+    const program = await makePaidContinuous(db, (await makeCoach(db)).id);
+    await enroll(db, program.id, athlete.id);
+    await makeSubscriptionPurchase(db, program.id, athlete.id, "acct_coach", "1");
+    gw.addSubscription("sub_1");
+    gw.state.failing.add("cancelSubscription");
+    expect((await deleteAthlete(db, gw.gateway, admin.id, athlete.id, user.email)).failed).toEqual(["sub_1"]);
+    expect(await db.athleteAccount.findUnique({ where: { id: athlete.id } })).toBeNull();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 
@@ -452,7 +509,7 @@ describe("deleting a profile owned by an admin", () => {
     const db = tdb.prisma;
     const { owner, coach, athlete, session } = await adminOwned(db);
     await db.coachAccount.delete({ where: { id: coach.id } });
-    await deleteAthlete(db, owner.id, athlete.id, owner.email);
+    await deleteAthlete(db, null, owner.id, athlete.id, owner.email);
     expect(await db.user.findUnique({ where: { id: owner.id } })).toMatchObject({ role: "admin" });
     expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
   });

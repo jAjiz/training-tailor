@@ -6,6 +6,7 @@ const getSessionContext = vi.fn();
 const writeAudit = vi.fn();
 const changeCoachStatus = vi.fn();
 const deleteCoach = vi.fn();
+const deleteAthlete = vi.fn();
 const impersonateUser = vi.fn();
 const stopImpersonating = vi.fn();
 const findUser = vi.fn();
@@ -21,6 +22,7 @@ vi.mock("@/lib/training/services/audit", () => ({ writeAudit: (...a: unknown[]) 
 vi.mock("@/lib/training/services/admin", () => ({
   changeCoachStatus: (...a: unknown[]) => changeCoachStatus(...a),
   deleteCoach: (...a: unknown[]) => deleteCoach(...a),
+  deleteAthlete: (...a: unknown[]) => deleteAthlete(...a),
 }));
 vi.mock("@/lib/auth", () => ({
   IMPERSONATION_SECONDS: 3600,
@@ -35,7 +37,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import {
-  changeCoachStatusAction, deleteCoachAction, impersonateAction, stopImpersonatingAction,
+  changeCoachStatusAction, deleteAthleteAction, deleteCoachAction, impersonateAction, stopImpersonatingAction,
 } from "@/app/admin/actions";
 
 const admin = { id: "admin1", name: "Admin", email: "admin@test.local", image: null };
@@ -62,6 +64,13 @@ describe("admin actions", () => {
     deleteCoach.mockResolvedValue({ preview, intents: deleted, failed: ["sub_1"] });
     expect(await deleteCoachAction("c1", "a@b.c")).toEqual({ ok: true, value: { ...preview, cancelFailed: 1 } });
     expect(dispatch).toHaveBeenLastCalledWith(deleted);
+  });
+
+  it("returns an athlete deletion's preview with the count of subscriptions Stripe could not cancel", async () => {
+    const preview = { enrollments: 2, results: 3, prs: 1 };
+    deleteAthlete.mockResolvedValue({ preview, failed: ["sub_1", "sub_2"] });
+    expect(await deleteAthleteAction("a1", "a@b.c")).toEqual({ ok: true, value: { ...preview, cancelFailed: 2 } });
+    expect(deleteAthlete).toHaveBeenCalledWith(prisma, null, "admin1", "a1", "a@b.c");
   });
 
   it("refuses an unknown transition or a bad id without calling the service", async () => {

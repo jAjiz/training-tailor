@@ -6,18 +6,19 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
-import { paymentsEnabled } from "@/lib/stripe/client";
+import { paymentsEnabled } from "@/lib/stripe/config";
 import { formatPrice } from "@/lib/training/payments";
 import { accessOnJoin } from "@/lib/training/services/access-store";
 import { getAthleteByUserId } from "@/lib/training/services/accounts";
 import { findProgramByCode, getEnrollmentStatus } from "@/lib/training/services/enrollments";
-import { canCharge } from "@/lib/training/services/payments";
+import { canCharge, hasUnpaidSubscription } from "@/lib/training/services/payments";
 import { CheckoutButton } from "../../CheckoutButton";
+import { PortalButton } from "../../PortalButton";
 import { JoinButton } from "./JoinButton";
 
 export default async function JoinPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  const [t, locale] = await Promise.all([getTranslations("join"), getLocale()]);
+  const [t, tAll, locale] = await Promise.all([getTranslations("join"), getTranslations(), getLocale()]);
   const program = await findProgramByCode(prisma, code);
   if (!program) return <div className="pt-12"><EmptyState>{t("invalid")}</EmptyState></div>;
 
@@ -34,7 +35,11 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
   // A paid program is joined through Checkout, unless the athlete keeps access (a grant, a closed program joined before it was paid).
   const mustPay = athlete !== null && price !== null && status !== "removed"
     && (status === "blocked" || (await accessOnJoin(prisma, program.id, athlete.id)) === "blocked");
-  const canPay = mustPay && paymentsEnabled() && (await canCharge(prisma, program.coachId));
+  const enabled = paymentsEnabled();
+  const canPay = mustPay && enabled && (await canCharge(prisma, program.coachId));
+  // As on the blocked screen: a subscription whose payment failed for good is fixed in the portal, not a new Checkout.
+  const unpaid = athlete !== null && mustPay && subscription && enabled
+    && (await hasUnpaidSubscription(prisma, athlete.id, program.id));
 
   return (
     <section className="flex min-h-[70vh] flex-col justify-center">
@@ -60,8 +65,9 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
         {athlete && status === "removed" && <p role="alert" className="text-sm text-danger">{t("removed")}</p>}
         {athlete && status === "left" && <p className="text-sm text-muted">{t("left")}</p>}
         {athlete && (status === null || status === "left") && !mustPay && <JoinButton code={code} />}
-        {canPay && <CheckoutButton programId={program.id} subscription={subscription} />}
-        {mustPay && !canPay && <p role="status" className="text-sm text-muted">{t("paymentsUnavailable")}</p>}
+        {unpaid && <PortalButton programId={program.id} label={tAll("blocked.updatePayment")} primary />}
+        {!unpaid && canPay && <CheckoutButton programId={program.id} subscription={subscription} />}
+        {!unpaid && mustPay && !canPay && <p role="status" className="text-sm text-muted">{t("paymentsUnavailable")}</p>}
       </Card>
     </section>
   );

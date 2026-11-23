@@ -645,7 +645,8 @@
       "empty": "No athlete matches.",
       "enrollments": "Programs",
       "active": "Active",
-      "disabled": "Disabled"
+      "disabled": "Disabled",
+      "cancelFailed": "Athlete deleted, but {count, plural, one {# subscription could not be cancelled} other {# subscriptions could not be cancelled}} in Stripe. Cancel them from the Stripe dashboard."
     },
     "athlete": {
       "back": "Athletes",

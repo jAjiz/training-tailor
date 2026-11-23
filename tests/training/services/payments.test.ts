@@ -5,7 +5,7 @@ import {
   enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, makePaidContinuous, makeSubscriptionPurchase,
 } from "../../helpers/factories";
 import {
-  cancellableSubscribers, connectStripe, countLiveSubscriptions, countPendingCancellations, createCoachAccountSession,
+  cancellableSubscribers, CONNECT_COUNTRIES, connectStripe, countLiveSubscriptions, hasUnpaidSubscription, countPendingCancellations, createCoachAccountSession,
   createDiscount, deactivateDiscount, listDiscounts, athleteSubscriptions, latestSubscriptionPurchase, openPortal,
   countPendingPriceSync, getStripeAccount, retryCancellations, setAccessGranted, setProgramPrice, startCheckout, syncStripeAccount, syncSubscriptionPrices,
 } from "@/lib/training/services/payments";
@@ -326,15 +326,21 @@ describe("startCheckout", () => {
     const gw = fakeStripe();
     const { acct, program } = await paidProgram(gw);
     const athlete = await buyer();
+    const before = Date.now();
     const url = await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    const after = Date.now();
     expect(url).toBe("https://checkout.stripe.test/cs_1");
+    // Stripe's shortest expiry (30 minutes from creation), with a minute for the request to reach it.
+    const { expiresAt } = sessions(gw)[0][1] as { expiresAt: Date };
+    expect(expiresAt.getTime()).toBeGreaterThanOrEqual(before + 31 * 60_000);
+    expect(expiresAt.getTime()).toBeLessThanOrEqual(after + 31 * 60_000);
     expect(gw.state.customers.get("cus_1")).toEqual({
       acct, email: "buyer@test.local", name: athlete.displayName, athleteId: athlete.id,
     });
     expect(sessions(gw)).toEqual([[acct, {
       mode: "subscription", priceId: program.stripePriceId, customerId: "cus_1", successUrl: urls.success,
       cancelUrl: urls.cancel, clientReferenceId: athlete.id, metadata: { programId: program.id, athleteId: athlete.id },
-      feePercent: 0, amount: 1500,
+      feePercent: 0, amount: 1500, expiresAt,
     }]]);
   });
 
@@ -712,5 +718,20 @@ describe("Customer Portal", () => {
     await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1", { status: "active" });
     await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "2", { status: "unpaid" });
     expect(await latestSubscriptionPurchase(tdb.prisma, athlete.id, program.id)).toMatchObject({ status: "unpaid" });
+  });
+
+  it("hasUnpaidSubscription: the newest subscription purchase is unpaid (fixed in the portal, not a new Checkout)", async () => {
+    const gw = fakeStripe();
+    const { acct, program, athlete } = await subscriber(gw);
+    expect(await hasUnpaidSubscription(tdb.prisma, athlete.id, program.id)).toBe(false);
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1", { status: "active" });
+    expect(await hasUnpaidSubscription(tdb.prisma, athlete.id, program.id)).toBe(false);
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "2", { status: "unpaid" });
+    expect(await hasUnpaidSubscription(tdb.prisma, athlete.id, program.id)).toBe(true);
+  });
+
+  it("CONNECT_COUNTRIES leaves out Hungary (HUF minimums do not fit the price bounds)", () => {
+    expect(CONNECT_COUNTRIES).not.toContain("HU");
+    expect(CONNECT_COUNTRIES).toContain("ES");
   });
 });

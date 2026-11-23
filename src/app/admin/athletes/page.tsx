@@ -12,7 +12,10 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 export default async function AdminAthletesPage({ searchParams }: Props) {
   await requireAdminPage();
-  const { search, page } = parseListParams(await searchParams);
+  const params = await searchParams;
+  const { search, page } = parseListParams(params);
+  // Set by an athlete deletion whose subscription cancellations Stripe refused.
+  const cancelFailed = Number(params.cancelFailed);
   const [{ rows, hasMore }, t, locale] = await Promise.all([
     listAthletes(prisma, { search, page }), getTranslations("admin"), getLocale(),
   ]);
@@ -21,6 +24,11 @@ export default async function AdminAthletesPage({ searchParams }: Props) {
       <PageHeader title={t("athletes.title")}>
         <SearchForm action="/admin/athletes" search={search} placeholder={t("common.searchPlaceholder")} />
       </PageHeader>
+      {Number.isInteger(cancelFailed) && cancelFailed > 0 && (
+        <p role="alert" data-color="red" className="rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">
+          {t("athletes.cancelFailed", { count: cancelFailed })}
+        </p>
+      )}
       {rows.length === 0 ? <EmptyState>{t("athletes.empty")}</EmptyState> : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">

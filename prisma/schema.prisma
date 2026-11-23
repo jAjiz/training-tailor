@@ -484,7 +484,7 @@ model ProgramPurchase {
   promotionCode         String? // the code text, for the history
   currentPeriodEnd      DateTime?
   cancelAtPeriodEnd     Boolean        @default(false)
-  endedReason           String? // "athlete" | "coach_removed" | "archived" | "made_free" | "coach_deleted" | "granted" | "payment_failed" | "coach_stripe" | "duplicate"
+  endedReason           String? // "athlete" | "coach_removed" | "archived" | "made_free" | "coach_deleted" | "granted" | "athlete_deleted" | "payment_failed" | "coach_stripe" | "duplicate"
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 

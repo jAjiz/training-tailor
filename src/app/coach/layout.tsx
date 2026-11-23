@@ -1,7 +1,7 @@
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { prisma } from "@/lib/db";
-import { paymentsEnabled } from "@/lib/stripe/client";
+import { paymentsEnabled } from "@/lib/stripe/config";
 import { getSessionContext } from "@/lib/session";
 import { getCoachByUserId } from "@/lib/training/services/accounts";
 import { CoachNav } from "./CoachNav";

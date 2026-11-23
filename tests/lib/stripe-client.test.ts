@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TrainingError } from "@/lib/training/errors";
-import { getStripeGateway, paymentsEnabled, platformFeePercent } from "@/lib/stripe/client";
+import { getStripeGateway } from "@/lib/stripe/client";
+import { paymentsEnabled, platformFeePercent } from "@/lib/stripe/config";
 
 const keys = {
   STRIPE_SECRET_KEY: "sk_test_x",

@@ -238,12 +238,25 @@ export async function previewAthleteDeletion(db: Db, athleteId: string): Promise
   return countAthleteData(db, athleteId);
 }
 
-/** Deletes the athlete profile (enrollments, results, fist bumps and 1RMs cascade) and the User when it was the last profile. */
-export async function deleteAthlete(db: Db, actor: string, athleteId: string, confirmEmail: string): Promise<AthleteDeletionPreview> {
-  return db.$transaction(async (tx) => {
-    const athlete = await tx.athleteAccount.findUnique({ where: { id: athleteId }, include: { user: true } });
-    if (!athlete) throw new TrainingError("not_found");
-    if (confirmEmail.trim().toLowerCase() !== athlete.user.email.toLowerCase()) throw new TrainingError("invalid_request");
+async function confirmedAthlete(db: DbOrTx, athleteId: string, confirmEmail: string) {
+  const athlete = await db.athleteAccount.findUnique({ where: { id: athleteId }, include: { user: true } });
+  if (!athlete) throw new TrainingError("not_found");
+  if (confirmEmail.trim().toLowerCase() !== athlete.user.email.toLowerCase()) throw new TrainingError("invalid_request");
+  return athlete;
+}
+
+/**
+ * Deletes the athlete profile (enrollments, results, fist bumps, 1RMs and purchases cascade) and the User when it was
+ * the last profile. First, every subscription Stripe could still charge is cancelled (`athlete_deleted`, no refund);
+ * a Stripe failure does not stop the deletion and is returned in `failed`.
+ */
+export async function deleteAthlete(
+  db: Db, gw: StripeGateway | null, actor: string, athleteId: string, confirmEmail: string,
+): Promise<{ preview: AthleteDeletionPreview; failed: string[] }> {
+  await confirmedAthlete(db, athleteId, confirmEmail);
+  const { failed } = await endSubscriptions(db, gw, { athleteId }, "athlete_deleted");
+  const preview = await db.$transaction(async (tx) => {
+    const athlete = await confirmedAthlete(tx, athleteId, confirmEmail);
 
     const preview = await countAthleteData(tx, athleteId);
     await tx.athleteAccount.delete({ where: { id: athleteId } });
@@ -254,4 +267,5 @@ export async function deleteAthlete(db: Db, actor: string, athleteId: string, co
     });
     return preview;
   });
+  return { preview, failed };
 }

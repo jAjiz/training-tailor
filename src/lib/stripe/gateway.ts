@@ -30,6 +30,8 @@ export type CheckoutInput = {
   feePercent: number;
   /** The price's amount in minor units, to compute the fee of a one-time payment. */
   amount: number;
+  /** When the session expires if not completed (Stripe accepts 30 minutes to 24 hours from creation). */
+  expiresAt: Date;
 };
 
 export type DiscountInput = {

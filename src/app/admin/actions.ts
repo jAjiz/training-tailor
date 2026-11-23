@@ -78,12 +78,16 @@ export async function previewAthleteDeletionAction(athleteId: unknown): Promise<
   });
 }
 
-export async function deleteAthleteAction(athleteId: unknown, confirmEmail: unknown): Promise<ActionResult<AthleteDeletionPreview>> {
+/** `cancelFailed`: subscriptions of the athlete that Stripe could not cancel (logged; left to the admin). */
+export async function deleteAthleteAction(
+  athleteId: unknown, confirmEmail: unknown,
+): Promise<ActionResult<AthleteDeletionPreview & { cancelFailed: number }>> {
   return runAction("deleteAthleteAction", async () => {
     const admin = await requireAdmin();
-    const preview = await deleteAthlete(prisma, admin.id, parse(Id, athleteId), parse(Email, confirmEmail));
+    const { preview, failed } = await deleteAthlete(
+      prisma, stripeGatewayIfEnabled(), admin.id, parse(Id, athleteId), parse(Email, confirmEmail));
     revalidateAdmin();
-    return preview;
+    return { ...preview, cancelFailed: failed.length };
   });
 }
 
