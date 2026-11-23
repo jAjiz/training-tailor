@@ -1,6 +1,7 @@
 import type { ProgramPurchase } from "@/generated/prisma/client";
 import type { StripeGateway, SubscriptionSnapshot } from "@/lib/stripe/gateway";
 import type { NotificationIntent } from "@/lib/notifications/notify";
+import { LIVE_SUBSCRIPTION } from "../payments";
 import { refreshAccess } from "./access-store";
 import { athleteJoinedIntents, enterProgram } from "./enrollments";
 import { storeAccountSnapshot } from "./payments";
@@ -23,11 +24,15 @@ const idOf = (v: unknown): string | null => str(v) ?? str(obj(v)?.id);
 /** A one-time payment session counts as paid when it was charged, or when a discount left nothing to charge. */
 const PAID_SESSION = ["paid", "no_payment_required"];
 
+/** A completed checkout the app does not keep: cancelled and refunded in Stripe after the transaction commits. */
+type Undo = { purchaseId: string; reason: "duplicate" | "coach_removed"; subscriptionId: string | null; paymentIntentId: string | null };
+
 /**
  * Applies a Stripe event to purchases and access and returns the notifications to send. Webhooks are the source of
- * truth for access. Stripe is read before the transaction; the event id is stored in the same transaction as the
- * effects, so an event delivered again does nothing. Subscription events apply the subscription as Stripe has it now,
- * never the payload, so out-of-order delivery converges. Unknown types do nothing.
+ * truth for access. Stripe is read before the transaction and written after it (cancelling and refunding a checkout
+ * the app does not keep); the event id is stored in the same transaction as the effects, so an event delivered again
+ * does nothing. Subscription events apply the subscription as Stripe has it now, never the payload, so out-of-order
+ * delivery converges. Unknown types do nothing.
  */
 export async function handleStripeEvent(
   db: Db, gw: StripeGateway, event: WebhookEvent, now: Date = new Date(),
@@ -49,7 +54,32 @@ export async function handleStripeEvent(
       if (!acct) return once(db, event, async () => []);
       const subscriptionId = object.mode === "subscription" ? idOf(object.subscription) : null;
       const snapshot = subscriptionId ? await gw.retrieveSubscription(acct, subscriptionId) : null;
-      return once(db, event, (tx) => checkoutCompleted(tx, acct, object, snapshot, now));
+      const after: { undo: Undo | null } = { undo: null };
+      const intents = await once(db, event, async (tx) => {
+        const result = await checkoutCompleted(tx, acct, object, snapshot, now);
+        after.undo = result.undo;
+        return result.intents;
+      });
+      // Set only by a delivery whose transaction committed: a redelivered event never refunds twice.
+      if (after.undo) await undoCheckout(gw, acct, after.undo);
+      return intents;
+    }
+    case "charge.refunded": {
+      // Measured on the charge itself: a discount makes it differ from the program's price.
+      const full = typeof object.amount === "number" && typeof object.amount_refunded === "number"
+        && object.amount_refunded >= object.amount;
+      const paymentIntentId = idOf(object.payment_intent);
+      return once(db, event, async (tx) => {
+        if (full && acct && paymentIntentId) await endPayment(tx, acct, paymentIntentId, "refunded");
+        return [];
+      });
+    }
+    case "charge.dispute.closed": {
+      const paymentIntentId = idOf(object.payment_intent);
+      return once(db, event, async (tx) => {
+        if (object.status === "lost" && acct && paymentIntentId) await endPayment(tx, acct, paymentIntentId, "dispute_lost");
+        return [];
+      });
     }
     case "customer.subscription.created":
     case "customer.subscription.updated":
@@ -90,44 +120,109 @@ async function once(
   }
 }
 
+const nothing = (): { intents: NotificationIntent[]; undo: Undo | null } => ({ intents: [], undo: null });
+
 async function checkoutCompleted(
   tx: DbOrTx, acct: string, session: Json, snapshot: SubscriptionSnapshot | null, now: Date,
-): Promise<NotificationIntent[]> {
+): Promise<{ intents: NotificationIntent[]; undo: Undo | null }> {
   const sessionId = str(session.id);
   const stored = sessionId ? await tx.programPurchase.findUnique({ where: { checkoutSessionId: sessionId } }) : null;
   if (stored && stored.stripeAccountId !== acct) {
     console.warn("stripe webhook: checkout session from another account than its purchase", sessionId, acct);
-    return [];
+    return nothing();
   }
   const purchase = stored ?? (sessionId ? await purchaseFromMetadata(tx, acct, sessionId, session) : null);
   if (!purchase) {
     console.warn("stripe webhook: checkout session without a purchase or valid metadata", sessionId, acct);
-    return [];
+    return nothing();
   }
+  const { programId, athleteId } = purchase;
   const amount = typeof session.amount_total === "number" ? session.amount_total : purchase.amount;
   const promotionCode = promotionCodeOf(session) ?? undefined;
+  let paymentIntentId: string | null = null;
 
   if (purchase.kind === "subscription") {
-    if (!snapshot) return [];
+    if (!snapshot) return nothing();
     const linked = await tx.programPurchase.update({
       where: { id: purchase.id }, data: { stripeSubscriptionId: snapshot.id, amount, promotionCode },
     });
     await applySubscription(tx, linked, snapshot, now);
     if (snapshot.status === "canceled") {
       // Delivered after the subscription ended: enrolling would undo a leftAt the cancellation just set.
-      await refreshAccess(tx, purchase.programId, purchase.athleteId);
-      return [];
+      await refreshAccess(tx, programId, athleteId);
+      return nothing();
     }
   } else {
-    if (!PAID_SESSION.includes(str(session.payment_status) ?? "")) return [];
+    if (!PAID_SESSION.includes(str(session.payment_status) ?? "")) return nothing();
+    paymentIntentId = idOf(session.payment_intent);
     await tx.programPurchase.update({
-      where: { id: purchase.id },
-      data: { status: "paid", stripePaymentIntentId: idOf(session.payment_intent), amount, promotionCode },
+      where: { id: purchase.id }, data: { status: "paid", stripePaymentIntentId: paymentIntentId, amount, promotionCode },
     });
   }
-  const intents = await enrollPayer(tx, purchase.programId, purchase.athleteId, now);
+
+  const reason = await unwantedReason(tx, purchase);
+  if (reason) {
+    await tx.programPurchase.update({ where: { id: purchase.id }, data: { endedReason: reason } });
+    await refreshAccess(tx, programId, athleteId);
+    return {
+      intents: [],
+      undo: { purchaseId: purchase.id, reason, subscriptionId: snapshot?.id ?? null, paymentIntentId },
+    };
+  }
+  const intents = await enrollPayer(tx, programId, athleteId, now);
+  await refreshAccess(tx, programId, athleteId);
+  return { intents, undo: null };
+}
+
+/**
+ * Why a paid checkout is not kept: the coach removed the athlete after they opened it (`coach_removed`), or the athlete
+ * already has another purchase giving access to the program, e.g. paid in two tabs (`duplicate`).
+ */
+async function unwantedReason(tx: DbOrTx, purchase: ProgramPurchase): Promise<"coach_removed" | "duplicate" | null> {
+  const { programId, athleteId } = purchase;
+  const enrollment = await tx.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId } } });
+  if (enrollment?.removedAt) return "coach_removed";
+  const original = await tx.programPurchase.findFirst({
+    where: {
+      programId, athleteId, id: { not: purchase.id }, endedReason: null,
+      OR: [
+        { kind: "subscription", status: { in: [...LIVE_SUBSCRIPTION] } },
+        { kind: "payment", status: "paid" },
+      ],
+    },
+    select: { id: true },
+  });
+  return original ? "duplicate" : null;
+}
+
+/**
+ * Cancels and refunds a checkout the app did not keep. Runs after the transaction, so a Stripe failure cannot be
+ * retried by redelivery (the event is stored): it is logged and the event still succeeds. The purchase keeps its
+ * `endedReason`; a coach_removed subscription is retried with the program's other pending cancellations.
+ */
+async function undoCheckout(gw: StripeGateway, acct: string, undo: Undo): Promise<void> {
+  const attempt = async (what: string, call: () => Promise<void>) => {
+    try {
+      await call();
+    } catch (e) {
+      console.error(`stripe webhook: could not ${what} a ${undo.reason} checkout; do it in Stripe`, undo.purchaseId, e);
+    }
+  };
+  const { subscriptionId, paymentIntentId } = undo;
+  if (subscriptionId) {
+    await attempt("cancel the subscription of", () => gw.cancelSubscription(acct, subscriptionId));
+    await attempt("refund the first invoice of", () => gw.refundSubscriptionFirstInvoice(acct, subscriptionId));
+  } else if (paymentIntentId) {
+    await attempt("refund the payment of", () => gw.refundPaymentIntent(acct, paymentIntentId));
+  }
+}
+
+/** A one-time payment of the account fully refunded or lost in a dispute: it no longer gives access. Subscription charges are ignored. */
+async function endPayment(tx: DbOrTx, acct: string, paymentIntentId: string, status: "refunded" | "dispute_lost") {
+  const purchase = await tx.programPurchase.findUnique({ where: { stripePaymentIntentId: paymentIntentId } });
+  if (!purchase || purchase.stripeAccountId !== acct || purchase.kind !== "payment") return;
+  await tx.programPurchase.update({ where: { id: purchase.id }, data: { status } });
   await refreshAccess(tx, purchase.programId, purchase.athleteId);
-  return intents;
 }
 
 /**
