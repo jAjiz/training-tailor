@@ -12,7 +12,8 @@ import { accessOnJoin } from "@/lib/training/services/access-store";
 import { getAthleteByUserId } from "@/lib/training/services/accounts";
 import { findProgramByCode, getEnrollmentStatus } from "@/lib/training/services/enrollments";
 import { canCharge } from "@/lib/training/services/payments";
-import { CheckoutButton, JoinButton } from "./JoinButton";
+import { CheckoutButton } from "../../CheckoutButton";
+import { JoinButton } from "./JoinButton";
 
 export default async function JoinPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;

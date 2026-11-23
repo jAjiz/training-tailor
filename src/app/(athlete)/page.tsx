@@ -66,7 +66,7 @@ export default async function TodayPage({ searchParams }: Props) {
     return (
       <>
         <AthleteHeader programs={programOptions(enrollments)} selected={programId} page="today" />
-        <BlockedScreen program={enrollment.program} />
+        <BlockedScreen athleteId={athlete.id} program={enrollment.program} />
       </>
     );
   }

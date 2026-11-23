@@ -77,6 +77,7 @@
     "price_invalid": "Introduce un precio válido.",
     "already_paid": "Ya tienes acceso a este programa.",
     "checkout_failed": "No se pudo iniciar el pago. Inténtalo de nuevo.",
+    "portal_failed": "No se pudo abrir la gestión de la suscripción. Inténtalo de nuevo.",
     "coupon_invalid": "Ese código de descuento no es válido.",
     "coupon_code_taken": "Ese código de descuento ya existe.",
     "subscription_sync_failed": "No se pudo actualizar la suscripción. Inténtalo de nuevo.",
@@ -104,7 +105,17 @@
     },
     "leaveConfirmPaid": "Tu suscripción termina el {date}; mantienes el acceso hasta entonces.",
     "leavingOn": "Te vas el {date}",
-    "leaving": "Saliendo"
+    "leaving": "Saliendo",
+    "subscriptionsTitle": "Suscripciones",
+    "manage": "Gestionar",
+    "renewsOn": "Se renueva el {date}",
+    "subscriptionStatus": {
+      "active": "Activa",
+      "past_due": "Pago fallido",
+      "unpaid": "Impagada",
+      "endingOn": "Termina el {date}",
+      "ending": "Termina"
+    }
   },
   "profile": {
     "title": "Perfil de entrenamiento",
@@ -845,7 +856,8 @@
   },
   "blocked": {
     "title": "Tu acceso a {program} está pendiente de pago",
-    "pending": "pago pendiente"
+    "pending": "pago pendiente",
+    "updatePayment": "Actualizar método de pago"
   },
   "notifications": {
     "locale": "es",

@@ -6,7 +6,7 @@ import {
 } from "../../helpers/factories";
 import {
   cancellableSubscribers, connectStripe, countLiveSubscriptions, countPendingCancellations, createCoachAccountSession,
-  createDiscount, deactivateDiscount, listDiscounts,
+  createDiscount, deactivateDiscount, listDiscounts, athleteSubscriptions, latestSubscriptionPurchase, openPortal,
   countPendingPriceSync, getStripeAccount, retryCancellations, setAccessGranted, setProgramPrice, startCheckout, syncStripeAccount, syncSubscriptionPrices,
 } from "@/lib/training/services/payments";
 import type { DiscountCreate } from "@/lib/training/schemas";
@@ -626,5 +626,91 @@ describe("discount codes", () => {
     const coach = await makeCoach(tdb.prisma);
     await expect(deactivateDiscount(tdb.prisma, fakeStripe().gateway, coach.id, "promo_1"))
       .rejects.toMatchObject({ code: "not_found" });
+  });
+});
+
+describe("Customer Portal", () => {
+  const returnUrl = "https://app.test/me";
+  async function subscriber(gw: ReturnType<typeof fakeStripe>) {
+    const coach = await makeCoach(tdb.prisma);
+    const acct = await connectStripe(tdb.prisma, gw.gateway, coach.id, "ES");
+    const program = await makePaidContinuous(tdb.prisma, coach.id);
+    const athlete = await makeAthlete(tdb.prisma);
+    await tdb.prisma.stripeCustomer.create({ data: { athleteId: athlete.id, stripeAccountId: acct, stripeCustomerId: "cus_1" } });
+    return { coach, acct, program, athlete };
+  }
+
+  it("the portal configuration is created once per coach account", async () => {
+    const gw = fakeStripe();
+    const { coach, acct, program, athlete } = await subscriber(gw);
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1");
+    const first = await openPortal(tdb.prisma, gw.gateway, athlete.id, program.id, returnUrl);
+    const second = await openPortal(tdb.prisma, gw.gateway, athlete.id, program.id, returnUrl);
+    expect(first).toMatch(/^https:\/\/portal\.stripe\.test\//);
+    expect(second).toMatch(/^https:\/\/portal\.stripe\.test\//);
+    expect(gw.calls.filter((c) => c.method === "createPortalConfiguration")).toHaveLength(1);
+    const stored = (await getStripeAccount(tdb.prisma, coach.id))!.portalConfigurationId;
+    expect(stored).toEqual(expect.any(String));
+    const session = { method: "createPortalSession", args: [acct, { customerId: "cus_1", configurationId: stored, returnUrl }] };
+    expect(gw.calls.filter((c) => c.method === "createPortalSession")).toEqual([session, session]);
+  });
+
+  it("a configuration stored by a concurrent call wins", async () => {
+    const gw = fakeStripe();
+    const { coach, acct, program, athlete } = await subscriber(gw);
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1");
+    const original = gw.gateway.createPortalConfiguration;
+    gw.gateway.createPortalConfiguration = async (a) => {
+      const id = await original(a);
+      await tdb.prisma.stripeAccount.update({ where: { coachId: coach.id }, data: { portalConfigurationId: "bpc_first" } });
+      return id;
+    };
+    await openPortal(tdb.prisma, gw.gateway, athlete.id, program.id, returnUrl);
+    expect((await getStripeAccount(tdb.prisma, coach.id))!.portalConfigurationId).toBe("bpc_first");
+    expect(gw.calls.find((c) => c.method === "createPortalSession")!.args[1]).toMatchObject({ configurationId: "bpc_first" });
+  });
+
+  it("openPortal without a purchase is not_found", async () => {
+    const gw = fakeStripe();
+    const { program, athlete } = await subscriber(gw);
+    await expect(openPortal(tdb.prisma, gw.gateway, athlete.id, program.id, returnUrl)).rejects.toMatchObject({ code: "not_found" });
+    expect(gw.calls.filter((c) => c.method.startsWith("createPortal"))).toEqual([]);
+  });
+
+  it("openPortal without a customer on the coach's account is not_found", async () => {
+    const gw = fakeStripe();
+    const { acct, program, athlete } = await subscriber(gw);
+    await tdb.prisma.stripeCustomer.deleteMany({});
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1");
+    await expect(openPortal(tdb.prisma, gw.gateway, athlete.id, program.id, returnUrl)).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("athleteSubscriptions shows leaving subscriptions with their end date and status", async () => {
+    const gw = fakeStripe();
+    const { acct, program, athlete } = await subscriber(gw);
+    const end = new Date("2026-12-01T00:00:00Z");
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1", { currentPeriodEnd: end, cancelAtPeriodEnd: true });
+    expect(await athleteSubscriptions(tdb.prisma, athlete.id)).toEqual(
+      new Map([[program.id, { status: "active", currentPeriodEnd: end, cancelAtPeriodEnd: true }]]),
+    );
+  });
+
+  it("athleteSubscriptions includes unpaid ones and skips canceled and pending", async () => {
+    const gw = fakeStripe();
+    const { acct, program, athlete } = await subscriber(gw);
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1", { status: "canceled" });
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "2", { status: "pending" });
+    expect((await athleteSubscriptions(tdb.prisma, athlete.id)).size).toBe(0);
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "3", { status: "unpaid" });
+    expect((await athleteSubscriptions(tdb.prisma, athlete.id)).get(program.id)).toMatchObject({ status: "unpaid" });
+  });
+
+  it("latestSubscriptionPurchase is the newest of any status", async () => {
+    const gw = fakeStripe();
+    const { acct, program, athlete } = await subscriber(gw);
+    expect(await latestSubscriptionPurchase(tdb.prisma, athlete.id, program.id)).toBeNull();
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "1", { status: "active" });
+    await makeSubscriptionPurchase(tdb.prisma, program.id, athlete.id, acct, "2", { status: "unpaid" });
+    expect(await latestSubscriptionPurchase(tdb.prisma, athlete.id, program.id)).toMatchObject({ status: "unpaid" });
   });
 });

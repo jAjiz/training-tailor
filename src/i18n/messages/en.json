@@ -77,6 +77,7 @@
     "price_invalid": "Enter a valid price.",
     "already_paid": "You already have access to this program.",
     "checkout_failed": "The payment could not be started. Try again.",
+    "portal_failed": "Subscription management could not be opened. Try again.",
     "coupon_invalid": "That discount code is not valid.",
     "coupon_code_taken": "That discount code already exists.",
     "subscription_sync_failed": "The subscription could not be updated. Try again.",
@@ -104,7 +105,17 @@
     },
     "leaveConfirmPaid": "Your subscription ends on {date}; you keep access until then.",
     "leavingOn": "Leaving on {date}",
-    "leaving": "Leaving"
+    "leaving": "Leaving",
+    "subscriptionsTitle": "Subscriptions",
+    "manage": "Manage",
+    "renewsOn": "Renews on {date}",
+    "subscriptionStatus": {
+      "active": "Active",
+      "past_due": "Payment failing",
+      "unpaid": "Unpaid",
+      "endingOn": "Ending on {date}",
+      "ending": "Ending"
+    }
   },
   "profile": {
     "title": "Training profile",
@@ -845,7 +856,8 @@
   },
   "blocked": {
     "title": "Your access to {program} is pending payment",
-    "pending": "payment pending"
+    "pending": "payment pending",
+    "updatePayment": "Update payment method"
   },
   "notifications": {
     "locale": "en",

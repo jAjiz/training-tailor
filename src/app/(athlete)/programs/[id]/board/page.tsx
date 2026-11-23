@@ -37,7 +37,7 @@ export default async function AthleteBoardPage({ params }: { params: Promise<{ i
     return (
       <>
         <AthleteHeader programs={programOptions(enrollments)} selected={id} page="board" />
-        <BlockedScreen program={enrollment.program} />
+        <BlockedScreen athleteId={athlete.id} program={enrollment.program} />
       </>
     );
   }

@@ -15,7 +15,7 @@ import { AthleteSettingsInput, OnboardingInput, parse } from "@/lib/training/sch
 import { ensureAthleteAccount, updateAthleteSettings } from "@/lib/training/services/accounts";
 import { athleteSignupMode } from "@/lib/signup";
 import { canCreateAthleteProfile, joinByCode, leaveProgram } from "@/lib/training/services/enrollments";
-import { getEnrollmentAccess, startCheckout } from "@/lib/training/services/payments";
+import { getEnrollmentAccess, openPortal, startCheckout } from "@/lib/training/services/payments";
 import { getStripeGateway, stripeGatewayIfEnabled } from "@/lib/stripe/client";
 
 export async function completeAthleteOnboarding(raw: unknown): Promise<ActionResult> {
@@ -68,6 +68,22 @@ export async function checkoutAction(programId: unknown): Promise<ActionResult<{
       if (e instanceof TrainingError) throw e;
       console.error("[checkout] Stripe refused the session", e);
       throw new TrainingError("checkout_failed");
+    }
+  });
+}
+
+/** Opens the Stripe Customer Portal for the athlete's subscription to a program; returns its URL. */
+export async function openPortalAction(programId: unknown): Promise<ActionResult<{ url: string }>> {
+  return runAction("openPortalAction", async () => {
+    const athlete = await requireAthlete();
+    const id = parse(z.string().min(1).max(64), programId);
+    const returnUrl = `${process.env.BETTER_AUTH_URL ?? "http://localhost:3000"}/me`;
+    try {
+      return { url: await openPortal(prisma, getStripeGateway(), athlete.id, id, returnUrl) };
+    } catch (e) {
+      if (e instanceof TrainingError) throw e;
+      console.error("[portal] Stripe refused the session", e);
+      throw new TrainingError("portal_failed");
     }
   });
 }

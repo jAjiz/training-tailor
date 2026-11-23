@@ -43,6 +43,7 @@ export const ERROR_CODES = [
   "price_invalid",
   "already_paid",
   "checkout_failed",
+  "portal_failed",
   "coupon_invalid",
   "coupon_code_taken",
   "subscription_sync_failed",

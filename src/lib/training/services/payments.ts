@@ -178,15 +178,58 @@ export async function subscriptionEndings(db: Db, programId: string): Promise<Ma
   return new Map(ending.map((p) => [p.athleteId, p.currentPeriodEnd!]));
 }
 
-/** The athlete's live subscriptions by program: when each renews or ends, and whether it is set to end. */
-export async function athleteSubscriptions(
-  db: Db, athleteId: string,
-): Promise<Map<string, { currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean }>> {
-  const live = await db.programPurchase.findMany({
-    where: liveSubscriptions({ athleteId }),
-    select: { programId: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
+export type AthleteSubscription = { status: string; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean };
+
+/**
+ * The athlete's subscriptions by program (the newest of each): live ones and `unpaid` (payment failed for good, still
+ * fixable in the portal), with their status, when each renews or ends, and whether it is set to end.
+ */
+export async function athleteSubscriptions(db: Db, athleteId: string): Promise<Map<string, AthleteSubscription>> {
+  const rows = await db.programPurchase.findMany({
+    where: { athleteId, kind: "subscription", status: { in: [...LIVE_SUBSCRIPTION, "unpaid"] } },
+    select: { programId: true, status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
+    orderBy: { createdAt: "desc" },
   });
-  return new Map(live.map(({ programId, ...rest }) => [programId, rest]));
+  const byProgram = new Map<string, AthleteSubscription>();
+  for (const { programId, ...rest } of rows) if (!byProgram.has(programId)) byProgram.set(programId, rest);
+  return byProgram;
+}
+
+/** The athlete's newest subscription purchase of the program, of any status. */
+export function latestSubscriptionPurchase(db: Db, athleteId: string, programId: string): Promise<ProgramPurchase | null> {
+  return db.programPurchase.findFirst({
+    where: { athleteId, programId, kind: "subscription" },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/**
+ * A Customer Portal URL for the athlete's subscription to the program (update the card, cancel at period end, invoice
+ * history). The coach account's portal configuration is created the first time; of two racing creations the first
+ * stored wins (the extra one at Stripe is harmless).
+ */
+export async function openPortal(
+  db: Db, gw: StripeGateway, athleteId: string, programId: string, returnUrl: string,
+): Promise<string> {
+  const purchase = await latestSubscriptionPurchase(db, athleteId, programId);
+  if (!purchase) throw new TrainingError("not_found");
+  const acct = purchase.stripeAccountId;
+  const customer = await db.stripeCustomer.findUnique({
+    where: { athleteId_stripeAccountId: { athleteId, stripeAccountId: acct } },
+  });
+  const account = await db.stripeAccount.findUnique({ where: { stripeAccountId: acct } });
+  if (!customer || !account) throw new TrainingError("not_found");
+  let configurationId = account.portalConfigurationId;
+  if (!configurationId) {
+    const created = await gw.createPortalConfiguration(acct);
+    const stored = await db.stripeAccount.updateMany({
+      where: { stripeAccountId: acct, portalConfigurationId: null }, data: { portalConfigurationId: created },
+    });
+    configurationId = stored.count === 1
+      ? created
+      : (await db.stripeAccount.findUniqueOrThrow({ where: { stripeAccountId: acct } })).portalConfigurationId ?? created;
+  }
+  return gw.createPortalSession(acct, { customerId: customer.stripeCustomerId, configurationId, returnUrl });
 }
 
 /** Subscriptions still on a price other than the program's current one. */

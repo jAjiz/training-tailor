@@ -342,7 +342,7 @@ describe("leaving and removal of a paying athlete", () => {
       .toMatchObject({ leftAt: null, access: "paid" });
     expect(await subscriptionEndings(tdb.prisma, program.id)).toEqual(new Map([[athlete.id, periodEnd]]));
     expect(await athleteSubscriptions(tdb.prisma, athlete.id))
-      .toEqual(new Map([[program.id, { currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true }]]));
+      .toEqual(new Map([[program.id, { status: "active", currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true }]]));
 
     // Leaving again changes nothing and tells the same date.
     expect(await leaveProgram(tdb.prisma, gw.gateway, athlete, program.id)).toEqual({ intents: [], endsOn: periodEnd });

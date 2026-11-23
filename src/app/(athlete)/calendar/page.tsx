@@ -34,7 +34,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const weeks = monthGrid(month);
   const withBlocks = await orBlocked(getVisibleDays(prisma, athlete.id, enrollment.programId, weeks[0][0], weeks.at(-1)![6]));
   const header = <AthleteHeader programs={programOptions(enrollments)} selected={enrollment.programId} page="calendar" />;
-  if (!withBlocks) return <>{header}<BlockedScreen program={enrollment.program} /></>;
+  if (!withBlocks) return <>{header}<BlockedScreen athleteId={athlete.id} program={enrollment.program} /></>;
   const href = (m: string) => `/calendar?program=${enrollment.programId}&month=${m}`;
 
   return (
