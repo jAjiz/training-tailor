@@ -2,17 +2,27 @@ import { inviteCodeFromNext, type SignupMode } from "@/lib/signup";
 import { toDbDate, todayIn } from "../dates";
 import { TrainingError } from "../errors";
 import { intent, type NotificationIntent } from "@/lib/notifications/notify";
+import { accessOnJoin } from "./access-store";
 import { coachRecipient } from "./notifications";
 import { getOwnedProgram } from "./programs";
 import type { Db } from "./types";
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
 
+type JoinableFields = {
+  archivedAt: Date | null; kind: string; publishedAt: Date | null; inviteDisabledAt: Date | null;
+  coach: { status: string } | null;
+};
+
+/** Whether the program's invitation lets a new athlete in: live, published if closed, coach approved, invite on. */
+export function isJoinable(program: JoinableFields): boolean {
+  if (program.archivedAt || (program.kind === "closed" && !program.publishedAt)) return false;
+  return program.coach?.status === "approved" && !program.inviteDisabledAt;
+}
+
 export async function findProgramByCode(db: Db, code: string) {
   const program = await db.program.findUnique({ where: { inviteCode: code }, include: { coach: true } });
-  if (!program || program.archivedAt || (program.kind === "closed" && !program.publishedAt)) return null;
-  if (program.coach?.status !== "approved" || program.inviteDisabledAt) return null;
-  return program;
+  return program && isJoinable(program) ? program : null;
 }
 
 /** The sign-up gate: an athlete profile may be created when one exists already, sign-up is open, or `next` is `/join/<a joinable code>`. */
@@ -37,14 +47,19 @@ export async function joinByCode(db: Db, athlete: JoiningAthlete, code: string, 
   const existing = await db.enrollment.findUnique({
     where: { programId_athleteId: { programId: program.id, athleteId: athlete.id } },
   });
+  // A paid program is joined by paying (the webhook enrolls); only an athlete who keeps access joins here.
+  const mustPay = async () =>
+    program.priceAmount !== null && (await accessOnJoin(db, program.id, athlete.id, now)) === "blocked";
   if (existing) {
     if (existing.removedAt) throw new TrainingError("enrollment_removed");
     if (existing.leftAt) {
+      if (await mustPay()) throw new TrainingError("payment_required");
       const { count } = await db.enrollment.updateMany({ where: { id: existing.id, leftAt: { not: null } }, data: { leftAt: null } });
       return { programId: program.id, status: (count > 0 ? "rejoined" : "already") as "rejoined" | "already", intents: count > 0 ? joinedIntents() : [] };
     }
     return { programId: program.id, status: "already" as const, intents: [] as NotificationIntent[] };
   }
+  if (await mustPay()) throw new TrainingError("payment_required");
   try {
     await db.enrollment.create({
       data: {

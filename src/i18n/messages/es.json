@@ -395,7 +395,14 @@
     "continue": "Continuar",
     "join": "Unirme al programa",
     "left": "Saliste de este programa. Puedes volver a unirte.",
-    "removed": "Tu coach te ha quitado de este programa."
+    "removed": "Tu coach te ha quitado de este programa.",
+    "subscribe": "Suscribirme",
+    "pay": "Pagar",
+    "paymentsUnavailable": "Los pagos de este programa no están disponibles temporalmente. Inténtalo más tarde.",
+    "secure": "Pago seguro con Stripe. Puedes usar un código de descuento al pagar.",
+    "confirming": "Confirmando tu pago…",
+    "processing": "Tu pago se está procesando. El programa aparecerá solo en cuanto se confirme.",
+    "toPrograms": "Ir a mis programas"
   },
   "roster": {
     "title": "Atletas",

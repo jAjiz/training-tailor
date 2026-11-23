@@ -76,6 +76,21 @@ describe("enrollments", () => {
     expect(await listAthletePrograms(tdb.prisma, athlete.id)).toHaveLength(1);
   });
 
+  it("a paid program cannot be joined by code without access; a left athlete with access rejoins", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const athlete = await makeAthlete(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id);
+    await tdb.prisma.program.update({ where: { id: p.id }, data: { priceAmount: 1500, currency: "eur", paidSince: new Date() } });
+    await expect(joinByCode(tdb.prisma, athlete, p.inviteCode)).rejects.toMatchObject({ code: "payment_required" });
+    expect(await tdb.prisma.enrollment.count()).toBe(0);
+
+    const e = await enroll(tdb.prisma, p.id, athlete.id);
+    await leave(tdb.prisma, e.id);
+    await expect(joinByCode(tdb.prisma, athlete, p.inviteCode)).rejects.toMatchObject({ code: "payment_required" });
+    await tdb.prisma.enrollment.update({ where: { id: e.id }, data: { accessGrantedAt: new Date() } });
+    expect(await joinByCode(tdb.prisma, athlete, p.inviteCode)).toMatchObject({ status: "rejoined" });
+  });
+
   it("hides the roster from other coaches", async () => {
     const coach = await makeCoach(tdb.prisma);
     const other = await makeCoach(tdb.prisma);

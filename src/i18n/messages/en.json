@@ -395,7 +395,14 @@
     "continue": "Continue",
     "join": "Join the program",
     "left": "You left this program. You can join again.",
-    "removed": "Your coach removed you from this program."
+    "removed": "Your coach removed you from this program.",
+    "subscribe": "Subscribe",
+    "pay": "Pay",
+    "paymentsUnavailable": "Payments are temporarily unavailable for this program. Try again later.",
+    "secure": "Secure payment with Stripe. You can use a discount code at checkout.",
+    "confirming": "Confirming your payment…",
+    "processing": "Your payment is being processed. The program will appear on its own once it is confirmed.",
+    "toPrograms": "Go to my programs"
   },
   "roster": {
     "title": "Athletes",

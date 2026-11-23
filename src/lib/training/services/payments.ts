@@ -1,8 +1,10 @@
+import { platformFeePercent } from "@/lib/stripe/client";
 import type { StripeGateway } from "@/lib/stripe/gateway";
 import { TrainingError } from "../errors";
 import { LIVE_SUBSCRIPTION, validatePrice } from "../payments";
 import type { ProgramPrice } from "../schemas";
-import { refreshProgramAccess } from "./access-store";
+import { accessOnJoin, refreshProgramAccess } from "./access-store";
+import { isJoinable } from "./enrollments";
 import { assertWritable, getOwnedProgram } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
@@ -127,4 +129,88 @@ export async function setProgramPrice(
   });
   await refreshProgramAccess(db, programId);
   return none;
+}
+
+const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
+
+type PayingAthlete = { id: string; userId: string; displayName: string; email: string };
+
+/** Whether the program's coach can take payments now (a paid program shows its pay button only then). */
+export async function canCharge(db: Db, coachId: string | null): Promise<boolean> {
+  if (!coachId) return false;
+  return (await getStripeAccount(db, coachId))?.chargesEnabled ?? false;
+}
+
+/** The athlete's customer on the coach's account, created in Stripe the first time. */
+async function customerFor(db: Db, gw: StripeGateway, athlete: PayingAthlete, acct: string): Promise<string> {
+  const key = { athleteId_stripeAccountId: { athleteId: athlete.id, stripeAccountId: acct } };
+  const existing = await db.stripeCustomer.findUnique({ where: key });
+  if (existing) return existing.stripeCustomerId;
+  const stripeCustomerId = await gw.createCustomer(acct, { email: athlete.email, name: athlete.displayName, athleteId: athlete.id });
+  try {
+    await db.stripeCustomer.create({ data: { athleteId: athlete.id, stripeAccountId: acct, stripeCustomerId } });
+    return stripeCustomerId;
+  } catch (e) {
+    // A concurrent checkout stored its customer first: use that one.
+    const winner = isUniqueViolation(e) ? await db.stripeCustomer.findUnique({ where: key }) : null;
+    if (winner) return winner.stripeCustomerId;
+    throw e;
+  }
+}
+
+/**
+ * Opens a Checkout Session on the coach's account for the program's current price and returns its URL. The athlete
+ * reaches it through a joinable invitation or an enrollment they already have (the blocked screen). Access is never
+ * granted here: the webhook does that when the session completes.
+ */
+export async function startCheckout(
+  db: Db, gw: StripeGateway, athlete: PayingAthlete, programId: string, urls: { success: string; cancel: string },
+): Promise<string> {
+  const program = await db.program.findUnique({ where: { id: programId }, include: { coach: true } });
+  if (!program || program.archivedAt || program.priceAmount === null || !program.stripePriceId || !program.currency) {
+    throw new TrainingError("invalid_request");
+  }
+  const enrollment = await db.enrollment.findUnique({
+    where: { programId_athleteId: { programId, athleteId: athlete.id } },
+  });
+  if (enrollment?.removedAt) throw new TrainingError("enrollment_removed");
+  if (!enrollment && !isJoinable(program)) throw new TrainingError("invalid_request");
+  const account = program.coachId ? await getStripeAccount(db, program.coachId) : null;
+  if (!account?.chargesEnabled) throw new TrainingError("stripe_not_ready");
+  if ((await accessOnJoin(db, programId, athlete.id)) !== "blocked") throw new TrainingError("already_paid");
+
+  const acct = account.stripeAccountId;
+  const customerId = await customerFor(db, gw, athlete, acct);
+  const kind = program.kind === "continuous" ? "subscription" : "payment";
+  const session = await gw.createCheckoutSession(acct, {
+    mode: kind,
+    priceId: program.stripePriceId,
+    customerId,
+    successUrl: urls.success,
+    cancelUrl: urls.cancel,
+    clientReferenceId: athlete.id,
+    metadata: { programId, athleteId: athlete.id },
+    feePercent: platformFeePercent(),
+    amount: program.priceAmount,
+  });
+  await db.programPurchase.create({
+    data: {
+      programId, athleteId: athlete.id, kind, stripeAccountId: acct, checkoutSessionId: session.id, status: "pending",
+      stripePriceId: program.stripePriceId, amount: program.priceAmount, currency: program.currency,
+    },
+  });
+  return session.url;
+}
+
+/** The program the athlete's Checkout Session was for, or null for someone else's or an unknown session. */
+export async function checkoutProgramId(db: Db, athleteId: string, checkoutSessionId: string): Promise<string | null> {
+  const purchase = await db.programPurchase.findUnique({ where: { checkoutSessionId }, select: { programId: true, athleteId: true } });
+  return purchase?.athleteId === athleteId ? purchase.programId : null;
+}
+
+/** The athlete's stored access to a program they are active in; null when not (yet) enrolled, left or removed. */
+export async function getEnrollmentAccess(db: Db, athleteId: string, programId: string): Promise<string | null> {
+  const enrollment = await db.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId } } });
+  if (!enrollment || enrollment.removedAt || enrollment.leftAt) return null;
+  return enrollment.access;
 }

@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import { fakeStripe } from "../../helpers/fake-stripe";
-import { enroll, makeAthlete, makeClosed, makeCoach, makeContinuous } from "../../helpers/factories";
+import { enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous } from "../../helpers/factories";
 import {
-  connectStripe, countLiveSubscriptions, createCoachAccountSession, getStripeAccount, setProgramPrice, syncStripeAccount,
+  connectStripe, countLiveSubscriptions, createCoachAccountSession, getStripeAccount, setProgramPrice, startCheckout,
+  syncStripeAccount,
 } from "@/lib/training/services/payments";
 import { archiveProgram } from "@/lib/training/services/programs";
 
@@ -208,5 +209,141 @@ describe("setProgramPrice", () => {
     await archiveProgram(tdb.prisma, coach.id, program.id);
     await expect(setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 }))
       .rejects.toMatchObject({ code: "program_archived" });
+  });
+});
+
+describe("startCheckout", () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  const urls = { success: "https://app.test/join/x/confirm?session={CHECKOUT_SESSION_ID}", cancel: "https://app.test/join/x" };
+  const buyer = async () => {
+    const athlete = await makeAthlete(tdb.prisma);
+    return { id: athlete.id, userId: athlete.userId, displayName: athlete.displayName, email: "buyer@test.local" };
+  };
+  async function paidProgram(gw: ReturnType<typeof fakeStripe>, kind: "continuous" | "closed" = "continuous") {
+    const coach = await makeCoach(tdb.prisma);
+    const acct = await connectStripe(tdb.prisma, gw.gateway, coach.id, "ES");
+    gw.state.accounts.set(acct, { chargesEnabled: true, payoutsEnabled: true, detailsSubmitted: true, defaultCurrency: "eur" });
+    await syncStripeAccount(tdb.prisma, gw.gateway, acct);
+    const program = kind === "continuous" ? await makeContinuous(tdb.prisma, coach.id) : await makeClosed(tdb.prisma, coach.id);
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: kind === "continuous" ? 1500 : 4000 });
+    return { coach, acct, program: await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } }) };
+  }
+  const sessions = (gw: ReturnType<typeof fakeStripe>) =>
+    gw.calls.filter((c) => c.method === "createCheckoutSession").map((c) => c.args);
+
+  it("startCheckout creates a subscription session with the program's price, customer and metadata", async () => {
+    const gw = fakeStripe();
+    const { acct, program } = await paidProgram(gw);
+    const athlete = await buyer();
+    const url = await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    expect(url).toBe("https://checkout.stripe.test/cs_1");
+    expect(gw.state.customers.get("cus_1")).toEqual({
+      acct, email: "buyer@test.local", name: athlete.displayName, athleteId: athlete.id,
+    });
+    expect(sessions(gw)).toEqual([[acct, {
+      mode: "subscription", priceId: program.stripePriceId, customerId: "cus_1", successUrl: urls.success,
+      cancelUrl: urls.cancel, clientReferenceId: athlete.id, metadata: { programId: program.id, athleteId: athlete.id },
+      feePercent: 0, amount: 1500,
+    }]]);
+  });
+
+  it("a closed program opens a one-time payment session", async () => {
+    const gw = fakeStripe();
+    const { program } = await paidProgram(gw, "closed");
+    await startCheckout(tdb.prisma, gw.gateway, await buyer(), program.id, urls);
+    expect(sessions(gw)[0][1]).toMatchObject({ mode: "payment", amount: 4000 });
+  });
+
+  it("it reuses the athlete's customer on the same coach account", async () => {
+    const gw = fakeStripe();
+    const { acct, coach, program } = await paidProgram(gw);
+    const other = await makeContinuous(tdb.prisma, coach.id);
+    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, other.id, { paid: true, amount: 2000 });
+    const athlete = await buyer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    await startCheckout(tdb.prisma, gw.gateway, athlete, other.id, urls);
+    expect(gw.calls.filter((c) => c.method === "createCustomer")).toHaveLength(1);
+    expect(sessions(gw).map(([, input]) => (input as { customerId: string }).customerId)).toEqual(["cus_1", "cus_1", "cus_1"]);
+    expect(await tdb.prisma.stripeCustomer.findMany()).toEqual([
+      { athleteId: athlete.id, stripeAccountId: acct, stripeCustomerId: "cus_1" },
+    ]);
+  });
+
+  it("it refuses a removed athlete, a paid athlete and a coach without charges", async () => {
+    const gw = fakeStripe();
+    const { acct, program } = await paidProgram(gw);
+    const removed = await buyer();
+    const e = await enroll(tdb.prisma, program.id, removed.id);
+    await tdb.prisma.enrollment.update({ where: { id: e.id }, data: { removedAt: new Date() } });
+    await expect(startCheckout(tdb.prisma, gw.gateway, removed, program.id, urls))
+      .rejects.toMatchObject({ code: "enrollment_removed" });
+
+    const paid = await buyer();
+    await enroll(tdb.prisma, program.id, paid.id);
+    await tdb.prisma.programPurchase.create({
+      data: {
+        programId: program.id, athleteId: paid.id, kind: "subscription", stripeAccountId: acct, checkoutSessionId: "cs_paid",
+        stripeSubscriptionId: "sub_paid", status: "active", stripePriceId: program.stripePriceId!, amount: 1500, currency: "eur",
+      },
+    });
+    await expect(startCheckout(tdb.prisma, gw.gateway, paid, program.id, urls)).rejects.toMatchObject({ code: "already_paid" });
+
+    await tdb.prisma.stripeAccount.update({ where: { stripeAccountId: acct }, data: { chargesEnabled: false } });
+    await expect(startCheckout(tdb.prisma, gw.gateway, await buyer(), program.id, urls))
+      .rejects.toMatchObject({ code: "stripe_not_ready" });
+    expect(sessions(gw)).toEqual([]);
+  });
+
+  it("it refuses a free, an archived and an unjoinable program the athlete is not enrolled in", async () => {
+    const gw = fakeStripe();
+    const { coach, program } = await paidProgram(gw);
+    const free = await makeContinuous(tdb.prisma, coach.id);
+    await expect(startCheckout(tdb.prisma, gw.gateway, await buyer(), free.id, urls))
+      .rejects.toMatchObject({ code: "invalid_request" });
+
+    await tdb.prisma.program.update({ where: { id: program.id }, data: { inviteDisabledAt: new Date() } });
+    await expect(startCheckout(tdb.prisma, gw.gateway, await buyer(), program.id, urls))
+      .rejects.toMatchObject({ code: "invalid_request" });
+    const enrolled = await buyer();
+    const e = await enroll(tdb.prisma, program.id, enrolled.id);
+    await leave(tdb.prisma, e.id);
+    await expect(startCheckout(tdb.prisma, gw.gateway, enrolled, program.id, urls)).resolves.toMatch(/^https:/);
+
+    await tdb.prisma.program.update({ where: { id: program.id }, data: { archivedAt: new Date() } });
+    await expect(startCheckout(tdb.prisma, gw.gateway, enrolled, program.id, urls))
+      .rejects.toMatchObject({ code: "invalid_request" });
+  });
+
+  it("fee is omitted at 0 and sent at 10 %", async () => {
+    const gw = fakeStripe();
+    const { program } = await paidProgram(gw);
+    vi.stubEnv("PLATFORM_FEE_PERCENT", "0");
+    await startCheckout(tdb.prisma, gw.gateway, await buyer(), program.id, urls);
+    vi.stubEnv("PLATFORM_FEE_PERCENT", "10");
+    await startCheckout(tdb.prisma, gw.gateway, await buyer(), program.id, urls);
+    expect(sessions(gw).map(([, input]) => (input as { feePercent: number }).feePercent)).toEqual([0, 10]);
+  });
+
+  it("it stores a pending purchase", async () => {
+    const gw = fakeStripe();
+    const { acct, program } = await paidProgram(gw);
+    const athlete = await buyer();
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    expect(await tdb.prisma.programPurchase.findMany()).toMatchObject([{
+      programId: program.id, athleteId: athlete.id, kind: "subscription", status: "pending", stripeAccountId: acct,
+      checkoutSessionId: "cs_1", stripePriceId: program.stripePriceId, amount: 1500, currency: "eur",
+      stripeSubscriptionId: null,
+    }]);
+  });
+
+  it("a pending purchase does not count as paid: a blocked athlete can start again", async () => {
+    const gw = fakeStripe();
+    const { program } = await paidProgram(gw);
+    const athlete = await buyer();
+    await enroll(tdb.prisma, program.id, athlete.id);
+    await startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls);
+    await expect(startCheckout(tdb.prisma, gw.gateway, athlete, program.id, urls)).resolves.toMatch(/^https:/);
   });
 });
