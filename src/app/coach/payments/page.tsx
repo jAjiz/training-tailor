@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { getStripeGateway } from "@/lib/stripe/client";
 import { paymentsEnabled } from "@/lib/stripe/config";
 import {
-  CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY, getStripeAccount, listDiscounts,
+  CONNECT_COUNTRIES, DEFAULT_CONNECT_COUNTRY, getStripeAccount, listDiscounts, syncStripeAccount,
 } from "@/lib/training/services/payments";
 import { listCoachPrograms } from "@/lib/training/services/programs";
 import { ConnectPanel } from "./ConnectPanel";
@@ -16,7 +16,13 @@ export default async function CoachPaymentsPage() {
   if (!paymentsEnabled()) notFound();
   const coach = await requireCoachPage();
   const t = await getTranslations("coach.payments");
-  const account = await getStripeAccount(prisma, coach.id);
+  let account = await getStripeAccount(prisma, coach.id);
+  if (account && !account.chargesEnabled) {
+    // Connect sends no v1 `account.updated` for Accounts v2, so a pending account is re-read from Stripe here.
+    await syncStripeAccount(prisma, getStripeGateway(), account.stripeAccountId)
+      .catch((e) => console.error("[payments] account sync failed", e));
+    account = await getStripeAccount(prisma, coach.id);
+  }
   const ready = !!account?.chargesEnabled;
   const programs = ready ? await listCoachPrograms(prisma, coach.id) : [];
   // Stripe being down must not take the whole page with it.
