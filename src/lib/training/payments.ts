@@ -5,6 +5,9 @@ export type Access = "free" | "paid" | "granted" | "blocked";
 /** Subscription statuses that keep a continuous program open. */
 export const LIVE_SUBSCRIPTION = ["active", "trialing", "past_due"] as const;
 
+/** Subscription statuses Stripe can still charge or revive: what ending a subscription must cancel. Not for access. */
+export const CANCELLABLE_SUBSCRIPTION = [...LIVE_SUBSCRIPTION, "unpaid", "incomplete"] as const;
+
 const MIN_AMOUNT = 50; // Stripe's minimum charge, in minor units
 const MAX_AMOUNT = 100000; // sanity cap, in minor units
 

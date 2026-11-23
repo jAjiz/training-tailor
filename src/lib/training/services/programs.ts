@@ -7,7 +7,7 @@ import { TrainingError } from "../errors";
 import type { ProgramCreate, ProgramUpdate } from "../schemas";
 import { activeAthleteRecipients } from "./notifications";
 import { weekHasContent } from "./notes";
-import { endLiveSubscriptions } from "./payments";
+import { endSubscriptions } from "./payments";
 import type { Db } from "./types";
 
 export function newInviteCode(): string {
@@ -75,7 +75,7 @@ export async function archiveProgram(
   db: Db, gw: StripeGateway | null, coachId: string, programId: string,
 ): Promise<{ failed: string[] }> {
   await getOwnedProgram(db, coachId, programId);
-  const { failed } = await endLiveSubscriptions(db, gw, { programId }, "archived", [
+  const { failed } = await endSubscriptions(db, gw, { programId }, "archived", [
     db.program.update({ where: { id: programId }, data: { archivedAt: new Date() } }),
   ]);
   return { failed };

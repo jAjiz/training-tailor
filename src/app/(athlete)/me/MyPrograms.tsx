@@ -42,8 +42,10 @@ export function MyPrograms({ programs }: { programs: MyProgram[] }) {
           {programs.map((p) => (
             <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <span className="font-semibold">{p.name}</span>
-              {p.subscription?.leaving && p.subscription.endsOn ? (
-                <span className="text-sm text-muted">{t("me.leavingOn", { date: p.subscription.endsOn })}</span>
+              {p.subscription?.leaving ? (
+                <span className="text-sm text-muted">
+                  {p.subscription.endsOn ? t("me.leavingOn", { date: p.subscription.endsOn }) : t("me.leaving")}
+                </span>
               ) : (
                 <Button type="button" size="sm" variant="danger" onClick={() => leave(p)}>{t("me.leave")}</Button>
               )}

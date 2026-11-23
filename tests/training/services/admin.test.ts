@@ -285,6 +285,11 @@ describe("deleteCoach", () => {
     await makeSubscriptionPurchase(db, program.id, athlete.id, "acct_coach", "1");
     gw.addSubscription("sub_1");
     await refreshAccess(db, program.id, athlete.id);
+    // An unpaid subscription (no access, but Stripe could still charge it) is cancelled too.
+    const unpaid = await makeAthlete(db);
+    await enroll(db, program.id, unpaid.id);
+    await makeSubscriptionPurchase(db, program.id, unpaid.id, "acct_coach", "3", { status: "unpaid" });
+    gw.addSubscription("sub_3", { status: "unpaid" });
     // Another coach's subscription is not touched.
     const other = await makeCoach(db);
     const otherProgram = await makePaidContinuous(db, other.id);
@@ -298,9 +303,13 @@ describe("deleteCoach", () => {
 
     const result = await deleteCoach(db, gw.gateway, admin.id, coach.id, user.email);
     expect(result.failed).toEqual([]);
-    expect(gw.calls).toEqual([{ method: "cancelSubscription", args: ["acct_coach", "sub_1"] }]);
+    expect(gw.calls.map((c) => [c.method, ...c.args]).sort()).toEqual([
+      ["cancelSubscription", "acct_coach", "sub_1"], ["cancelSubscription", "acct_coach", "sub_3"],
+    ]);
     const purchases = await db.programPurchase.findMany({ orderBy: { checkoutSessionId: "asc" } });
-    expect(purchases.map((p) => [p.endedReason, p.status])).toEqual([["coach_deleted", "canceled"], [null, "active"]]);
+    expect(purchases.map((p) => [p.endedReason, p.status])).toEqual([
+      ["coach_deleted", "canceled"], [null, "active"], ["coach_deleted", "canceled"],
+    ]);
     expect(await db.program.findUniqueOrThrow({ where: { id: program.id } })).toMatchObject({
       coachId: null, priceAmount: null, stripePriceId: null, paidSince: null,
     });

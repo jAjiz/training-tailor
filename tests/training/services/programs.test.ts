@@ -123,22 +123,25 @@ describe("programs", () => {
     const gw = fakeStripe();
     const coach = await makeCoach(db);
     const p = await makePaidContinuous(db, coach.id);
-    const [a, b, c] = [await makeAthlete(db), await makeAthlete(db), await makeAthlete(db)];
-    for (const athlete of [a, b, c]) await enroll(db, p.id, athlete.id);
+    const [a, b, c, d] = [await makeAthlete(db), await makeAthlete(db), await makeAthlete(db), await makeAthlete(db)];
+    for (const athlete of [a, b, c, d]) await enroll(db, p.id, athlete.id);
     await makeSubscriptionPurchase(db, p.id, a.id, "acct_test", "1");
     // Set to cancel at period end (leaving): cancelled at once too.
     await makeSubscriptionPurchase(db, p.id, b.id, "acct_test", "2", { cancelAtPeriodEnd: true });
     await makeSubscriptionPurchase(db, p.id, c.id, "acct_test", "3", { status: "canceled", endedReason: "athlete" });
-    for (const n of ["1", "2", "3"]) gw.addSubscription(`sub_${n}`);
+    // Unpaid gives no access, but Stripe could still charge it.
+    await makeSubscriptionPurchase(db, p.id, d.id, "acct_test", "4", { status: "unpaid" });
+    for (const n of ["1", "2", "3", "4"]) gw.addSubscription(`sub_${n}`);
 
     expect(await archiveProgram(db, gw.gateway, coach.id, p.id)).toEqual({ failed: [] });
     expect(gw.calls).toEqual([
       { method: "cancelSubscription", args: ["acct_test", "sub_1"] },
       { method: "cancelSubscription", args: ["acct_test", "sub_2"] },
+      { method: "cancelSubscription", args: ["acct_test", "sub_4"] },
     ]);
     const purchases = await db.programPurchase.findMany({ orderBy: { checkoutSessionId: "asc" } });
     expect(purchases.map((x) => [x.endedReason, x.status])).toEqual([
-      ["archived", "canceled"], ["archived", "canceled"], ["athlete", "canceled"],
+      ["archived", "canceled"], ["archived", "canceled"], ["athlete", "canceled"], ["archived", "canceled"],
     ]);
     expect((await getOwnedProgram(db, coach.id, p.id)).archivedAt).not.toBeNull();
   });

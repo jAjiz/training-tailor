@@ -350,12 +350,38 @@ describe("leaving and removal of a paying athlete", () => {
   });
 
   it("leaving a paid continuous program fails without changes when Stripe fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const gw = fakeStripe();
     const { program, athlete, enrollment } = await subscribed(gw);
     gw.state.failing.add("setCancelAtPeriodEnd");
-    await expect(leaveProgram(tdb.prisma, gw.gateway, athlete, program.id)).rejects.toThrow();
+    await expect(leaveProgram(tdb.prisma, gw.gateway, athlete, program.id))
+      .rejects.toMatchObject({ code: "subscription_sync_failed" });
     expect((await purchase()).cancelAtPeriodEnd).toBe(false);
     expect((await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } })).leftAt).toBeNull();
+    error.mockRestore();
+  });
+
+  it("leaving with an unpaid subscription cancels it at once and leaves", async () => {
+    const gw = fakeStripe();
+    const { program, athlete, enrollment } = await subscribed(gw);
+    await tdb.prisma.programPurchase.update({ where: { checkoutSessionId: "cs_1" }, data: { status: "unpaid" } });
+    gw.state.subscriptions.get("sub_1")!.status = "unpaid";
+    const left = await leaveProgram(tdb.prisma, gw.gateway, athlete, program.id);
+    expect(left.endsOn).toBeNull();
+    expect(left.intents).toHaveLength(1);
+    expect(stripeCalls(gw, "cancelSubscription")).toEqual([{ method: "cancelSubscription", args: [acct, "sub_1"] }]);
+    expect(stripeCalls(gw, "setCancelAtPeriodEnd")).toEqual([]);
+    expect(await purchase()).toMatchObject({ status: "canceled", endedReason: "athlete" });
+    expect((await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } })).leftAt).not.toBeNull();
+  });
+
+  it("an athlete removed and restored before the webhook is blocked", async () => {
+    const gw = fakeStripe();
+    const { coach, enrollment } = await subscribed(gw);
+    await setEnrollmentRemoved(tdb.prisma, gw.gateway, coach.id, enrollment.id, true);
+    await setEnrollmentRemoved(tdb.prisma, gw.gateway, coach.id, enrollment.id, false);
+    expect(await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } }))
+      .toMatchObject({ removedAt: null, access: "blocked" });
   });
 
   it("leaving a free program is unchanged", async () => {

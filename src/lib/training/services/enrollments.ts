@@ -6,7 +6,7 @@ import { LIVE_SUBSCRIPTION } from "../payments";
 import { intent, type NotificationIntent } from "@/lib/notifications/notify";
 import { accessOnJoin } from "./access-store";
 import { coachRecipient } from "./notifications";
-import { endLiveSubscriptions } from "./payments";
+import { cancellableSubscriptions, endSubscriptions } from "./payments";
 import { getOwnedProgram } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
@@ -99,11 +99,22 @@ export async function joinByCode(db: Db, athlete: JoiningAthlete, code: string, 
   return { programId: program.id, status, intents: status === "already" ? [] : athleteJoinedIntents(program, athlete) };
 }
 
+/** Runs a Stripe call whose failure the athlete should see as a retryable error, not an internal one. */
+async function syncingStripe(call: () => Promise<void>): Promise<void> {
+  try {
+    await call();
+  } catch (e) {
+    console.error("stripe: subscription update failed", e);
+    throw new TrainingError("subscription_sync_failed");
+  }
+}
+
 /**
  * The athlete steps out of a program; results and `joinedAt` stay, and the invitation link brings them back. On a
  * paid continuous program with a live subscription, the subscription is set to cancel at period end and the athlete
  * keeps access until then: `endsOn` is that date, and the webhook sets `leftAt` when the subscription ends. Leaving
- * again meanwhile changes nothing. A Stripe failure throws before anything changes.
+ * again meanwhile changes nothing. An `unpaid` or `incomplete` subscription has no period to finish: it is cancelled
+ * at once and the athlete leaves now. A Stripe failure throws `subscription_sync_failed` before anything changes.
  */
 export async function leaveProgram(
   db: Db, gw: StripeGateway | null, athlete: { id: string; userId: string; displayName: string }, programId: string,
@@ -113,17 +124,23 @@ export async function leaveProgram(
   const program = await db.program.findUniqueOrThrow({ where: { id: programId }, include: { coach: true } });
   const subscription = gw && program.priceAmount !== null && program.kind === "continuous"
     ? await db.programPurchase.findFirst({
-      where: { programId, athleteId: athlete.id, kind: "subscription", status: { in: [...LIVE_SUBSCRIPTION] } },
+      where: cancellableSubscriptions({ programId, athleteId: athlete.id, stripeSubscriptionId: { not: null } }),
       orderBy: { createdAt: "desc" },
     })
     : null;
   let endsOn: Date | null = null;
-  if (gw && subscription?.stripeSubscriptionId) {
+  const acct = subscription?.stripeAccountId ?? "";
+  const subscriptionId = subscription?.stripeSubscriptionId ?? "";
+  if (gw && subscription && (LIVE_SUBSCRIPTION as readonly string[]).includes(subscription.status)) {
     endsOn = subscription.currentPeriodEnd;
     if (subscription.cancelAtPeriodEnd) return { intents: [], endsOn };
-    await gw.setCancelAtPeriodEnd(subscription.stripeAccountId, subscription.stripeSubscriptionId, true);
+    await syncingStripe(() => gw.setCancelAtPeriodEnd(acct, subscriptionId, true));
     await db.programPurchase.update({ where: { id: subscription.id }, data: { cancelAtPeriodEnd: true } });
   } else {
+    if (gw && subscription) {
+      await syncingStripe(() => gw.cancelSubscription(acct, subscriptionId));
+      await db.programPurchase.update({ where: { id: subscription.id }, data: { status: "canceled", endedReason: "athlete" } });
+    }
     const { count } = await db.enrollment.updateMany({
       where: { id: enrollment.id, removedAt: null, leftAt: null },
       data: { leftAt: new Date() },
@@ -173,7 +190,7 @@ export async function setEnrollmentRemoved(
     await change;
     return { failed: [] };
   }
-  const { failed } = await endLiveSubscriptions(
+  const { failed } = await endSubscriptions(
     db, gw, { programId: e.programId, athleteId: e.athleteId }, "coach_removed", [change],
   );
   return { failed };

@@ -103,7 +103,8 @@
       "en": "English"
     },
     "leaveConfirmPaid": "Your subscription ends on {date}; you keep access until then.",
-    "leavingOn": "Leaving on {date}"
+    "leavingOn": "Leaving on {date}",
+    "leaving": "Leaving"
   },
   "profile": {
     "title": "Training profile",

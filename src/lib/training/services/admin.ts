@@ -4,7 +4,7 @@ import { TrainingError } from "../errors";
 import { refreshProgramAccess } from "./access-store";
 import { writeAudit } from "./audit";
 import { activeAthleteRecipients, deleteAudienceData } from "./notifications";
-import { endLiveSubscriptions } from "./payments";
+import { endSubscriptions } from "./payments";
 import { newInviteCode } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
@@ -137,7 +137,7 @@ export async function deleteCoach(
   db: Db, gw: StripeGateway | null, actor: string, coachId: string, confirmEmail: string,
 ): Promise<{ preview: CoachDeletionPreview; intents: NotificationIntent[]; failed: string[] }> {
   await confirmedCoach(db, coachId, confirmEmail);
-  const { failed } = await endLiveSubscriptions(db, gw, { program: { coachId } }, "coach_deleted");
+  const { failed } = await endSubscriptions(db, gw, { program: { coachId } }, "coach_deleted");
   const deleted = await db.$transaction(async (tx) => {
     const coach = await confirmedCoach(tx, coachId, confirmEmail);
 

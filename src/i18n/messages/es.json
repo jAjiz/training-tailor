@@ -103,7 +103,8 @@
       "en": "English"
     },
     "leaveConfirmPaid": "Tu suscripción termina el {date}; mantienes el acceso hasta entonces.",
-    "leavingOn": "Te vas el {date}"
+    "leavingOn": "Te vas el {date}",
+    "leaving": "Saliendo"
   },
   "profile": {
     "title": "Perfil de entrenamiento",
