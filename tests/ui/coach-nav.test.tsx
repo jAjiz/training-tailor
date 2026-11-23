@@ -64,6 +64,17 @@ describe("CoachNavLinks", () => {
     expect(current(container)).toEqual([en.programs.roster]);
   });
 
+  it("shows the Payments link only when payments are enabled, and highlights it on its page", () => {
+    pathname.current = "/coach/payments";
+    const { container, rerender } = render(
+      <NextIntlClientProvider locale="en" messages={en}><CoachNavLinks /></NextIntlClientProvider>,
+    );
+    expect(screen.queryByRole("link", { name: en.coach.payments.nav })).toBeNull();
+    rerender(<NextIntlClientProvider locale="en" messages={en}><CoachNavLinks payments /></NextIntlClientProvider>);
+    expect(screen.getByRole("link", { name: en.coach.payments.nav })).toHaveAttribute("href", "/coach/payments");
+    expect(current(container)).toEqual([en.coach.payments.nav]);
+  });
+
   it("highlights only the board tab on the board", () => {
     const { container } = renderAt("/coach/programs/abc/board");
     expect(current(container)).toEqual([en.programs.board]);

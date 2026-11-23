@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ERROR_CODES, TrainingError } from "@/lib/training/errors";
 import {
-  AthleteSettingsInput, BlockInput, NoteBody, ProgramCreateInput, ProgramUpdateInput, parse, parseAnnouncementBody,
+  AthleteSettingsInput, BlockInput, DiscountCreateInput, NoteBody, ProgramCreateInput, ProgramUpdateInput, parse, parseAnnouncementBody,
 } from "@/lib/training/schemas";
 
 describe("ProgramCreateInput", () => {
@@ -103,5 +103,58 @@ describe("NoteBody", () => {
   it("rejects more than 2000 characters", () => {
     expect(NoteBody.safeParse("x".repeat(2001)).success).toBe(false);
     expect(NoteBody.safeParse("x".repeat(2000)).success).toBe(true);
+  });
+});
+
+describe("DiscountCreateInput", () => {
+  const base = { code: "spring20", percentOff: 20, amount: null, duration: "once", durationInMonths: null, programIds: [] };
+  const bad = (over: object) => expect(() => parse(DiscountCreateInput, { ...base, ...over })).toThrow(TrainingError);
+
+  it("accepts spring20 as SPRING20, with optional fields null", () => {
+    expect(parse(DiscountCreateInput, base)).toEqual({
+      code: "SPRING20", percentOff: 20, amount: null, duration: "once", durationInMonths: null,
+      programIds: [], maxRedemptions: null, expiresAt: null,
+    });
+  });
+
+  it("rejects both percent and amount, and neither", () => {
+    bad({ amount: 5 });
+    bad({ percentOff: null });
+  });
+
+  it("converts a major-unit amount to minor units", () => {
+    expect(parse(DiscountCreateInput, { ...base, percentOff: null, amount: 5.5 })).toMatchObject({ percentOff: null, amount: 550 });
+  });
+
+  it("rejects percent outside 1-100", () => {
+    bad({ percentOff: 0 });
+    bad({ percentOff: 101 });
+  });
+
+  it("rejects months without repeating, repeating without months, and months outside 1-36", () => {
+    bad({ durationInMonths: 3 });
+    bad({ duration: "repeating" });
+    bad({ duration: "repeating", durationInMonths: 37 });
+    expect(parse(DiscountCreateInput, { ...base, duration: "repeating", durationInMonths: 3 }).durationInMonths).toBe(3);
+  });
+
+  it("rejects a code with symbols or under 3 characters", () => {
+    bad({ code: "AB" });
+    bad({ code: "SPRING-20" });
+    bad({ code: "A".repeat(21) });
+  });
+
+  it("limits max redemptions to 1-10000", () => {
+    bad({ maxRedemptions: 0 });
+    bad({ maxRedemptions: 10001 });
+    expect(parse(DiscountCreateInput, { ...base, maxRedemptions: 50 }).maxRedemptions).toBe(50);
+  });
+
+  it("stores the expiry as the end of that day in UTC and rejects a past or malformed date", () => {
+    const next = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    expect(parse(DiscountCreateInput, { ...base, expiresAt: next }).expiresAt).toEqual(new Date(`${next}T23:59:59Z`));
+    expect(parse(DiscountCreateInput, { ...base, expiresAt: "" }).expiresAt).toBeNull();
+    bad({ expiresAt: "2020-01-01" });
+    bad({ expiresAt: "soon" });
   });
 });

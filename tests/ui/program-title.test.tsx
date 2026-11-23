@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { ProgramTitle } from "@/app/(athlete)/ProgramTitle";
 
-const renderWith = (programs: { id: string; name: string }[]) =>
+const renderWith = (programs: { id: string; name: string; blocked?: boolean }[]) =>
   render(
     <NextIntlClientProvider locale="en" messages={en}>
       <ProgramTitle programs={programs} selected="a" page="today" />
@@ -31,5 +31,11 @@ describe("ProgramTitle", () => {
     expect(select).toHaveClass("type-display", "[&>option]:normal-case", "[&>option]:text-foreground");
     expect(select).toHaveClass("focus-visible:outline-2", "focus-visible:outline-on-chrome");
     expect(select).not.toHaveClass("outline-none");
+  });
+
+  it("keeps a blocked program listed, marked as pending payment", () => {
+    renderWith([{ id: "a", name: "Test Strength", blocked: true }, { id: "b", name: "Test engine" }]);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Test Strength · payment pending", "Test engine"]);
+    expect(screen.getByRole("img", { name: "payment pending" })).toBeInTheDocument();
   });
 });

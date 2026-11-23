@@ -72,6 +72,16 @@
     "day_passed": "That day has passed and can no longer be adapted.",
     "block_changed": "The coach changed this block. Start the adaptation again.",
     "invalid_state": "That step is not possible right now. Reload and try again.",
+    "payments_unavailable": "Payments are not available right now.",
+    "stripe_not_ready": "Your Stripe account cannot charge yet. Finish setting it up in Payments.",
+    "price_invalid": "Enter a valid price.",
+    "already_paid": "You already have access to this program.",
+    "checkout_failed": "The payment could not be started. Try again.",
+    "portal_failed": "Subscription management could not be opened. Try again.",
+    "coupon_invalid": "That discount code is not valid.",
+    "coupon_code_taken": "That discount code already exists.",
+    "subscription_sync_failed": "The subscription could not be updated. Try again.",
+    "payment_required": "This program requires a payment.",
     "note_too_long": "The text for {target} would exceed 2000 characters."
   },
   "onboarding": {
@@ -92,6 +102,19 @@
     "languages": {
       "es": "Español",
       "en": "English"
+    },
+    "leaveConfirmPaid": "Your subscription ends on {date}; you keep access until then.",
+    "leavingOn": "Leaving on {date}",
+    "leaving": "Leaving",
+    "subscriptionsTitle": "Subscriptions",
+    "manage": "Manage",
+    "renewsOn": "Renews on {date}",
+    "subscriptionStatus": {
+      "active": "Active",
+      "past_due": "Payment failing",
+      "unpaid": "Unpaid",
+      "endingOn": "Ending on {date}",
+      "ending": "Ending"
     }
   },
   "profile": {
@@ -208,7 +231,25 @@
     "archiveConfirm": "Archive this program? It disappears for your athletes and the link stops working.",
     "startDateLockedHint": "The start date cannot change because some weeks are already published.",
     "tailoring": "AI tailoring",
-    "tailoringHint": "Athletes see an \"Adapt\" button on each block to adjust it to their own situation. It is available because the administrator enabled it for you."
+    "tailoringHint": "Athletes see an \"Adapt\" button on each block to adjust it to their own situation. It is available because the administrator enabled it for you.",
+    "price": {
+      "title": "Price",
+      "free": "Free",
+      "paid": "Paid",
+      "amount": "Price",
+      "currency": "Currency",
+      "perMonth": "Charged every month until the athlete cancels.",
+      "oneTime": "One-time payment.",
+      "notReady": "Your Stripe account cannot charge yet.",
+      "goToPayments": "Set it up in Payments",
+      "save": "Save price",
+      "freeConfirmTitle": "Make this program free?",
+      "freeConfirm": "{count, plural, =0 {Everyone keeps access.} one {# subscription will be cancelled.} other {# subscriptions will be cancelled.}}",
+      "freeConfirmLabel": "Make free",
+      "renewalConfirmTitle": "Change the price?",
+      "renewalConfirm": "Existing subscribers will pay the new price from their next renewal.",
+      "syncPending": "{count, plural, one {# subscription is still on the old price} other {# subscriptions are still on the old price}}"
+    }
   },
   "block": {
     "untitled": "Block",
@@ -369,7 +410,14 @@
     "continue": "Continue",
     "join": "Join the program",
     "left": "You left this program. You can join again.",
-    "removed": "Your coach removed you from this program."
+    "removed": "Your coach removed you from this program.",
+    "subscribe": "Subscribe",
+    "pay": "Pay",
+    "paymentsUnavailable": "Payments are temporarily unavailable for this program. Try again later.",
+    "secure": "Secure payment with Stripe. You can use a discount code at checkout.",
+    "confirming": "Confirming your payment…",
+    "processing": "Your payment is being processed. The program will appear on its own once it is confirmed.",
+    "toPrograms": "Go to my programs"
   },
   "roster": {
     "title": "Athletes",
@@ -393,7 +441,21 @@
     "restore": "Restore",
     "removeConfirm": "Remove this athlete from the program? Their results are kept.",
     "results": "Results",
-    "notPublishedHint": "The link only works once the program is published."
+    "notPublishedHint": "The link only works once the program is published.",
+    "access": "Access",
+    "accessLabels": {
+      "paid": "Paid",
+      "blocked": "Payment pending",
+      "free": "Free",
+      "granted": "Granted"
+    },
+    "leavingOn": "Leaving on {date}",
+    "removeConfirmPaid": "Remove this athlete from the program? Their subscription is cancelled now, without a refund. Their results are kept.",
+    "grant": "Grant access",
+    "revoke": "Remove granted access",
+    "grantTitle": "Grant access to {name}",
+    "grantConfirmPaid": "This athlete pays through the app. Granting access cancels their subscription now, without a refund.",
+    "grantConfirm": "Let this athlete follow the program without paying through the app."
   },
   "today": {
     "noPrograms": "You do not follow any program yet. Ask your coach for their invitation link.",
@@ -545,7 +607,8 @@
         "approved": "Approved",
         "rejected": "Rejected",
         "suspended": "Disabled"
-      }
+      },
+      "cancelFailed": "Coach deleted, but {count, plural, one {# subscription could not be cancelled} other {# subscriptions could not be cancelled}} in Stripe. Cancel them from the Stripe dashboard."
     },
     "coach": {
       "back": "Coaches",
@@ -582,7 +645,8 @@
       "empty": "No athlete matches.",
       "enrollments": "Programs",
       "active": "Active",
-      "disabled": "Disabled"
+      "disabled": "Disabled",
+      "cancelFailed": "Athlete deleted, but {count, plural, one {# subscription could not be cancelled} other {# subscriptions could not be cancelled}} in Stripe. Cancel them from the Stripe dashboard."
     },
     "athlete": {
       "back": "Athletes",
@@ -790,6 +854,11 @@
     "athleteEmpty": "Your coach has not posted any announcements yet.",
     "notInProgram": "You are no longer in this program",
     "toToday": "Go to today"
+  },
+  "blocked": {
+    "title": "Your access to {program} is pending payment",
+    "pending": "payment pending",
+    "updatePayment": "Update payment method"
   },
   "notifications": {
     "locale": "en",
@@ -1043,6 +1112,65 @@
       "engine_failed": "The adaptation failed. Try again.",
       "engine_unavailable": "Adapting is not available right now. Try again later.",
       "internal": "Something went wrong. Try again."
+    }
+  },
+  "coach": {
+    "payments": {
+      "nav": "Payments",
+      "title": "Payments",
+      "intro": "Connect Stripe to charge for your programs. Payments go straight to your Stripe account.",
+      "country": "Country of your business",
+      "countryHint": "It cannot be changed after connecting.",
+      "connect": "Connect Stripe",
+      "connecting": "Connecting...",
+      "onboardingTitle": "Finish setting up Stripe",
+      "onboardingIntro": "Stripe needs a few details before you can accept payments.",
+      "cancelFailed": "{count, plural, one {# subscription could not be cancelled.} other {# subscriptions could not be cancelled.}}",
+      "retry": "Retry",
+      "discounts": {
+        "title": "Discount codes",
+        "intro": "Athletes enter a code at checkout. Codes cannot be edited: deactivate one and create another.",
+        "code": "Code",
+        "codeHint": "3 to 20 letters or digits.",
+        "kind": "Discount type",
+        "percent": "Percent",
+        "amount": "Fixed amount",
+        "percentValue": "Percent off",
+        "amountValue": "Amount off ({currency})",
+        "duration": "Duration",
+        "durationHint": "Only matters for subscriptions. A one-time payment is discounted once.",
+        "once": "First payment only",
+        "repeating": "For N months",
+        "forever": "Forever",
+        "months": "Months",
+        "durationOnce": "First payment only",
+        "durationRepeating": "{months, plural, one {For # month} other {For # months}}",
+        "durationForever": "Forever",
+        "programs": "Programs",
+        "programsHint": "Leave all unchecked to apply it to every program.",
+        "noPaidPrograms": "You have no paid programs yet.",
+        "maxRedemptions": "Redemption limit (optional)",
+        "expiresAt": "Expires (optional)",
+        "create": "Create code",
+        "creating": "Creating...",
+        "created": "Code created.",
+        "empty": "No discount codes yet.",
+        "unavailable": "Discount codes could not be loaded from Stripe. Try again later.",
+        "columnCode": "Code",
+        "columnDiscount": "Discount",
+        "columnDuration": "Duration",
+        "columnPrograms": "Programs",
+        "columnRedemptions": "Redemptions",
+        "columnExpiry": "Expires",
+        "columnActive": "Active",
+        "allPrograms": "All programs",
+        "yes": "Yes",
+        "no": "No",
+        "noExpiry": "Never",
+        "deactivate": "Deactivate",
+        "deactivateTitle": "Deactivate {code}?",
+        "deactivateConfirm": "Athletes will no longer be able to use this code. This cannot be undone."
+      }
     }
   }
 }

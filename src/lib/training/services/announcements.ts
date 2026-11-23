@@ -48,7 +48,7 @@ export async function deleteAnnouncement(db: Db, coachId: string, id: string): P
 
 /**
  * The board of a program, newest first. Readable by its coach, or by an athlete with an active enrollment (archived programs are gone for athletes);
- * anyone else gets `not_found`. `writable` is for the coach of a live program.
+ * a blocked athlete gets `payment_required`, anyone else `not_found`. `writable` is for the coach of a live program.
  */
 export async function listBoard(
   db: Db, viewer: { coachId: string } | { athleteId: string }, programId: string,
@@ -58,9 +58,9 @@ export async function listBoard(
     program = await getOwnedProgram(db, viewer.coachId, programId);
   } else {
     program = await db.program.findUnique({ where: { id: programId } });
-    if (!program || program.archivedAt || (await getEnrollmentStatus(db, viewer.athleteId, programId)) !== "active") {
-      throw new TrainingError("not_found");
-    }
+    const status = program && !program.archivedAt ? await getEnrollmentStatus(db, viewer.athleteId, programId) : null;
+    if (status === "blocked") throw new TrainingError("payment_required");
+    if (!program || status !== "active") throw new TrainingError("not_found");
   }
   const announcements = await db.announcement.findMany({ where: { programId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
   return { program, announcements, writable: "coachId" in viewer && program.coachId !== null && program.archivedAt === null };

@@ -48,3 +48,13 @@ export async function orNotFound<T>(promise: Promise<T>): Promise<T> {
     throw e;
   }
 }
+
+/** For athlete program pages: like `orNotFound`, and `payment_required` resolves to null so the page shows the blocked screen. */
+export async function orBlocked<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await orNotFound(promise);
+  } catch (e) {
+    if (e instanceof TrainingError && e.code === "payment_required") return null;
+    throw e;
+  }
+}

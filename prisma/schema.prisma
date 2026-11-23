@@ -117,50 +117,59 @@ model UnrecognizedMovement {
 
 // ---- Coaching ----
 model CoachAccount {
-  id               String    @id @default(cuid())
-  userId           String    @unique
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String         @id @default(cuid())
+  userId           String         @unique
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   displayName      String
-  status           String    @default("pending") // "pending" | "approved" | "rejected" | "suspended"
+  status           String         @default("pending") // "pending" | "approved" | "rejected" | "suspended"
   locale           String? // "es" | "en"
-  tailoringEnabled Boolean   @default(false)
-  createdAt        DateTime  @default(now())
+  tailoringEnabled Boolean        @default(false)
+  createdAt        DateTime       @default(now())
   programs         Program[]
+  stripeAccount    StripeAccount?
 }
 
 model AthleteAccount {
-  id          String            @id @default(cuid())
-  userId      String            @unique
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  displayName String
-  avatarUrl   String?
-  timezone    String // IANA
-  locale      String?
-  disabledAt  DateTime?
-  createdAt   DateTime          @default(now())
-  enrollments Enrollment[]
-  results     Result[]
-  fistBumps   FistBump[]
-  records     PersonalRecord[]
-  adaptations BlockAdaptation[]
+  id              String            @id @default(cuid())
+  userId          String            @unique
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName     String
+  avatarUrl       String?
+  timezone        String // IANA
+  locale          String?
+  disabledAt      DateTime?
+  createdAt       DateTime          @default(now())
+  enrollments     Enrollment[]
+  results         Result[]
+  fistBumps       FistBump[]
+  records         PersonalRecord[]
+  adaptations     BlockAdaptation[]
+  purchases       ProgramPurchase[]
+  stripeCustomers StripeCustomer[]
 }
 
 model Program {
-  id               String         @id @default(cuid())
+  id               String            @id @default(cuid())
   coachId          String? // null once the coach is deleted
-  coach            CoachAccount?  @relation(fields: [coachId], references: [id], onDelete: SetNull)
+  coach            CoachAccount?     @relation(fields: [coachId], references: [id], onDelete: SetNull)
   coachName        String // the coach's display name, copied at creation (it never changes) and kept after the coach is deleted
   name             String
   description      String?
   kind             String // "continuous" | "closed"
-  startDate        DateTime?      @db.Date // continuous: the Monday of day 0
+  startDate        DateTime?         @db.Date // continuous: the Monday of day 0
   weeks            Int? // closed: length in weeks
   publishedAt      DateTime? // closed: the whole program is published
-  inviteCode       String         @unique
+  inviteCode       String            @unique
   inviteDisabledAt DateTime?
   archivedAt       DateTime?
-  tailoringEnabled Boolean        @default(false)
-  createdAt        DateTime       @default(now())
+  tailoringEnabled Boolean           @default(false)
+  priceAmount      Int? // minor units; null = free
+  paidSince        DateTime? // when the program last went free to paid; closed enrollments joined before it stay free
+  currency         String? // fixed when the first price is set
+  stripeProductId  String? // on the coach's account, created once
+  stripePriceId    String? // current price; prices are immutable, a change creates a new one
+  createdAt        DateTime          @default(now())
+  purchases        ProgramPurchase[]
   weeksPublished   ProgramWeek[]
   blocks           Block[]
   enrollments      Enrollment[]
@@ -257,18 +266,21 @@ model BlockAdaptation {
 }
 
 model Enrollment {
-  id        String         @id @default(cuid())
-  programId String
-  program   Program        @relation(fields: [programId], references: [id], onDelete: Cascade)
-  athleteId String
-  athlete   AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
-  startDate DateTime?      @db.Date // closed: the day the athlete joined, in their time zone
-  joinedAt  DateTime       @default(now())
-  removedAt DateTime?
-  leftAt    DateTime? // the athlete left; null when active or after rejoining
+  id              String         @id @default(cuid())
+  programId       String
+  program         Program        @relation(fields: [programId], references: [id], onDelete: Cascade)
+  athleteId       String
+  athlete         AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  startDate       DateTime?      @db.Date // closed: the day the athlete joined, in their time zone
+  joinedAt        DateTime       @default(now())
+  removedAt       DateTime?
+  leftAt          DateTime? // the athlete left; null when active or after rejoining
+  access          String         @default("free") // "free" | "paid" | "granted" | "blocked", derived from purchases and grants
+  accessGrantedAt DateTime? // set by the coach
 
   @@unique([programId, athleteId])
   @@index([athleteId])
+  @@index([programId, access])
 }
 
 model Result {
@@ -430,4 +442,58 @@ model DomainLibraryState {
   publishedVersionId String?
   draftVersionId     String?
   lastExportedAt     DateTime?
+}
+
+// ---- Coach payments ----
+model StripeAccount {
+  coachId               String       @id
+  coach                 CoachAccount @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  stripeAccountId       String       @unique // acct_...
+  chargesEnabled        Boolean      @default(false)
+  payoutsEnabled        Boolean      @default(false)
+  detailsSubmitted      Boolean      @default(false)
+  defaultCurrency       String? // from Stripe, lowercase ISO
+  portalConfigurationId String?
+  updatedAt             DateTime     @updatedAt
+}
+
+model StripeCustomer {
+  athleteId        String
+  athlete          AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  stripeAccountId  String
+  stripeCustomerId String         @unique
+
+  @@id([athleteId, stripeAccountId])
+}
+
+model ProgramPurchase {
+  id                    String         @id @default(cuid())
+  programId             String
+  program               Program        @relation(fields: [programId], references: [id], onDelete: Cascade)
+  athleteId             String
+  athlete               AthleteAccount @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  kind                  String // "subscription" | "payment"
+  stripeAccountId       String
+  checkoutSessionId     String         @unique
+  stripeSubscriptionId  String?        @unique
+  stripePaymentIntentId String?        @unique
+  status                String // subscription: Stripe's status; payment: "pending" | "paid" | "refunded" | "dispute_lost" | "failed"
+  stripePriceId         String
+  amount                Int // what was charged first, after discount, minor units
+  currency              String
+  promotionCode         String? // the code text, for the history
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean        @default(false)
+  endedReason           String? // "athlete" | "coach_removed" | "archived" | "made_free" | "coach_deleted" | "granted" | "athlete_deleted" | "payment_failed" | "coach_stripe" | "duplicate"
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@index([programId, athleteId])
+}
+
+model StripeEvent {
+  id          String   @id // evt_...
+  type        String
+  account     String?
+  processedAt DateTime @default(now())
 }

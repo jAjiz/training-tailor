@@ -3,6 +3,11 @@ import { NotificationBell } from "@/components/notifications/NotificationBell";
 import type { ProgramPage } from "@/lib/routes";
 import { ProgramTitle, type ProgramOption } from "./ProgramTitle";
 
+/** The header's program choices from `listAthletePrograms`. */
+export function programOptions(enrollments: { programId: string; access: string; program: { name: string } }[]): ProgramOption[] {
+  return enrollments.map((e) => ({ id: e.programId, name: e.program.name, blocked: e.access === "blocked" }));
+}
+
 /** The navy band on top of the program pages (navy in both themes): logo, program, then e.g. the week strip. */
 export function AthleteHeader({ programs, selected, page, start, children }: {
   programs: ProgramOption[]; selected: string; page: ProgramPage; start?: React.ReactNode; children?: React.ReactNode;

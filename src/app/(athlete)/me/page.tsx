@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { AccountSignOut } from "@/components/AccountSignOut";
 import { PreferenceSwitches } from "@/components/notifications/PreferenceSwitches";
 import { PushSettings } from "@/components/notifications/PushSettings";
@@ -8,11 +8,16 @@ import { Card } from "@/components/ui/Card";
 import { isLocale } from "@/i18n/locale";
 import { requireAthletePage } from "@/lib/accounts";
 import { prisma } from "@/lib/db";
+import { formatDay } from "@/lib/format";
 import { getSessionContext } from "@/lib/session";
+import { paymentsEnabled } from "@/lib/stripe/config";
+import { fromDbDate } from "@/lib/training/dates";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { getPreferences } from "@/lib/training/services/notifications";
+import { athleteSubscriptions } from "@/lib/training/services/payments";
+import { PortalButton } from "../PortalButton";
 import { setPreferenceAction } from "../notification-actions";
-import { MyPrograms } from "./MyPrograms";
+import { MyPrograms, type MyProgram } from "./MyPrograms";
 import { SettingsForm } from "./SettingsForm";
 
 export default async function MePage() {
@@ -21,6 +26,27 @@ export default async function MePage() {
   const tp = await getTranslations("profile");
   const impersonating = Boolean((await getSessionContext())?.impersonatedBy);
   const programs = await listAthletePrograms(prisma, athlete.id);
+  const subscriptions = paymentsEnabled() ? await athleteSubscriptions(prisma, athlete.id) : new Map();
+  const locale = await getLocale();
+  const longDay = (d: Date) => formatDay(fromDbDate(d), locale, { day: "numeric", month: "long", year: "numeric" });
+  const myPrograms: MyProgram[] = programs.map((e) => {
+    const sub = subscriptions.get(e.programId);
+    // An unpaid subscription gives no access: leaving it is not "keep access until the end date".
+    const live = sub && sub.status !== "unpaid" ? sub : null;
+    const endsOn = live?.currentPeriodEnd ? longDay(live.currentPeriodEnd) : null;
+    return { id: e.programId, name: e.program.name, subscription: live ? { endsOn, leaving: live.cancelAtPeriodEnd } : null };
+  });
+  const subscriptionRows = programs.flatMap((e) => {
+    const sub = subscriptions.get(e.programId);
+    if (!sub) return [];
+    const date = sub.currentPeriodEnd ? longDay(sub.currentPeriodEnd) : null;
+    const ending = sub.cancelAtPeriodEnd && sub.status !== "unpaid";
+    const status = ending
+      ? (date ? t("subscriptionStatus.endingOn", { date }) : t("subscriptionStatus.ending"))
+      : t(`subscriptionStatus.${sub.status === "unpaid" || sub.status === "past_due" ? sub.status : "active"}`);
+    const renewsOn = sub.status === "active" && !ending && date ? t("renewsOn", { date }) : null;
+    return [{ programId: e.programId, name: e.program.name, status, renewsOn }];
+  });
   const preferences = await getPreferences(prisma, athlete.userId, "athlete");
   const timeZones = Intl.supportedValuesOf("timeZone");
   return (
@@ -43,7 +69,24 @@ export default async function MePage() {
       </Link>
       {!impersonating && <PushSettings />}
       {!impersonating && <PreferenceSwitches initial={preferences} save={setPreferenceAction} />}
-      <MyPrograms programs={programs.map((e) => ({ id: e.programId, name: e.program.name }))} />
+      <MyPrograms programs={myPrograms} />
+      {subscriptionRows.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg">{t("subscriptionsTitle")}</h2>
+          <Card className="divide-y">
+            {subscriptionRows.map((r) => (
+              <div key={r.programId} className="flex items-start justify-between gap-3 px-4 py-3">
+                <span className="flex flex-col gap-0.5">
+                  <span className="font-semibold">{r.name}</span>
+                  <span className="text-sm text-muted">{r.status}</span>
+                  {r.renewsOn && <span className="text-sm text-muted">{r.renewsOn}</span>}
+                </span>
+                <PortalButton programId={r.programId} label={t("manage")} />
+              </div>
+            ))}
+          </Card>
+        </section>
+      )}
       <AccountSignOut />
     </section>
   );

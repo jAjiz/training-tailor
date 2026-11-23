@@ -38,6 +38,16 @@ export const ERROR_CODES = [
   "day_passed",
   "block_changed",
   "invalid_state",
+  "payments_unavailable",
+  "stripe_not_ready",
+  "price_invalid",
+  "already_paid",
+  "checkout_failed",
+  "portal_failed",
+  "coupon_invalid",
+  "coupon_code_taken",
+  "subscription_sync_failed",
+  "payment_required",
   "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

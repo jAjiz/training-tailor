@@ -6,12 +6,13 @@ import { useTranslations } from "next-intl";
 import { chromeNavClasses } from "@/components/ui/Pill";
 import { coachProgramIdOf } from "@/lib/routes";
 
-/** "Programs" and, inside a program, its Planner / Athletes / Board / Settings tabs. Only one item is current. */
-export function CoachNavLinks() {
+/** "Programs", "Payments" (when `payments`) and, inside a program, its Planner / Athletes / Board / Settings tabs. Only one item is current. */
+export function CoachNavLinks({ payments = false }: { payments?: boolean }) {
   const t = useTranslations();
   const pathname = usePathname();
   const programId = coachProgramIdOf(pathname);
   const programsActive = !programId && (pathname === "/coach" || pathname.startsWith("/coach/programs"));
+  const paymentsActive = pathname.startsWith("/coach/payments");
   const base = `/coach/programs/${programId}`;
   const tabs = [
     { href: base, label: t("programs.planner"), active: pathname === base },
@@ -30,6 +31,13 @@ export function CoachNavLinks() {
               {t("nav.programs")}
             </Link>
           </li>
+          {payments && (
+            <li>
+              <Link href="/coach/payments" aria-current={paymentsActive ? "page" : undefined} className={chromeNavClasses(paymentsActive)}>
+                {t("coach.payments.nav")}
+              </Link>
+            </li>
+          )}
         </ul>
       </nav>
       {programId && (

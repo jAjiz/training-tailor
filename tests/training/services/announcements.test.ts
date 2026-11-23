@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { enroll, leave, makeAnnouncement, makeAthlete, makeCoach, makeContinuous } from "../../helpers/factories";
+import { blockAccess, enroll, leave, makeAnnouncement, makeAthlete, makeCoach, makeContinuous } from "../../helpers/factories";
 import { TrainingError } from "@/lib/training/errors";
 import { createAnnouncement, deleteAnnouncement, listBoard, updateAnnouncement } from "@/lib/training/services/announcements";
 
@@ -127,6 +127,14 @@ describe("listBoard", () => {
     await tdb.prisma.enrollment.update({ where: { id: r.id }, data: { removedAt: new Date() } });
     for (const a of [left, removed, outsider]) expect(await code(listBoard(tdb.prisma, { athleteId: a.id }, p.id))).toBe("not_found");
     expect(await code(listBoard(tdb.prisma, { coachId: (await makeCoach(tdb.prisma)).id }, p.id))).toBe("not_found");
+  });
+
+  it("refuses a blocked athlete with payment_required", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id);
+    const athlete = await makeAthlete(tdb.prisma);
+    await blockAccess(tdb.prisma, (await enroll(tdb.prisma, p.id, athlete.id)).id);
+    expect(await code(listBoard(tdb.prisma, { athleteId: athlete.id }, p.id))).toBe("payment_required");
   });
 
   it("is read-only when archived or when the program has no coach", async () => {

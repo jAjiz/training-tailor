@@ -18,12 +18,13 @@ import type { Db } from "./types";
 
 type AthleteRef = { id: string; timezone: string };
 
-/** A block the athlete may see: active enrollment, program not archived, day visible. */
+/** A block the athlete may see: active enrollment not blocked by payment (`payment_required`), program not archived, day visible. */
 export async function getVisibleBlock(db: Db, athlete: AthleteRef, blockId: string, now: Date = new Date()) {
   const block = await db.block.findUnique({ where: { id: blockId }, include: { program: true } });
   if (!block || block.program.archivedAt) throw new TrainingError("not_found");
   const enrollment = await db.enrollment.findFirst({ where: { programId: block.programId, athleteId: athlete.id, removedAt: null, leftAt: null } });
   if (!enrollment) throw new TrainingError("not_found");
+  if (enrollment.access === "blocked") throw new TrainingError("payment_required");
   const timeline = athleteTimeline(block.program, enrollment, await publishedWeeks(db, block.programId));
   if (!isDayVisible(timeline, block.dayIndex)) throw new TrainingError("not_found");
   const scored = block.kind === "barbell" || (block.scoring !== null && block.scoring !== "none");
@@ -185,10 +186,10 @@ export async function toggleFistBump(
   if (!hasLeaderboard(block, block.program)) throw new TrainingError("not_found");
   if (result.athleteId === athlete.id) throw new TrainingError("own_result");
   // The leaderboard hides athletes who left or were removed: their results cannot be bumped (or notified) either.
-  const ownerActive = await db.enrollment.count({
-    where: { programId: block.programId, athleteId: result.athleteId, removedAt: null, leftAt: null },
+  const ownerEnrollment = await db.enrollment.findFirst({
+    where: { programId: block.programId, athleteId: result.athleteId, removedAt: null, leftAt: null }, select: { access: true },
   });
-  if (ownerActive === 0) throw new TrainingError("not_found");
+  if (!ownerEnrollment) throw new TrainingError("not_found");
   const key = { resultId_athleteId: { resultId, athleteId: athlete.id } };
   const existing = await db.fistBump.findUnique({ where: key });
   if (existing) {
@@ -207,7 +208,8 @@ export async function toggleFistBump(
     db.athleteAccount.findUniqueOrThrow({ where: { id: result.athleteId }, select: { userId: true, locale: true, disabledAt: true } }),
     db.athleteAccount.findUniqueOrThrow({ where: { id: athlete.id }, select: { displayName: true } }),
   ]);
-  if (owner.disabledAt) return { bumped: true, count, intents: [] };
+  // A blocked owner stays on the leaderboard but gets no program notifications.
+  if (owner.disabledAt || ownerEnrollment.access === "blocked") return { bumped: true, count, intents: [] };
   const { title, movement, kind, scoring } = block;
   const intents = [intent(
     "fist_bump", [{ userId: owner.userId, locale: owner.locale }],

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
 import {
-  enroll, leave, makeAthlete, makeCoach, makeContinuous, makeSubscription, makeUser,
+  blockAccess, enroll, leave, makeAthlete, makeCoach, makeContinuous, makeSubscription, makeUser,
 } from "../../helpers/factories";
 import {
   activeAthleteRecipients, coachRecipient, deleteAudienceData, deleteOldNotifications, deleteSubscription, getPreferences,
@@ -34,6 +34,15 @@ describe("recipients", () => {
     expect(all.map((r) => r.userId).sort()).toEqual([a.userId, b.userId].sort());
     const without = await activeAthleteRecipients(tdb.prisma, p.id, a.userId);
     expect(without.map((r) => r.userId)).toEqual([b.userId]);
+  });
+
+  it("activeAthleteRecipients skips blocked athletes", async () => {
+    const coach = await makeCoach(tdb.prisma);
+    const p = await makeContinuous(tdb.prisma, coach.id);
+    const [a, b] = await Promise.all([1, 2].map(() => makeAthlete(tdb.prisma)));
+    await enroll(tdb.prisma, p.id, a.id);
+    await blockAccess(tdb.prisma, (await enroll(tdb.prisma, p.id, b.id)).id);
+    expect((await activeAthleteRecipients(tdb.prisma, p.id)).map((r) => r.userId)).toEqual([a.userId]);
   });
 
   it("coachRecipient is empty unless the coach is approved", () => {

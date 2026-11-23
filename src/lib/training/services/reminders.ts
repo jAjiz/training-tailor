@@ -1,20 +1,21 @@
 import { comingMonday, reminderWeekIndex } from "@/lib/notifications/reminder";
 import { deliver, intent, type NotificationIntent } from "@/lib/notifications/notify";
 import type { PushSender } from "@/lib/notifications/push";
+import { canSeeProgram } from "../access";
 import { fromDbDate } from "../dates";
 import { coachRecipient, deleteOldNotifications } from "./notifications";
 import type { Db } from "./types";
 
 const RETENTION_DAYS = 90;
 
-/** One reminder per continuous program whose coming week is not published yet. */
+/** One reminder per continuous program with an athlete who can see it, whose coming week is not published yet. */
 export async function weekReminderIntents(db: Db, now: Date): Promise<NotificationIntent[]> {
   const monday = comingMonday(now);
   const programs = await db.program.findMany({
     where: {
       kind: "continuous", archivedAt: null, startDate: { not: null },
       coach: { is: { status: "approved" } },
-      enrollments: { some: { removedAt: null, leftAt: null, athlete: { disabledAt: null } } },
+      enrollments: { some: { ...canSeeProgram(), athlete: { disabledAt: null } } },
     },
     include: { coach: true, weeksPublished: { select: { weekIndex: true } } },
   });

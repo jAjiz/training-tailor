@@ -23,3 +23,8 @@ export function hasLeaderboard(block: { kind: string; scoring: string | null }, 
 export function activeAthleteIn(programId: string) {
   return { disabledAt: null, enrollments: { some: { programId, removedAt: null, leftAt: null } } };
 }
+
+/** Prisma enrollment filter for an athlete who may read the program's content: active and not blocked by payment. */
+export function canSeeProgram() {
+  return { removedAt: null, leftAt: null, access: { not: "blocked" } };
+}
