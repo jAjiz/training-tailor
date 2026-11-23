@@ -59,8 +59,8 @@ describe("admin actions", () => {
     expect(dispatch).toHaveBeenLastCalledWith(approved);
     const preview = { programsKept: 1, programsDeleted: 0, athletesEnrolled: 2, resultsDeleted: 0 };
     const deleted = [{ kind: "coach_deleted" }];
-    deleteCoach.mockResolvedValue({ preview, intents: deleted });
-    expect(await deleteCoachAction("c1", "a@b.c")).toEqual({ ok: true, value: preview });
+    deleteCoach.mockResolvedValue({ preview, intents: deleted, failed: ["sub_1"] });
+    expect(await deleteCoachAction("c1", "a@b.c")).toEqual({ ok: true, value: { ...preview, cancelFailed: 1 } });
     expect(dispatch).toHaveBeenLastCalledWith(deleted);
   });
 

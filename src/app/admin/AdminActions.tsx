@@ -49,11 +49,11 @@ function Counts({ items }: { items: { label: string; value: number }[] }) {
 type DeleteRequest = { counts: { label: string; value: number }[] };
 
 /** Delete with typed email: loads what would be lost, then asks. */
-function useDeleteDialog(opts: {
+function useDeleteDialog<T>(opts: {
   title: string; message: string; confirmLabel: string; email: string;
   preview: () => Promise<ActionResult<{ label: string; value: number }[]>>;
-  remove: (typedEmail: string) => Promise<ActionResult<unknown>>;
-  onDeleted: () => void;
+  remove: (typedEmail: string) => Promise<ActionResult<T>>;
+  onDeleted: (value: T) => void;
 }) {
   const t = useTranslations("admin.common");
   const { pending, error, setError, run } = useAdminAction();
@@ -65,7 +65,7 @@ function useDeleteDialog(opts: {
       typed={{ expected: opts.email, label: t("typeEmail", { email: opts.email }) }}
       onAnswer={(yes, typed) => {
         if (!yes) { setRequest(null); setError(null); return; }
-        run(() => opts.remove(typed ?? ""), () => { setRequest(null); opts.onDeleted(); });
+        run(() => opts.remove(typed ?? ""), (value) => { setRequest(null); opts.onDeleted(value); });
       }} />
   );
   return { open, dialog, pending, error: request ? null : error };
@@ -99,7 +99,11 @@ export function CoachActions({ coach }: { coach: Coach }) {
       ] } : r;
     },
     remove: (email) => deleteCoachAction(coach.id, email),
-    onDeleted: () => { router.push("/admin/coaches"); router.refresh(); },
+    // Subscriptions Stripe could not cancel are counted on the coaches list, the page left behind no longer existing.
+    onDeleted: ({ cancelFailed }) => {
+      router.push(cancelFailed > 0 ? `/admin/coaches?cancelFailed=${cancelFailed}` : "/admin/coaches");
+      router.refresh();
+    },
   });
 
   async function change(to: "approve" | "reject" | "suspend" | "enable") {

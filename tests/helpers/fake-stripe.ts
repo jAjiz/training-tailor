@@ -145,5 +145,13 @@ export function fakeStripe() {
     },
   };
 
-  return { gateway, calls, state };
+  /** A subscription as Stripe has it: active, renewing, with defaults for every other field. */
+  function addSubscription(id: string, over: Partial<SubscriptionSnapshot> = {}) {
+    state.subscriptions.set(id, {
+      id, status: "active", customerId: "cus_1", priceId: "price_1", itemId: `si_${id}`,
+      currentPeriodEnd: null, cancelAtPeriodEnd: false, cancellationReason: null, ...over,
+    });
+  }
+
+  return { gateway, calls, state, addSubscription };
 }

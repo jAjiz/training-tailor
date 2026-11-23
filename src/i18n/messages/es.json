@@ -101,7 +101,9 @@
     "languages": {
       "es": "Español",
       "en": "English"
-    }
+    },
+    "leaveConfirmPaid": "Tu suscripción termina el {date}; mantienes el acceso hasta entonces.",
+    "leavingOn": "Te vas el {date}"
   },
   "profile": {
     "title": "Perfil de entrenamiento",
@@ -232,7 +234,6 @@
       "freeConfirmTitle": "¿Hacer gratis este programa?",
       "freeConfirm": "{count, plural, =0 {Todos conservan el acceso.} one {Se cancelará # suscripción.} other {Se cancelarán # suscripciones.}}",
       "freeConfirmLabel": "Hacer gratis",
-      "cancelFailed": "{count, plural, one {No se pudo cancelar # suscripción.} other {No se pudieron cancelar # suscripciones.}}",
       "locked": "El precio de un programa de pago aún no se puede cambiar."
     }
   },
@@ -426,7 +427,16 @@
     "restore": "Restaurar",
     "removeConfirm": "¿Quitar a este atleta del programa? Sus resultados se conservan.",
     "results": "Resultados",
-    "notPublishedHint": "El enlace solo funciona cuando el programa está publicado."
+    "notPublishedHint": "El enlace solo funciona cuando el programa está publicado.",
+    "access": "Acceso",
+    "accessLabels": {
+      "paid": "Pagado",
+      "blocked": "Pago pendiente",
+      "free": "Gratis",
+      "granted": "Acceso concedido"
+    },
+    "leavingOn": "Se va el {date}",
+    "removeConfirmPaid": "¿Quitar a este atleta del programa? Su suscripción se cancela ahora, sin reembolso. Sus resultados se conservan."
   },
   "today": {
     "noPrograms": "Todavía no sigues ningún programa. Pide a tu coach su enlace de invitación.",
@@ -578,7 +588,8 @@
         "approved": "Aprobados",
         "rejected": "Rechazados",
         "suspended": "Deshabilitados"
-      }
+      },
+      "cancelFailed": "Coach borrado, pero {count, plural, one {no se pudo cancelar # suscripción} other {no se pudieron cancelar # suscripciones}} en Stripe. Cancélalas desde el panel de Stripe."
     },
     "coach": {
       "back": "Coaches",
@@ -1092,7 +1103,9 @@
       "connect": "Conectar Stripe",
       "connecting": "Conectando...",
       "onboardingTitle": "Termina de configurar Stripe",
-      "onboardingIntro": "Stripe necesita algunos datos antes de que puedas aceptar pagos."
+      "onboardingIntro": "Stripe necesita algunos datos antes de que puedas aceptar pagos.",
+      "cancelFailed": "{count, plural, one {No se pudo cancelar # suscripción.} other {No se pudieron cancelar # suscripciones.}}",
+      "retry": "Reintentar"
     }
   }
 }

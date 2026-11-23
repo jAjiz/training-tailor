@@ -101,7 +101,9 @@
     "languages": {
       "es": "Español",
       "en": "English"
-    }
+    },
+    "leaveConfirmPaid": "Your subscription ends on {date}; you keep access until then.",
+    "leavingOn": "Leaving on {date}"
   },
   "profile": {
     "title": "Training profile",
@@ -232,7 +234,6 @@
       "freeConfirmTitle": "Make this program free?",
       "freeConfirm": "{count, plural, =0 {Everyone keeps access.} one {# subscription will be cancelled.} other {# subscriptions will be cancelled.}}",
       "freeConfirmLabel": "Make free",
-      "cancelFailed": "{count, plural, one {# subscription could not be cancelled.} other {# subscriptions could not be cancelled.}}",
       "locked": "The price of a paid program cannot be changed yet."
     }
   },
@@ -426,7 +427,16 @@
     "restore": "Restore",
     "removeConfirm": "Remove this athlete from the program? Their results are kept.",
     "results": "Results",
-    "notPublishedHint": "The link only works once the program is published."
+    "notPublishedHint": "The link only works once the program is published.",
+    "access": "Access",
+    "accessLabels": {
+      "paid": "Paid",
+      "blocked": "Payment pending",
+      "free": "Free",
+      "granted": "Granted"
+    },
+    "leavingOn": "Leaving on {date}",
+    "removeConfirmPaid": "Remove this athlete from the program? Their subscription is cancelled now, without a refund. Their results are kept."
   },
   "today": {
     "noPrograms": "You do not follow any program yet. Ask your coach for their invitation link.",
@@ -578,7 +588,8 @@
         "approved": "Approved",
         "rejected": "Rejected",
         "suspended": "Disabled"
-      }
+      },
+      "cancelFailed": "Coach deleted, but {count, plural, one {# subscription could not be cancelled} other {# subscriptions could not be cancelled}} in Stripe. Cancel them from the Stripe dashboard."
     },
     "coach": {
       "back": "Coaches",
@@ -1092,7 +1103,9 @@
       "connect": "Connect Stripe",
       "connecting": "Connecting...",
       "onboardingTitle": "Finish setting up Stripe",
-      "onboardingIntro": "Stripe needs a few details before you can accept payments."
+      "onboardingIntro": "Stripe needs a few details before you can accept payments.",
+      "cancelFailed": "{count, plural, one {# subscription could not be cancelled.} other {# subscriptions could not be cancelled.}}",
+      "retry": "Retry"
     }
   }
 }

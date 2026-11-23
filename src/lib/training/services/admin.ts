@@ -1,7 +1,10 @@
 import { intent, type NotificationIntent } from "@/lib/notifications/notify";
+import type { StripeGateway } from "@/lib/stripe/gateway";
 import { TrainingError } from "../errors";
+import { refreshProgramAccess } from "./access-store";
 import { writeAudit } from "./audit";
 import { activeAthleteRecipients, deleteAudienceData } from "./notifications";
+import { endLiveSubscriptions } from "./payments";
 import { newInviteCode } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
@@ -118,14 +121,25 @@ export async function deleteUserIfNoProfiles(tx: DbOrTx, userId: string): Promis
   return true;
 }
 
-/** The spec's "Deleting a coach", steps 1–6, in one transaction. */
+async function confirmedCoach(db: DbOrTx, coachId: string, confirmEmail: string) {
+  const coach = await db.coachAccount.findUnique({ where: { id: coachId }, include: { user: true } });
+  if (!coach) throw new TrainingError("not_found");
+  if (confirmEmail.trim().toLowerCase() !== coach.user.email.toLowerCase()) throw new TrainingError("invalid_request");
+  return coach;
+}
+
+/**
+ * The spec's "Deleting a coach", steps 1–6, in one transaction. First, the live subscriptions of the coach's programs
+ * are cancelled (`coach_deleted`); a Stripe failure does not stop the deletion and is returned in `failed`. The
+ * programs that stay become free: there is no account left to charge.
+ */
 export async function deleteCoach(
-  db: Db, actor: string, coachId: string, confirmEmail: string,
-): Promise<{ preview: CoachDeletionPreview; intents: NotificationIntent[] }> {
-  return db.$transaction(async (tx) => {
-    const coach = await tx.coachAccount.findUnique({ where: { id: coachId }, include: { user: true } });
-    if (!coach) throw new TrainingError("not_found");
-    if (confirmEmail.trim().toLowerCase() !== coach.user.email.toLowerCase()) throw new TrainingError("invalid_request");
+  db: Db, gw: StripeGateway | null, actor: string, coachId: string, confirmEmail: string,
+): Promise<{ preview: CoachDeletionPreview; intents: NotificationIntent[]; failed: string[] }> {
+  await confirmedCoach(db, coachId, confirmEmail);
+  const { failed } = await endLiveSubscriptions(db, gw, { program: { coachId } }, "coach_deleted");
+  const deleted = await db.$transaction(async (tx) => {
+    const coach = await confirmedCoach(tx, coachId, confirmEmail);
 
     const { preview, deletedProgramIds, draftBlockIds } = await planCoachDeletion(tx, coachId);
     // Inbox entries pointing at programs about to disappear.
@@ -148,8 +162,12 @@ export async function deleteCoach(
       if (recipients.length === 0) continue;
       intents.push(intent("coach_deleted", recipients, { programId: program.id, programName: program.name }, { programId: program.id }));
     }
-    // 4. The remaining programs lose their coach; `coachName` already holds the name.
-    await tx.program.updateMany({ where: { coachId }, data: { coachId: null } });
+    // 4. The remaining programs lose their coach (`coachName` already holds the name) and their price.
+    const remaining = await tx.program.findMany({ where: { coachId }, select: { id: true } });
+    await tx.program.updateMany({
+      where: { coachId }, data: { coachId: null, priceAmount: null, stripePriceId: null, paidSince: null },
+    });
+    for (const program of remaining) await refreshProgramAccess(tx, program.id);
     // 5. The profile, and the User when it was the last one.
     await tx.coachAccount.delete({ where: { id: coachId } });
     if (!(await deleteUserIfNoProfiles(tx, coach.userId))) await deleteAudienceData(tx, coach.userId, "coach");
@@ -160,6 +178,7 @@ export async function deleteCoach(
     });
     return { preview, intents };
   });
+  return { ...deleted, failed };
 }
 
 export async function setAthleteDisabled(db: Db, actor: string, athleteId: string, disabled: boolean): Promise<void> {

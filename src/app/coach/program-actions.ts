@@ -6,12 +6,12 @@ import { requireCoach } from "@/lib/accounts";
 import { runAction } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { dispatch } from "@/lib/notifications/dispatch";
-import { getStripeGateway } from "@/lib/stripe/client";
+import { getStripeGateway, stripeGatewayIfEnabled } from "@/lib/stripe/client";
 import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { ProgramCreateInput, ProgramUpdateInput, parse, parseMajorAmount } from "@/lib/training/schemas";
-import { setProgramPrice } from "@/lib/training/services/payments";
+import { retryCancellations, setProgramPrice } from "@/lib/training/services/payments";
 import {
-  archiveProgram, createProgram, regenerateInvite, setProgramPublished, setWeekPublished, updateProgram,
+  archiveProgram, createProgram, getOwnedProgram, regenerateInvite, setProgramPublished, setWeekPublished, updateProgram,
 } from "@/lib/training/services/programs";
 import { setProgramTailoring } from "@/lib/training/services/tailoring";
 
@@ -35,11 +35,24 @@ export async function updateProgramAction(raw: unknown): Promise<ActionResult> {
   });
 }
 
-export async function archiveProgramAction(programId: unknown): Promise<ActionResult> {
+/** `failed`: how many subscriptions Stripe could not cancel (the program is archived anyway). */
+export async function archiveProgramAction(programId: unknown): Promise<ActionResult<{ failed: number }>> {
   return runAction("archiveProgramAction", async () => {
     const coach = await requireCoach();
-    await archiveProgram(prisma, coach.id, parse(Id, programId));
+    const { failed } = await archiveProgram(prisma, stripeGatewayIfEnabled(), coach.id, parse(Id, programId));
     revalidatePath("/coach", "layout");
+    return { failed: failed.length };
+  });
+}
+
+/** Cancels again the subscriptions the app ended in this program and Stripe has not cancelled yet. */
+export async function retryCancellationsAction(programId: unknown): Promise<ActionResult<{ failed: number }>> {
+  return runAction("retryCancellationsAction", async () => {
+    const coach = await requireCoach();
+    const program = await getOwnedProgram(prisma, coach.id, parse(Id, programId));
+    const failed = await retryCancellations(prisma, stripeGatewayIfEnabled(), program.id);
+    revalidatePath(`/coach/programs/${program.id}`, "layout");
+    return { failed: failed.length };
   });
 }
 

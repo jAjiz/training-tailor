@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import { intent, type NotificationIntent } from "@/lib/notifications/notify";
+import type { StripeGateway } from "@/lib/stripe/gateway";
 import { addDays, fromDbDate, toDbDate } from "../dates";
 import { TrainingError } from "../errors";
 import type { ProgramCreate, ProgramUpdate } from "../schemas";
 import { activeAthleteRecipients } from "./notifications";
 import { weekHasContent } from "./notes";
+import { endLiveSubscriptions } from "./payments";
 import type { Db } from "./types";
 
 export function newInviteCode(): string {
@@ -68,9 +70,15 @@ export async function updateProgram(db: Db, coachId: string, programId: string, 
   return db.program.update({ where: { id: programId }, data });
 }
 
-export async function archiveProgram(db: Db, coachId: string, programId: string) {
+/** Archives the program and cancels every live subscription at once (`archived`); `failed` lists those Stripe refused. */
+export async function archiveProgram(
+  db: Db, gw: StripeGateway | null, coachId: string, programId: string,
+): Promise<{ failed: string[] }> {
   await getOwnedProgram(db, coachId, programId);
-  await db.program.update({ where: { id: programId }, data: { archivedAt: new Date() } });
+  const { failed } = await endLiveSubscriptions(db, gw, { programId }, "archived", [
+    db.program.update({ where: { id: programId }, data: { archivedAt: new Date() } }),
+  ]);
+  return { failed };
 }
 
 export async function regenerateInvite(db: Db, coachId: string, programId: string) {

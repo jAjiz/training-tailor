@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { createTestDb, type TestDb } from "../../helpers/db";
+import { fakeStripe } from "../../helpers/fake-stripe";
 import {
-  enroll, makeAdmin, makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makeResult, leave, makeUser,
-  publishWeek,
+  enroll, makeAdmin, makeAthlete, makeClosed, makeCoach, makeContinuous, makeCustomBlock, makePaidContinuous, makeResult,
+  leave, makeSubscriptionPurchase, makeUser, publishWeek,
 } from "../../helpers/factories";
+import { refreshAccess } from "@/lib/training/services/access-store";
 import { ensureCoachAccount, getCoachByUserId } from "@/lib/training/services/accounts";
 import {
   approveCoach, changeCoachStatus, deleteAthlete, deleteCoach, adminRegenerateInvite, grantAdmin, previewAthleteDeletion, previewCoachDeletion, setAthleteDisabled, setCoachTailoring, setInviteDisabled,
@@ -96,7 +98,7 @@ describe("changeCoachStatus", () => {
   it("refuses a missing profile", async () => {
     const admin = await makeAdmin(tdb.prisma);
     await expect(changeCoachStatus(tdb.prisma, admin.id, "nope", "approve")).rejects.toMatchObject({ code: "not_found" });
-    await expect(deleteCoach(tdb.prisma, admin.id, "nope", "x@test.local")).rejects.toMatchObject({ code: "not_found" });
+    await expect(deleteCoach(tdb.prisma, null, admin.id, "nope", "x@test.local")).rejects.toMatchObject({ code: "not_found" });
   });
 });
 
@@ -129,7 +131,7 @@ describe("deleteCoach", () => {
     const otherResult = await makeResult(db, otherBlock.id, a.id);
 
     const before = await previewCoachDeletion(db, coach.id);
-    const result = await deleteCoach(db, admin.id, coach.id, user.email.toUpperCase());
+    const result = await deleteCoach(db, null, admin.id, coach.id, user.email.toUpperCase());
     const expected = { programsKept: 2, programsDeleted: 1, athletesEnrolled: 1, resultsDeleted: 2 };
     expect(before).toEqual(expected);
     expect(result.preview).toEqual(expected);
@@ -160,7 +162,7 @@ describe("deleteCoach", () => {
     const user = await db.user.findUniqueOrThrow({ where: { id: coach.userId } });
     const athlete = await db.athleteAccount.create({ data: { userId: user.id, displayName: user.name, timezone: "UTC" } });
     const session = await makeSession(db, user.id);
-    await deleteCoach(db, admin.id, coach.id, user.email);
+    await deleteCoach(db, null, admin.id, coach.id, user.email);
     expect(await db.user.findUnique({ where: { id: user.id } })).not.toBeNull();
     expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
     expect(await db.athleteAccount.findUnique({ where: { id: athlete.id } })).not.toBeNull();
@@ -173,7 +175,7 @@ describe("deleteCoach", () => {
     const coach = await makeCoach(db);
     const user = await db.user.findUniqueOrThrow({ where: { id: coach.userId } });
     await makeSession(db, user.id);
-    await deleteCoach(db, admin.id, coach.id, user.email);
+    await deleteCoach(db, null, admin.id, coach.id, user.email);
     expect(await db.user.findUnique({ where: { id: user.id } })).toBeNull();
     expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
     await db.user.create({ data: { id: "user-again", name: "Again", email: user.email } });
@@ -200,7 +202,7 @@ describe("deleteCoach", () => {
 
   it("returns coach_deleted intents for the athletes of kept, non-archived programs only", async () => {
     const { db, admin, coach, user, kept, keptAthlete } = await notificationFixture();
-    const { intents } = await deleteCoach(db, admin.id, coach.id, user.email);
+    const { intents } = await deleteCoach(db, null, admin.id, coach.id, user.email);
     expect(intents).toHaveLength(1);
     expect(intents[0]).toMatchObject({
       kind: "coach_deleted", programId: kept.id, data: { programId: kept.id, programName: kept.name },
@@ -212,7 +214,7 @@ describe("deleteCoach", () => {
     const { db, admin, coach, user, kept, keptAthlete } = await notificationFixture();
     const own = await db.athleteAccount.create({ data: { userId: coach.userId, displayName: "Coach Athlete", timezone: "Europe/Madrid" } });
     await enroll(db, kept.id, own.id, "2026-10-05");
-    const { intents } = await deleteCoach(db, admin.id, coach.id, user.email);
+    const { intents } = await deleteCoach(db, null, admin.id, coach.id, user.email);
     expect(intents[0].recipients.map((r) => r.userId)).toEqual([keptAthlete.userId]);
   });
 
@@ -223,7 +225,7 @@ describe("deleteCoach", () => {
     await row(draftAthlete.userId, draft.id);
     const keep = await row(keptAthlete.userId, kept.id);
     const unrelated = await row(keptAthlete.userId, null);
-    await deleteCoach(db, admin.id, coach.id, user.email);
+    await deleteCoach(db, null, admin.id, coach.id, user.email);
     expect((await db.notification.findMany({ select: { id: true } })).map((n) => n.id).sort()).toEqual([keep.id, unrelated.id].sort());
   });
 
@@ -234,7 +236,7 @@ describe("deleteCoach", () => {
     await db.notification.create({ data: { userId: user.id, audience: "coach", kind: "athlete_joined", data: {} } });
     await db.notificationPreference.create({ data: { userId: user.id, kind: "athlete_joined", enabled: false } });
     await db.notificationPreference.create({ data: { userId: user.id, kind: "announcement", enabled: false } });
-    await deleteCoach(db, admin.id, coach.id, user.email);
+    await deleteCoach(db, null, admin.id, coach.id, user.email);
     expect((await db.notification.findMany({ where: { userId: user.id } })).map((n) => n.audience)).toEqual(["athlete"]);
     expect((await db.notificationPreference.findMany({ where: { userId: user.id } })).map((p) => p.kind)).toEqual(["announcement"]);
   });
@@ -255,7 +257,7 @@ describe("deleteCoach", () => {
         data: { userId: keptAthlete.userId, audience: "athlete", kind: "fist_bump", entityId: r.id, groupKey: `fist_bump:${r.id}`, data: {} },
       });
     }
-    await deleteCoach(db, admin.id, coach.id, user.email);
+    await deleteCoach(db, null, admin.id, coach.id, user.email);
     expect((await db.notification.findMany()).map((n) => n.entityId)).toEqual([results.live.id]);
   });
 
@@ -264,10 +266,65 @@ describe("deleteCoach", () => {
     const admin = await makeAdmin(db);
     const coach = await makeCoach(db);
     const program = await makeClosed(db, coach.id, 4, false);
-    await expect(deleteCoach(db, admin.id, coach.id, "someone@test.local")).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(deleteCoach(db, null, admin.id, coach.id, "someone@test.local")).rejects.toMatchObject({ code: "invalid_request" });
     expect(await db.coachAccount.findUnique({ where: { id: coach.id } })).not.toBeNull();
     expect(await db.program.findUnique({ where: { id: program.id } })).not.toBeNull();
     expect(await db.adminAuditLog.count()).toBe(0);
+  });
+
+  it("deleting a coach cancels subscriptions and makes the kept programs free", async () => {
+    const db = tdb.prisma;
+    const gw = fakeStripe();
+    const admin = await makeAdmin(db);
+    const coach = await makeCoach(db);
+    const user = await db.user.findUniqueOrThrow({ where: { id: coach.userId } });
+    const program = await makePaidContinuous(db, coach.id);
+    await publishWeek(db, program.id, 0);
+    const athlete = await makeAthlete(db);
+    const enrollment = await enroll(db, program.id, athlete.id);
+    await makeSubscriptionPurchase(db, program.id, athlete.id, "acct_coach", "1");
+    gw.addSubscription("sub_1");
+    await refreshAccess(db, program.id, athlete.id);
+    // Another coach's subscription is not touched.
+    const other = await makeCoach(db);
+    const otherProgram = await makePaidContinuous(db, other.id);
+    await enroll(db, otherProgram.id, athlete.id);
+    await makeSubscriptionPurchase(db, otherProgram.id, athlete.id, "acct_other", "2");
+    gw.addSubscription("sub_2");
+
+    // A wrong confirmation cancels nothing.
+    await expect(deleteCoach(db, gw.gateway, admin.id, coach.id, "someone@test.local")).rejects.toMatchObject({ code: "invalid_request" });
+    expect(gw.calls).toEqual([]);
+
+    const result = await deleteCoach(db, gw.gateway, admin.id, coach.id, user.email);
+    expect(result.failed).toEqual([]);
+    expect(gw.calls).toEqual([{ method: "cancelSubscription", args: ["acct_coach", "sub_1"] }]);
+    const purchases = await db.programPurchase.findMany({ orderBy: { checkoutSessionId: "asc" } });
+    expect(purchases.map((p) => [p.endedReason, p.status])).toEqual([["coach_deleted", "canceled"], [null, "active"]]);
+    expect(await db.program.findUniqueOrThrow({ where: { id: program.id } })).toMatchObject({
+      coachId: null, priceAmount: null, stripePriceId: null, paidSince: null,
+    });
+    expect((await db.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } })).access).toBe("free");
+    expect((await db.program.findUniqueOrThrow({ where: { id: otherProgram.id } })).priceAmount).toBe(1500);
+  });
+
+  it("a failed cancellation does not stop the coach's deletion and is reported", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const db = tdb.prisma;
+    const gw = fakeStripe();
+    const admin = await makeAdmin(db);
+    const coach = await makeCoach(db);
+    const user = await db.user.findUniqueOrThrow({ where: { id: coach.userId } });
+    const program = await makePaidContinuous(db, coach.id);
+    const athlete = await makeAthlete(db);
+    await enroll(db, program.id, athlete.id);
+    await makeSubscriptionPurchase(db, program.id, athlete.id, "acct_coach", "1");
+    gw.addSubscription("sub_1");
+    gw.state.failing.add("cancelSubscription");
+    expect((await deleteCoach(db, gw.gateway, admin.id, coach.id, user.email)).failed).toEqual(["sub_1"]);
+    expect(await db.coachAccount.findUnique({ where: { id: coach.id } })).toBeNull();
+    expect((await db.program.findUniqueOrThrow({ where: { id: program.id } })).priceAmount).toBeNull();
+    error.mockRestore();
   });
 });
 
@@ -377,7 +434,7 @@ describe("deleting a profile owned by an admin", () => {
     const actor = await makeAdmin(db);
     const { owner, coach, athlete, session } = await adminOwned(db);
     await db.athleteAccount.delete({ where: { id: athlete.id } });
-    await deleteCoach(db, actor.id, coach.id, owner.email);
+    await deleteCoach(db, null, actor.id, coach.id, owner.email);
     expect(await db.user.findUnique({ where: { id: owner.id } })).toMatchObject({ role: "admin" });
     expect(await db.session.findUnique({ where: { id: session.id } })).not.toBeNull();
   });

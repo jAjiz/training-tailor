@@ -206,7 +206,7 @@ describe("setProgramPrice", () => {
     const gw = fakeStripe();
     const { coach } = await chargingCoach(gw);
     const program = await makeContinuous(tdb.prisma, coach.id);
-    await archiveProgram(tdb.prisma, coach.id, program.id);
+    await archiveProgram(tdb.prisma, null, coach.id, program.id);
     await expect(setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 }))
       .rejects.toMatchObject({ code: "program_archived" });
   });

@@ -1,6 +1,14 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { createTestDb, type TestDb } from "../../helpers/db";
-import { blockAccess, enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, makeResult, makeCustomBlock, makeUser, publishWeek } from "../../helpers/factories";
+import { fakeStripe } from "../../helpers/fake-stripe";
+import {
+  blockAccess, enroll, leave, makeAthlete, makeClosed, makeCoach, makeContinuous, makePaidContinuous, makeResult,
+  makeCustomBlock, makeSubscriptionPurchase, makeUser, publishWeek,
+} from "../../helpers/factories";
+import { refreshAccess } from "@/lib/training/services/access-store";
+import {
+  athleteSubscriptions, countPendingCancellations, retryCancellations, subscriptionEndings,
+} from "@/lib/training/services/payments";
 import { listCoachPrograms } from "@/lib/training/services/programs";
 import { getDayResults, getLeaderboard, getVisibleBlock } from "@/lib/training/services/results";
 import {
@@ -67,11 +75,11 @@ describe("enrollments", () => {
     const p = await makeContinuous(tdb.prisma, coach.id);
     await joinByCode(tdb.prisma, athlete, p.inviteCode);
     const [row] = await listRoster(tdb.prisma, coach.id, p.id);
-    await setEnrollmentRemoved(tdb.prisma, coach.id, row.id, true);
+    await setEnrollmentRemoved(tdb.prisma, null, coach.id, row.id, true);
     expect(await getEnrollmentStatus(tdb.prisma, athlete.id, p.id)).toBe("removed");
     await expect(joinByCode(tdb.prisma, athlete, p.inviteCode)).rejects.toMatchObject({ code: "enrollment_removed" });
     expect(await listAthletePrograms(tdb.prisma, athlete.id)).toHaveLength(0);
-    await setEnrollmentRemoved(tdb.prisma, coach.id, row.id, false);
+    await setEnrollmentRemoved(tdb.prisma, null, coach.id, row.id, false);
     expect(await getEnrollmentStatus(tdb.prisma, athlete.id, p.id)).toBe("active");
     expect(await listAthletePrograms(tdb.prisma, athlete.id)).toHaveLength(1);
   });
@@ -99,7 +107,7 @@ describe("enrollments", () => {
     await joinByCode(tdb.prisma, athlete, p.inviteCode);
     const [row] = await listRoster(tdb.prisma, coach.id, p.id);
     await expect(listRoster(tdb.prisma, other.id, p.id)).rejects.toMatchObject({ code: "not_found" });
-    await expect(setEnrollmentRemoved(tdb.prisma, other.id, row.id, true)).rejects.toMatchObject({ code: "not_found" });
+    await expect(setEnrollmentRemoved(tdb.prisma, null, other.id, row.id, true)).rejects.toMatchObject({ code: "not_found" });
   });
 
   it("lists the athlete's programs newest first, without archived ones", async () => {
@@ -124,7 +132,8 @@ describe("leaving and rejoining", () => {
     const e = await enroll(db, p.id, athlete.id, "2026-10-05");
     const block = await makeCustomBlock(db, p.id, 0);
     await makeResult(db, block.id, athlete.id);
-    const left = await leaveProgram(db, athlete, p.id);
+    const { intents: left, endsOn } = await leaveProgram(db, null, athlete, p.id);
+    expect(endsOn).toBeNull();
     expect(left).toHaveLength(1);
     expect(left[0]).toMatchObject({ kind: "athlete_left", recipients: [{ userId: coach.userId }], data: { programId: p.id, programName: p.name, athleteName: athlete.displayName } });
     expect(await getEnrollmentStatus(db, athlete.id, p.id)).toBe("left");
@@ -148,7 +157,7 @@ describe("leaving and rejoining", () => {
     const p = await makeContinuous(db, coach.id);
     const e = await enroll(db, p.id, athlete.id);
     await leave(db, e.id);
-    await setEnrollmentRemoved(db, coach.id, e.id, true);
+    await setEnrollmentRemoved(db, null, coach.id, e.id, true);
     expect(await getEnrollmentStatus(db, athlete.id, p.id)).toBe("removed");
     await expect(joinByCode(db, athlete, p.inviteCode)).rejects.toMatchObject({ code: "enrollment_removed" });
   });
@@ -158,13 +167,13 @@ describe("leaving and rejoining", () => {
     const coach = await makeCoach(db);
     const athlete = await makeAthlete(db);
     const p = await makeContinuous(db, coach.id);
-    await expect(leaveProgram(db, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
+    await expect(leaveProgram(db, null, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
     const e = await enroll(db, p.id, athlete.id);
-    await setEnrollmentRemoved(db, coach.id, e.id, true);
-    await expect(leaveProgram(db, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
-    await setEnrollmentRemoved(db, coach.id, e.id, false);
-    await leaveProgram(db, athlete, p.id);
-    await expect(leaveProgram(db, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
+    await setEnrollmentRemoved(db, null, coach.id, e.id, true);
+    await expect(leaveProgram(db, null, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
+    await setEnrollmentRemoved(db, null, coach.id, e.id, false);
+    await leaveProgram(db, null, athlete, p.id);
+    await expect(leaveProgram(db, null, athlete, p.id)).rejects.toMatchObject({ code: "not_enrolled" });
   });
 
   it("treats a left athlete as inactive in views, leaderboard and day results", async () => {
@@ -194,13 +203,13 @@ describe("leaving and rejoining", () => {
     const p = await makeContinuous(db, coach.id);
     const self = await db.athleteAccount.create({ data: { userId: coach.userId, displayName: "Coach", timezone: "Europe/Madrid" } });
     expect((await joinByCode(db, self, p.inviteCode)).intents).toEqual([]);
-    expect(await leaveProgram(db, self, p.id)).toEqual([]);
+    expect((await leaveProgram(db, null, self, p.id)).intents).toEqual([]);
 
     const suspended = await makeCoach(db, "suspended");
     const q = await makeContinuous(db, suspended.id);
     const ath = await makeAthlete(db);
     await enroll(db, q.id, ath.id);
-    expect(await leaveProgram(db, ath, q.id)).toEqual([]);
+    expect((await leaveProgram(db, null, ath, q.id)).intents).toEqual([]);
   });
 });
 
@@ -265,7 +274,7 @@ describe("getBlockEnrollmentStatus", () => {
     expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, block.id)).toEqual({ programId: p.id, status: "active" });
     await leave(tdb.prisma, e.id);
     expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, block.id)).toEqual({ programId: p.id, status: "left" });
-    await setEnrollmentRemoved(tdb.prisma, coach.id, e.id, true);
+    await setEnrollmentRemoved(tdb.prisma, null, coach.id, e.id, true);
     expect(await getBlockEnrollmentStatus(tdb.prisma, athlete.id, block.id)).toEqual({ programId: p.id, status: "removed" });
   });
 
@@ -296,5 +305,121 @@ describe("blocked enrollments", () => {
     await blockAccess(tdb.prisma, (await enroll(tdb.prisma, paid.id, athlete.id)).id);
     const listed = await listAthletePrograms(tdb.prisma, athlete.id);
     expect(Object.fromEntries(listed.map((e) => [e.programId, e.access]))).toEqual({ [free.id]: "free", [paid.id]: "blocked" });
+  });
+});
+
+describe("leaving and removal of a paying athlete", () => {
+  const acct = "acct_test";
+  const periodEnd = new Date("2026-12-23T00:00:00Z");
+
+  /** An athlete subscribed (`sub_1`) to a paid continuous program. */
+  async function subscribed(gw: ReturnType<typeof fakeStripe>) {
+    const db = tdb.prisma;
+    const coach = await makeCoach(db);
+    const program = await makePaidContinuous(db, coach.id);
+    const athlete = await makeAthlete(db);
+    const enrollment = await enroll(db, program.id, athlete.id);
+    await makeSubscriptionPurchase(db, program.id, athlete.id, acct, "1", { currentPeriodEnd: periodEnd });
+    gw.addSubscription("sub_1", { currentPeriodEnd: periodEnd });
+    await refreshAccess(db, program.id, athlete.id);
+    return { coach, program, athlete, enrollment };
+  }
+  const purchase = () => tdb.prisma.programPurchase.findUniqueOrThrow({ where: { checkoutSessionId: "cs_1" } });
+  const stripeCalls = (gw: ReturnType<typeof fakeStripe>, method: string) => gw.calls.filter((c) => c.method === method);
+
+  it("leaving a paid continuous program sets cancel at period end and keeps access", async () => {
+    const gw = fakeStripe();
+    const { coach, program, athlete, enrollment } = await subscribed(gw);
+    const first = await leaveProgram(tdb.prisma, gw.gateway, athlete, program.id);
+    expect(first.endsOn).toEqual(periodEnd);
+    expect(first.intents).toHaveLength(1);
+    expect(first.intents[0]).toMatchObject({ kind: "athlete_left", recipients: [{ userId: coach.userId }] });
+    expect(stripeCalls(gw, "setCancelAtPeriodEnd")).toEqual([
+      { method: "setCancelAtPeriodEnd", args: [acct, "sub_1", true] },
+    ]);
+    expect(await purchase()).toMatchObject({ cancelAtPeriodEnd: true, status: "active", endedReason: null });
+    expect(await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } }))
+      .toMatchObject({ leftAt: null, access: "paid" });
+    expect(await subscriptionEndings(tdb.prisma, program.id)).toEqual(new Map([[athlete.id, periodEnd]]));
+    expect(await athleteSubscriptions(tdb.prisma, athlete.id))
+      .toEqual(new Map([[program.id, { currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true }]]));
+
+    // Leaving again changes nothing and tells the same date.
+    expect(await leaveProgram(tdb.prisma, gw.gateway, athlete, program.id)).toEqual({ intents: [], endsOn: periodEnd });
+    expect(stripeCalls(gw, "setCancelAtPeriodEnd")).toHaveLength(1);
+  });
+
+  it("leaving a paid continuous program fails without changes when Stripe fails", async () => {
+    const gw = fakeStripe();
+    const { program, athlete, enrollment } = await subscribed(gw);
+    gw.state.failing.add("setCancelAtPeriodEnd");
+    await expect(leaveProgram(tdb.prisma, gw.gateway, athlete, program.id)).rejects.toThrow();
+    expect((await purchase()).cancelAtPeriodEnd).toBe(false);
+    expect((await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } })).leftAt).toBeNull();
+  });
+
+  it("leaving a free program is unchanged", async () => {
+    const gw = fakeStripe();
+    const coach = await makeCoach(tdb.prisma);
+    const program = await makeContinuous(tdb.prisma, coach.id);
+    const athlete = await makeAthlete(tdb.prisma);
+    const enrollment = await enroll(tdb.prisma, program.id, athlete.id);
+    const left = await leaveProgram(tdb.prisma, gw.gateway, athlete, program.id);
+    expect(left.endsOn).toBeNull();
+    expect(left.intents).toHaveLength(1);
+    expect((await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } })).leftAt).not.toBeNull();
+    expect(gw.calls).toEqual([]);
+  });
+
+  it("removing cancels at once with coach_removed", async () => {
+    const gw = fakeStripe();
+    const { coach, enrollment } = await subscribed(gw);
+    expect(await setEnrollmentRemoved(tdb.prisma, gw.gateway, coach.id, enrollment.id, true)).toEqual({ failed: [] });
+    expect(stripeCalls(gw, "cancelSubscription")).toEqual([{ method: "cancelSubscription", args: [acct, "sub_1"] }]);
+    expect(await purchase()).toMatchObject({ endedReason: "coach_removed", status: "canceled" });
+    expect((await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } })).removedAt).not.toBeNull();
+
+    // Restoring does not touch the purchase: the athlete pays again or is granted access.
+    expect(await setEnrollmentRemoved(tdb.prisma, gw.gateway, coach.id, enrollment.id, false)).toEqual({ failed: [] });
+    expect(await purchase()).toMatchObject({ endedReason: "coach_removed", status: "canceled" });
+    expect(stripeCalls(gw, "cancelSubscription")).toHaveLength(1);
+  });
+
+  it("a failed cancellation on removal still removes and is reported", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const gw = fakeStripe();
+    const { coach, program, enrollment } = await subscribed(gw);
+    gw.state.failing.add("cancelSubscription");
+    expect(await setEnrollmentRemoved(tdb.prisma, gw.gateway, coach.id, enrollment.id, true)).toEqual({ failed: ["sub_1"] });
+    expect((await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: enrollment.id } })).removedAt).not.toBeNull();
+    expect(await purchase()).toMatchObject({ endedReason: "coach_removed", status: "active" });
+    expect(await countPendingCancellations(tdb.prisma, program.id)).toBe(1);
+    expect(await countPendingCancellations(tdb.prisma, program.id, ["coach_removed"])).toBe(1);
+    expect(await countPendingCancellations(tdb.prisma, program.id, ["archived", "made_free"])).toBe(0);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("retryCancellations cancels what is left", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const gw = fakeStripe();
+    const { coach, program, enrollment } = await subscribed(gw);
+    // Another athlete's subscription the app never ended is not touched.
+    const other = await makeAthlete(tdb.prisma);
+    await enroll(tdb.prisma, program.id, other.id);
+    await makeSubscriptionPurchase(tdb.prisma, program.id, other.id, acct, "2");
+    gw.addSubscription("sub_2");
+    gw.state.failing.add("cancelSubscription");
+    await setEnrollmentRemoved(tdb.prisma, gw.gateway, coach.id, enrollment.id, true);
+    expect(await retryCancellations(tdb.prisma, gw.gateway, program.id)).toEqual(["sub_1"]);
+
+    gw.state.failing.delete("cancelSubscription");
+    expect(await retryCancellations(tdb.prisma, gw.gateway, program.id)).toEqual([]);
+    expect(await purchase()).toMatchObject({ endedReason: "coach_removed", status: "canceled" });
+    expect(await countPendingCancellations(tdb.prisma, program.id)).toBe(0);
+    expect(gw.state.subscriptions.get("sub_2")!.status).toBe("active");
+    expect(await retryCancellations(tdb.prisma, gw.gateway, program.id)).toEqual([]);
+    expect(stripeCalls(gw, "cancelSubscription").map((c) => c.args[1])).toEqual(["sub_1", "sub_1", "sub_1"]);
+    error.mockRestore();
   });
 });

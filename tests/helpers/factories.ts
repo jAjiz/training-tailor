@@ -103,3 +103,26 @@ export async function leave(db: PrismaClient, enrollmentId: string) {
 export async function blockAccess(db: PrismaClient, enrollmentId: string) {
   return db.enrollment.update({ where: { id: enrollmentId }, data: { access: "blocked" } });
 }
+
+/** A continuous program already paid (as `setProgramPrice` leaves it), paid since well before any enrollment. */
+export async function makePaidContinuous(db: PrismaClient, coachId: string) {
+  const program = await makeContinuous(db, coachId);
+  return db.program.update({
+    where: { id: program.id },
+    data: { priceAmount: 1500, currency: "eur", stripePriceId: "price_x", paidSince: day("2026-01-01") },
+  });
+}
+
+/** A linked subscription purchase (`cs_<n>`, `sub_<n>` on `acct`), as the checkout webhook leaves it. */
+export async function makeSubscriptionPurchase(
+  db: PrismaClient, programId: string, athleteId: string, acct: string, n: string,
+  overrides: Partial<{ status: string; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean; endedReason: string | null }> = {},
+) {
+  return db.programPurchase.create({
+    data: {
+      programId, athleteId, kind: "subscription", stripeAccountId: acct, checkoutSessionId: `cs_${n}`,
+      stripeSubscriptionId: `sub_${n}`, status: "active", stripePriceId: "price_x", amount: 1500, currency: "eur",
+      ...overrides,
+    },
+  });
+}

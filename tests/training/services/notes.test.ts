@@ -52,7 +52,7 @@ describe("notes", () => {
     await expect(setDayNote(tdb.prisma, coach.id, closed.id, 14, "Test")).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(setWeekNote(tdb.prisma, coach.id, closed.id, 2, "Test")).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(setDayNote(tdb.prisma, coach.id, program.id, -1, "Test")).rejects.toMatchObject({ code: "day_out_of_range" });
-    await archiveProgram(tdb.prisma, coach.id, program.id);
+    await archiveProgram(tdb.prisma, null, coach.id, program.id);
     await expect(setDayNote(tdb.prisma, coach.id, program.id, 0, "Test")).rejects.toMatchObject({ code: "program_archived" });
     await expect(setWeekNote(tdb.prisma, coach.id, program.id, 0, "Test")).rejects.toMatchObject({ code: "program_archived" });
   });

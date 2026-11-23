@@ -1,9 +1,12 @@
 import { inviteCodeFromNext, type SignupMode } from "@/lib/signup";
+import type { StripeGateway } from "@/lib/stripe/gateway";
 import { toDbDate, todayIn } from "../dates";
 import { TrainingError } from "../errors";
+import { LIVE_SUBSCRIPTION } from "../payments";
 import { intent, type NotificationIntent } from "@/lib/notifications/notify";
 import { accessOnJoin } from "./access-store";
 import { coachRecipient } from "./notifications";
+import { endLiveSubscriptions } from "./payments";
 import { getOwnedProgram } from "./programs";
 import type { Db, DbOrTx } from "./types";
 
@@ -96,21 +99,43 @@ export async function joinByCode(db: Db, athlete: JoiningAthlete, code: string, 
   return { programId: program.id, status, intents: status === "already" ? [] : athleteJoinedIntents(program, athlete) };
 }
 
-/** The athlete steps out of a program; results and `joinedAt` stay, and the invitation link brings them back. */
+/**
+ * The athlete steps out of a program; results and `joinedAt` stay, and the invitation link brings them back. On a
+ * paid continuous program with a live subscription, the subscription is set to cancel at period end and the athlete
+ * keeps access until then: `endsOn` is that date, and the webhook sets `leftAt` when the subscription ends. Leaving
+ * again meanwhile changes nothing. A Stripe failure throws before anything changes.
+ */
 export async function leaveProgram(
-  db: Db, athlete: { id: string; userId: string; displayName: string }, programId: string,
-): Promise<NotificationIntent[]> {
-  const { count } = await db.enrollment.updateMany({
-    where: { programId, athleteId: athlete.id, removedAt: null, leftAt: null },
-    data: { leftAt: new Date() },
-  });
-  if (count === 0) throw new TrainingError("not_enrolled");
+  db: Db, gw: StripeGateway | null, athlete: { id: string; userId: string; displayName: string }, programId: string,
+): Promise<{ intents: NotificationIntent[]; endsOn: Date | null }> {
+  const enrollment = await db.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId: athlete.id } } });
+  if (!enrollment || enrollment.removedAt || enrollment.leftAt) throw new TrainingError("not_enrolled");
   const program = await db.program.findUniqueOrThrow({ where: { id: programId }, include: { coach: true } });
-  return [
+  const subscription = gw && program.priceAmount !== null && program.kind === "continuous"
+    ? await db.programPurchase.findFirst({
+      where: { programId, athleteId: athlete.id, kind: "subscription", status: { in: [...LIVE_SUBSCRIPTION] } },
+      orderBy: { createdAt: "desc" },
+    })
+    : null;
+  let endsOn: Date | null = null;
+  if (gw && subscription?.stripeSubscriptionId) {
+    endsOn = subscription.currentPeriodEnd;
+    if (subscription.cancelAtPeriodEnd) return { intents: [], endsOn };
+    await gw.setCancelAtPeriodEnd(subscription.stripeAccountId, subscription.stripeSubscriptionId, true);
+    await db.programPurchase.update({ where: { id: subscription.id }, data: { cancelAtPeriodEnd: true } });
+  } else {
+    const { count } = await db.enrollment.updateMany({
+      where: { id: enrollment.id, removedAt: null, leftAt: null },
+      data: { leftAt: new Date() },
+    });
+    if (count === 0) throw new TrainingError("not_enrolled");
+  }
+  const intents = [
     intent("athlete_left", coachRecipient(program, athlete.userId), {
       programId, programName: program.name, athleteName: athlete.displayName,
     }),
   ].filter((i) => i.recipients.length > 0);
+  return { intents, endsOn };
 }
 
 export async function getEnrollmentStatus(db: Db, athleteId: string, programId: string) {
@@ -134,10 +159,24 @@ export async function listRoster(db: Db, coachId: string, programId: string) {
   return db.enrollment.findMany({ where: { programId }, include: { athlete: true }, orderBy: { joinedAt: "asc" } });
 }
 
-export async function setEnrollmentRemoved(db: Db, coachId: string, enrollmentId: string, removed: boolean) {
+/**
+ * Removes or restores an athlete. Removing also cancels their live subscription at once (`coach_removed`, no
+ * refund); `failed` lists the subscriptions Stripe could not cancel. Restoring does not touch purchases.
+ */
+export async function setEnrollmentRemoved(
+  db: Db, gw: StripeGateway | null, coachId: string, enrollmentId: string, removed: boolean,
+): Promise<{ failed: string[] }> {
   const e = await db.enrollment.findFirst({ where: { id: enrollmentId, program: { coachId } } });
   if (!e) throw new TrainingError("not_found");
-  await db.enrollment.update({ where: { id: enrollmentId }, data: { removedAt: removed ? new Date() : null } });
+  const change = db.enrollment.update({ where: { id: enrollmentId }, data: { removedAt: removed ? new Date() : null } });
+  if (!removed) {
+    await change;
+    return { failed: [] };
+  }
+  const { failed } = await endLiveSubscriptions(
+    db, gw, { programId: e.programId, athleteId: e.athleteId }, "coach_removed", [change],
+  );
+  return { failed };
 }
 
 /** The athlete's active programs, blocked ones included (`access` tells them apart). */

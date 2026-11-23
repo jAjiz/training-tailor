@@ -50,8 +50,10 @@ export function ProgramSettingsForm({ programId, kind, initial, startDateLocked,
   async function archive() {
     if (!(await confirm({ title: t("programs.archive"), message: t("programs.archiveConfirm"), confirmLabel: t("programs.archive") }))) return;
     const r = await archiveProgramAction(programId);
-    if (r.ok) router.push("/coach");
-    else setState(r.code);
+    if (!r.ok) setState(r.code);
+    // Archived either way; subscriptions Stripe refused to cancel stay listed here with a retry.
+    else if (r.value.failed > 0) router.refresh();
+    else router.push("/coach");
   }
 
   return (

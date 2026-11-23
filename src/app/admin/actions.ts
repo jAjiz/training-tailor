@@ -10,6 +10,7 @@ import { runAction } from "@/lib/actions";
 import { auth, IMPERSONATION_SECONDS } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { dispatch } from "@/lib/notifications/dispatch";
+import { stripeGatewayIfEnabled } from "@/lib/stripe/client";
 import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { parse } from "@/lib/training/schemas";
 import {
@@ -48,13 +49,17 @@ export async function previewCoachDeletionAction(coachId: unknown): Promise<Acti
   });
 }
 
-export async function deleteCoachAction(coachId: unknown, confirmEmail: unknown): Promise<ActionResult<CoachDeletionPreview>> {
+/** `cancelFailed`: subscriptions of the coach's programs that Stripe could not cancel (logged; left to the admin). */
+export async function deleteCoachAction(
+  coachId: unknown, confirmEmail: unknown,
+): Promise<ActionResult<CoachDeletionPreview & { cancelFailed: number }>> {
   return runAction("deleteCoachAction", async () => {
     const admin = await requireAdmin();
-    const { preview, intents } = await deleteCoach(prisma, admin.id, parse(Id, coachId), parse(Email, confirmEmail));
+    const { preview, intents, failed } = await deleteCoach(
+      prisma, stripeGatewayIfEnabled(), admin.id, parse(Id, coachId), parse(Email, confirmEmail));
     dispatch(intents);
     revalidateAdmin();
-    return preview;
+    return { ...preview, cancelFailed: failed.length };
   });
 }
 

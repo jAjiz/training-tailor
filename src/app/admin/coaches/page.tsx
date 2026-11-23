@@ -13,7 +13,10 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 export default async function AdminCoachesPage({ searchParams }: Props) {
   await requireAdminPage();
-  const { search, status, page } = parseListParams(await searchParams);
+  const params = await searchParams;
+  const { search, status, page } = parseListParams(params);
+  // Set by a coach deletion whose subscription cancellations Stripe refused.
+  const cancelFailed = Number(params.cancelFailed);
   const [{ rows, hasMore }, t, locale] = await Promise.all([
     listCoaches(prisma, { search, status, page }), getTranslations("admin"), getLocale(),
   ]);
@@ -23,6 +26,11 @@ export default async function AdminCoachesPage({ searchParams }: Props) {
       <PageHeader title={t("coaches.title")}>
         <SearchForm action="/admin/coaches" search={search} placeholder={t("common.searchPlaceholder")} keep={{ status }} />
       </PageHeader>
+      {Number.isInteger(cancelFailed) && cancelFailed > 0 && (
+        <p role="alert" data-color="red" className="rounded-xl bg-(--block-fill) px-4 py-3 text-sm text-(--block-ink)">
+          {t("coaches.cancelFailed", { count: cancelFailed })}
+        </p>
+      )}
       <nav aria-label={t("coaches.filter")}>
         <ul className="flex flex-wrap gap-1">
           {filters.map((f) => (

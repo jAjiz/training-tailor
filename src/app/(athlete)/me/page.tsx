@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { AccountSignOut } from "@/components/AccountSignOut";
 import { PreferenceSwitches } from "@/components/notifications/PreferenceSwitches";
 import { PushSettings } from "@/components/notifications/PushSettings";
@@ -8,11 +8,15 @@ import { Card } from "@/components/ui/Card";
 import { isLocale } from "@/i18n/locale";
 import { requireAthletePage } from "@/lib/accounts";
 import { prisma } from "@/lib/db";
+import { formatDay } from "@/lib/format";
 import { getSessionContext } from "@/lib/session";
+import { paymentsEnabled } from "@/lib/stripe/client";
+import { fromDbDate } from "@/lib/training/dates";
 import { listAthletePrograms } from "@/lib/training/services/enrollments";
 import { getPreferences } from "@/lib/training/services/notifications";
+import { athleteSubscriptions } from "@/lib/training/services/payments";
 import { setPreferenceAction } from "../notification-actions";
-import { MyPrograms } from "./MyPrograms";
+import { MyPrograms, type MyProgram } from "./MyPrograms";
 import { SettingsForm } from "./SettingsForm";
 
 export default async function MePage() {
@@ -21,6 +25,15 @@ export default async function MePage() {
   const tp = await getTranslations("profile");
   const impersonating = Boolean((await getSessionContext())?.impersonatedBy);
   const programs = await listAthletePrograms(prisma, athlete.id);
+  const subscriptions = paymentsEnabled() ? await athleteSubscriptions(prisma, athlete.id) : new Map();
+  const locale = await getLocale();
+  const myPrograms: MyProgram[] = programs.map((e) => {
+    const sub = subscriptions.get(e.programId);
+    const endsOn = sub?.currentPeriodEnd
+      ? formatDay(fromDbDate(sub.currentPeriodEnd), locale, { day: "numeric", month: "long", year: "numeric" })
+      : null;
+    return { id: e.programId, name: e.program.name, subscription: sub ? { endsOn, leaving: sub.cancelAtPeriodEnd } : null };
+  });
   const preferences = await getPreferences(prisma, athlete.userId, "athlete");
   const timeZones = Intl.supportedValuesOf("timeZone");
   return (
@@ -43,7 +56,7 @@ export default async function MePage() {
       </Link>
       {!impersonating && <PushSettings />}
       {!impersonating && <PreferenceSwitches initial={preferences} save={setPreferenceAction} />}
-      <MyPrograms programs={programs.map((e) => ({ id: e.programId, name: e.program.name }))} />
+      <MyPrograms programs={myPrograms} />
       <AccountSignOut />
     </section>
   );

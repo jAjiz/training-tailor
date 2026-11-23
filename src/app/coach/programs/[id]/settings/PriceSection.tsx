@@ -34,7 +34,6 @@ export function PriceSection({ programId, kind, priceAmount, currency, canCharge
   const [paid, setPaid] = useState(isPaid);
   const [amount, setAmount] = useState(priceAmount === null ? "" : toMajor(priceAmount));
   const [state, setState] = useState<"idle" | "saving" | "saved" | ErrorCode>("idle");
-  const [failed, setFailed] = useState(0);
 
   // A paid program's amount cannot change yet, so only the switch to free is offered; free → paid needs charges.
   const disabled = archived || state === "saving" || (!canCharge && !isPaid);
@@ -48,10 +47,8 @@ export function PriceSection({ programId, kind, priceAmount, currency, canCharge
       confirmLabel: t("programs.price.freeConfirmLabel"),
     }))) return;
     setState("saving");
-    setFailed(0);
     const r = await setProgramPriceAction({ programId, paid, amount: paid ? amount : null });
     setState(r.ok ? "saved" : r.code);
-    if (r.ok) setFailed(r.value.failed.length);
     router.refresh();
   }
 
@@ -85,8 +82,8 @@ export function PriceSection({ programId, kind, priceAmount, currency, canCharge
       <Button type="submit" variant="primary" className="justify-self-start" disabled={disabled || !dirty}>
         {t("programs.price.save")}
       </Button>
-      {state === "saved" && failed === 0 && <p role="status" className="text-sm text-success">{t("me.saved")}</p>}
-      {failed > 0 && <p role="alert" className="text-sm text-danger">{t("programs.price.cancelFailed", { count: failed })}</p>}
+      {/* Cancellations Stripe refused are shown, with a retry, at the top of the settings page. */}
+      {state === "saved" && <p role="status" className="text-sm text-success">{t("me.saved")}</p>}
       {state !== "idle" && state !== "saving" && state !== "saved" && <p role="alert" className="text-sm text-danger">{t(`errors.${state}`)}</p>}
       {dialog}
     </form>

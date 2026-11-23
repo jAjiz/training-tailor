@@ -1,3 +1,4 @@
+import type { Prisma, ProgramPurchase } from "@/generated/prisma/client";
 import { platformFeePercent } from "@/lib/stripe/client";
 import type { AccountSnapshot, StripeGateway } from "@/lib/stripe/gateway";
 import { TrainingError } from "../errors";
@@ -60,13 +61,95 @@ export async function storeAccountSnapshot(db: DbOrTx, acct: string, snapshot: A
   });
 }
 
-const liveSubscriptions = (programId: string) => ({
-  programId, kind: "subscription", status: { in: [...LIVE_SUBSCRIPTION] },
+const liveSubscriptions = (where: Prisma.ProgramPurchaseWhereInput): Prisma.ProgramPurchaseWhereInput => ({
+  ...where, kind: "subscription", status: { in: [...LIVE_SUBSCRIPTION] },
 });
 
 /** How many athletes have a live subscription to the program (what making it free would cancel). */
 export function countLiveSubscriptions(db: Db, programId: string): Promise<number> {
-  return db.programPurchase.count({ where: liveSubscriptions(programId) });
+  return db.programPurchase.count({ where: liveSubscriptions({ programId }) });
+}
+
+/** Why the app ended a subscription; the webhook keeps the reason when Stripe confirms the cancellation. */
+export const APP_ENDED_REASONS = ["coach_removed", "archived", "made_free", "coach_deleted"] as const;
+export type AppEndedReason = (typeof APP_ENDED_REASONS)[number];
+
+/** Live subscriptions the app ended (for `reasons`) whose cancellation in Stripe has not gone through yet. */
+const pendingCancellations = (programId: string, reasons: readonly AppEndedReason[] = APP_ENDED_REASONS) =>
+  liveSubscriptions({ programId, endedReason: { in: [...reasons] } });
+
+/**
+ * Ends the live subscriptions matching `where`: marks them with `reason` (in one transaction with `alongside`, the
+ * app-side change that ends them), then asks Stripe to cancel each one at once. Stripe never rolls back or blocks the
+ * app-side change: a failed cancellation is logged and its subscription id returned in `failed`, for
+ * `retryCancellations`. Without a gateway (payments off) nothing is sent to Stripe.
+ */
+export async function endLiveSubscriptions(
+  db: Db, gw: StripeGateway | null, where: Prisma.ProgramPurchaseWhereInput, reason: AppEndedReason,
+  alongside: Prisma.PrismaPromise<unknown>[] = [],
+): Promise<{ cancelled: number; failed: string[] }> {
+  const live = await db.programPurchase.findMany({ where: liveSubscriptions(where) });
+  await db.$transaction([
+    ...alongside,
+    db.programPurchase.updateMany({ where: { id: { in: live.map((p) => p.id) } }, data: { endedReason: reason } }),
+  ]);
+  return cancelEach(db, gw, live);
+}
+
+/** Cancels each subscription in Stripe; a cancelled one is stored as `canceled` (the webhook confirms it later). */
+async function cancelEach(
+  db: Db, gw: StripeGateway | null, purchases: ProgramPurchase[],
+): Promise<{ cancelled: number; failed: string[] }> {
+  const failed: string[] = [];
+  let cancelled = 0;
+  if (!gw) return { cancelled, failed };
+  for (const purchase of purchases) {
+    const id = purchase.stripeSubscriptionId;
+    if (!id) continue;
+    try {
+      await gw.cancelSubscription(purchase.stripeAccountId, id);
+    } catch (e) {
+      console.error("stripe: could not cancel subscription", id, e);
+      failed.push(id);
+      continue;
+    }
+    await db.programPurchase.update({ where: { id: purchase.id }, data: { status: "canceled" } });
+    cancelled++;
+  }
+  return { cancelled, failed };
+}
+
+/** Cancels again the subscriptions of the program the app ended and Stripe has not cancelled; returns those that fail again. */
+export async function retryCancellations(db: Db, gw: StripeGateway | null, programId: string): Promise<string[]> {
+  const pending = await db.programPurchase.findMany({ where: pendingCancellations(programId) });
+  return (await cancelEach(db, gw, pending)).failed;
+}
+
+/** How many subscriptions of the program the app ended (for `reasons`) but could not cancel in Stripe yet. */
+export function countPendingCancellations(
+  db: Db, programId: string, reasons: readonly AppEndedReason[] = APP_ENDED_REASONS,
+): Promise<number> {
+  return db.programPurchase.count({ where: pendingCancellations(programId, reasons) });
+}
+
+/** The date each athlete's subscription to the program ends, for those set to cancel at period end (leaving). */
+export async function subscriptionEndings(db: Db, programId: string): Promise<Map<string, Date>> {
+  const ending = await db.programPurchase.findMany({
+    where: liveSubscriptions({ programId, cancelAtPeriodEnd: true, currentPeriodEnd: { not: null } }),
+    select: { athleteId: true, currentPeriodEnd: true },
+  });
+  return new Map(ending.map((p) => [p.athleteId, p.currentPeriodEnd!]));
+}
+
+/** The athlete's live subscriptions by program: when each renews or ends, and whether it is set to end. */
+export async function athleteSubscriptions(
+  db: Db, athleteId: string,
+): Promise<Map<string, { currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean }>> {
+  const live = await db.programPurchase.findMany({
+    where: liveSubscriptions({ athleteId }),
+    select: { programId: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
+  });
+  return new Map(live.map(({ programId, ...rest }) => [programId, rest]));
 }
 
 /**
@@ -83,28 +166,11 @@ export async function setProgramPrice(
 
   if (!input.paid) {
     if (program.priceAmount === null) return none;
-    const live = await db.programPurchase.findMany({ where: liveSubscriptions(programId) });
-    await db.$transaction([
-      db.programPurchase.updateMany({
-        where: { id: { in: live.map((p) => p.id) } }, data: { endedReason: "made_free" },
-      }),
-      db.program.update({
-        where: { id: programId }, data: { priceAmount: null, stripePriceId: null, paidSince: null },
-      }),
+    const ended = await endLiveSubscriptions(db, gw, { programId }, "made_free", [
+      db.program.update({ where: { id: programId }, data: { priceAmount: null, stripePriceId: null, paidSince: null } }),
     ]);
     await refreshProgramAccess(db, programId);
-    const failed: string[] = [];
-    let cancelled = 0;
-    for (const purchase of live) {
-      if (!purchase.stripeSubscriptionId) continue;
-      try {
-        await gw.cancelSubscription(purchase.stripeAccountId, purchase.stripeSubscriptionId);
-        cancelled++;
-      } catch {
-        failed.push(purchase.stripeSubscriptionId);
-      }
-    }
-    return { cancelled, failed };
+    return ended;
   }
 
   if (input.amount === null) throw new TrainingError("invalid_request");

@@ -16,7 +16,7 @@ import { ensureAthleteAccount, updateAthleteSettings } from "@/lib/training/serv
 import { athleteSignupMode } from "@/lib/signup";
 import { canCreateAthleteProfile, joinByCode, leaveProgram } from "@/lib/training/services/enrollments";
 import { getEnrollmentAccess, startCheckout } from "@/lib/training/services/payments";
-import { getStripeGateway } from "@/lib/stripe/client";
+import { getStripeGateway, stripeGatewayIfEnabled } from "@/lib/stripe/client";
 
 export async function completeAthleteOnboarding(raw: unknown): Promise<ActionResult> {
   return runAction("completeAthleteOnboarding", async () => {
@@ -80,11 +80,14 @@ export async function enrollmentAccessAction(programId: unknown): Promise<Action
   });
 }
 
-export async function leaveProgramAction(programId: unknown): Promise<ActionResult> {
+/** `endsOn` is set when the athlete keeps access until their subscription ends (a paid continuous program). */
+export async function leaveProgramAction(programId: unknown): Promise<ActionResult<{ endsOn: string | null }>> {
   return runAction("leaveProgramAction", async () => {
     const athlete = await requireAthlete();
-    const intents = await leaveProgram(prisma, athlete, parse(z.string().min(1).max(64), programId));
+    const { intents, endsOn } = await leaveProgram(
+      prisma, stripeGatewayIfEnabled(), athlete, parse(z.string().min(1).max(64), programId));
     dispatch(intents);
     revalidatePath("/", "layout");
+    return { endsOn: endsOn?.toISOString() ?? null };
   });
 }

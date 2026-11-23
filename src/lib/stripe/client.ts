@@ -26,6 +26,11 @@ export function getStripeGateway(env: Env = process.env): StripeGateway {
   return sdk(env).gateway;
 }
 
+/** The gateway when payments are on, else null: services then skip Stripe (no live purchase can exist). */
+export function stripeGatewayIfEnabled(env: Env = process.env): StripeGateway | null {
+  return paymentsEnabled(env) ? getStripeGateway(env) : null;
+}
+
 /** Verifies a webhook's signature over its raw body; throws when it does not match. */
 export function constructWebhookEvent(body: string, signature: string, env: Env = process.env): Stripe.Event {
   if (!paymentsEnabled(env)) throw new TrainingError("payments_unavailable");

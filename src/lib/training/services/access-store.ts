@@ -29,11 +29,10 @@ export async function accessOnJoin(db: DbOrTx, programId: string, athleteId: str
 
 /** `refreshAccess` for every enrollment of the program, e.g. after a price change. */
 export async function refreshProgramAccess(db: DbOrTx, programId: string): Promise<void> {
-  const [program, enrollments, purchases] = await Promise.all([
-    db.program.findUniqueOrThrow({ where: { id: programId }, select: PROGRAM_PRICING }),
-    db.enrollment.findMany({ where: { programId } }),
-    db.programPurchase.findMany({ where: { programId }, select: { ...PURCHASE_FIELDS, athleteId: true } }),
-  ]);
+  // One query at a time, as in `readAccessInputs`: coach deletion runs this inside its transaction.
+  const program = await db.program.findUniqueOrThrow({ where: { id: programId }, select: PROGRAM_PRICING });
+  const enrollments = await db.enrollment.findMany({ where: { programId } });
+  const purchases = await db.programPurchase.findMany({ where: { programId }, select: { ...PURCHASE_FIELDS, athleteId: true } });
   for (const e of enrollments) {
     const access = programAccess(program, e, purchases.filter((p) => p.athleteId === e.athleteId));
     if (access !== e.access) await db.enrollment.update({ where: { id: e.id }, data: { access } });

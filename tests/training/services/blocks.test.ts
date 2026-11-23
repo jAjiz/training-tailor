@@ -56,7 +56,7 @@ describe("blocks", () => {
 
   it("refuses changes on archived programs", async () => {
     const { coach, program } = await setup();
-    await archiveProgram(tdb.prisma, coach.id, program.id);
+    await archiveProgram(tdb.prisma, null, coach.id, program.id);
     await expect(createBlock(tdb.prisma, coach.id, program.id, 0, custom("A"))).rejects.toMatchObject({ code: "program_archived" });
   });
 
@@ -271,7 +271,7 @@ describe("importBlocks", () => {
     const other = await makeCoach(tdb.prisma);
     const items = [{ dayIndex: 0, block: custom("A") }];
     await expect(importItems(other.id, program.id, items)).rejects.toMatchObject({ code: "not_found" });
-    await archiveProgram(tdb.prisma, coach.id, program.id);
+    await archiveProgram(tdb.prisma, null, coach.id, program.id);
     await expect(importItems(coach.id, program.id, items)).rejects.toMatchObject({ code: "program_archived" });
   });
 });
@@ -456,7 +456,7 @@ describe("clearing days and weeks", () => {
     await expect(clearWeek(tdb.prisma, other.id, program.id, 0)).rejects.toMatchObject({ code: "not_found" });
     await expect(clearDay(tdb.prisma, coach.id, closed.id, 14)).rejects.toMatchObject({ code: "day_out_of_range" });
     await expect(clearWeek(tdb.prisma, coach.id, closed.id, 2)).rejects.toMatchObject({ code: "day_out_of_range" });
-    await archiveProgram(tdb.prisma, coach.id, program.id);
+    await archiveProgram(tdb.prisma, null, coach.id, program.id);
     await expect(clearDay(tdb.prisma, coach.id, program.id, 0)).rejects.toMatchObject({ code: "program_archived" });
     await expect(clearWeek(tdb.prisma, coach.id, program.id, 0)).rejects.toMatchObject({ code: "program_archived" });
   });
