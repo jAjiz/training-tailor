@@ -5,7 +5,7 @@ import { intent, type NotificationIntent } from "@/lib/notifications/notify";
 import { accessOnJoin } from "./access-store";
 import { coachRecipient } from "./notifications";
 import { getOwnedProgram } from "./programs";
-import type { Db } from "./types";
+import type { Db, DbOrTx } from "./types";
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
 
@@ -34,32 +34,34 @@ export async function canCreateAthleteProfile(db: Db, userId: string, next: stri
 }
 
 type JoiningAthlete = { id: string; timezone: string; userId: string; displayName: string };
+type ProgramWithCoach = {
+  id: string; name: string; coach: { userId: string; status: string; locale: string | null } | null;
+};
 
-/** `joined` and `rejoined` carry one `athlete_joined` intent for the coach (none for the coach's own account). */
-export async function joinByCode(db: Db, athlete: JoiningAthlete, code: string, now: Date = new Date()) {
-  const program = await findProgramByCode(db, code);
-  if (!program) throw new TrainingError("invite_invalid");
-  const joinedIntents = () => [
+/** The `athlete_joined` intent for the coach of a program the athlete joined or rejoined (none for the coach's own account). */
+export function athleteJoinedIntents(
+  program: ProgramWithCoach, athlete: { userId: string; displayName: string },
+): NotificationIntent[] {
+  return [
     intent("athlete_joined", coachRecipient(program, athlete.userId), {
       programId: program.id, programName: program.name, athleteName: athlete.displayName,
     }),
   ].filter((i) => i.recipients.length > 0);
-  const existing = await db.enrollment.findUnique({
-    where: { programId_athleteId: { programId: program.id, athleteId: athlete.id } },
-  });
-  // A paid program is joined by paying (the webhook enrolls); only an athlete who keeps access joins here.
-  const mustPay = async () =>
-    program.priceAmount !== null && (await accessOnJoin(db, program.id, athlete.id, now)) === "blocked";
-  if (existing) {
-    if (existing.removedAt) throw new TrainingError("enrollment_removed");
-    if (existing.leftAt) {
-      if (await mustPay()) throw new TrainingError("payment_required");
-      const { count } = await db.enrollment.updateMany({ where: { id: existing.id, leftAt: { not: null } }, data: { leftAt: null } });
-      return { programId: program.id, status: (count > 0 ? "rejoined" : "already") as "rejoined" | "already", intents: count > 0 ? joinedIntents() : [] };
-    }
-    return { programId: program.id, status: "already" as const, intents: [] as NotificationIntent[] };
+}
+
+/**
+ * Brings in an athlete who is not active in the program: creates the enrollment (closed: starting today in the
+ * athlete's time zone) or clears `leftAt` of the left one (`startDate` and `joinedAt` stay). `already` when a
+ * concurrent call got there first. Removed and active enrollments are the caller's to handle.
+ */
+export async function enterProgram(
+  db: DbOrTx, program: { id: string; kind: string }, athlete: { id: string; timezone: string },
+  left: { id: string } | null, now: Date,
+): Promise<"joined" | "rejoined" | "already"> {
+  if (left) {
+    const { count } = await db.enrollment.updateMany({ where: { id: left.id, leftAt: { not: null } }, data: { leftAt: null } });
+    return count > 0 ? "rejoined" : "already";
   }
-  if (await mustPay()) throw new TrainingError("payment_required");
   try {
     await db.enrollment.create({
       data: {
@@ -69,10 +71,29 @@ export async function joinByCode(db: Db, athlete: JoiningAthlete, code: string, 
       },
     });
   } catch (e) {
-    if (isUniqueViolation(e)) return { programId: program.id, status: "already" as const, intents: [] as NotificationIntent[] }; // double click
+    if (isUniqueViolation(e)) return "already"; // double click
     throw e;
   }
-  return { programId: program.id, status: "joined" as const, intents: joinedIntents() };
+  return "joined";
+}
+
+/** `joined` and `rejoined` carry one `athlete_joined` intent for the coach (none for the coach's own account). */
+export async function joinByCode(db: Db, athlete: JoiningAthlete, code: string, now: Date = new Date()) {
+  const program = await findProgramByCode(db, code);
+  if (!program) throw new TrainingError("invite_invalid");
+  const existing = await db.enrollment.findUnique({
+    where: { programId_athleteId: { programId: program.id, athleteId: athlete.id } },
+  });
+  if (existing?.removedAt) throw new TrainingError("enrollment_removed");
+  if (existing && !existing.leftAt) {
+    return { programId: program.id, status: "already" as const, intents: [] as NotificationIntent[] };
+  }
+  // A paid program is joined by paying (the webhook enrolls); only an athlete who keeps access joins here.
+  if (program.priceAmount !== null && (await accessOnJoin(db, program.id, athlete.id, now)) === "blocked") {
+    throw new TrainingError("payment_required");
+  }
+  const status = await enterProgram(db, program, athlete, existing, now);
+  return { programId: program.id, status, intents: status === "already" ? [] : athleteJoinedIntents(program, athlete) };
 }
 
 /** The athlete steps out of a program; results and `joinedAt` stay, and the invitation link brings them back. */

@@ -1,5 +1,5 @@
 import { platformFeePercent } from "@/lib/stripe/client";
-import type { StripeGateway } from "@/lib/stripe/gateway";
+import type { AccountSnapshot, StripeGateway } from "@/lib/stripe/gateway";
 import { TrainingError } from "../errors";
 import { LIVE_SUBSCRIPTION, validatePrice } from "../payments";
 import type { ProgramPrice } from "../schemas";
@@ -44,7 +44,11 @@ export async function createCoachAccountSession(db: Db, gw: StripeGateway, coach
 
 /** Stores Stripe's current view of the account. An account we do not know is ignored (webhooks can arrive for any). */
 export async function syncStripeAccount(db: DbOrTx, gw: StripeGateway, acct: string): Promise<void> {
-  const snapshot = await gw.retrieveAccount(acct);
+  await storeAccountSnapshot(db, acct, await gw.retrieveAccount(acct));
+}
+
+/** Stores an account state already read from Stripe (the webhook reads it before its transaction). */
+export async function storeAccountSnapshot(db: DbOrTx, acct: string, snapshot: AccountSnapshot): Promise<void> {
   await db.stripeAccount.updateMany({
     where: { stripeAccountId: acct },
     data: {

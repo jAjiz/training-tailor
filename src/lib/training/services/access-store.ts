@@ -4,12 +4,12 @@ import type { DbOrTx } from "./types";
 const PROGRAM_PRICING = { kind: true, priceAmount: true, paidSince: true } as const;
 const PURCHASE_FIELDS = { kind: true, status: true } as const;
 
-function readAccessInputs(db: DbOrTx, programId: string, athleteId: string) {
-  return Promise.all([
-    db.program.findUniqueOrThrow({ where: { id: programId }, select: PROGRAM_PRICING }),
-    db.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId } } }),
-    db.programPurchase.findMany({ where: { programId, athleteId }, select: PURCHASE_FIELDS }),
-  ]);
+/** One query at a time: inside a transaction (the webhook's) they share a single connection. */
+async function readAccessInputs(db: DbOrTx, programId: string, athleteId: string) {
+  const program = await db.program.findUniqueOrThrow({ where: { id: programId }, select: PROGRAM_PRICING });
+  const enrollment = await db.enrollment.findUnique({ where: { programId_athleteId: { programId, athleteId } } });
+  const purchases = await db.programPurchase.findMany({ where: { programId, athleteId }, select: PURCHASE_FIELDS });
+  return [program, enrollment, purchases] as const;
 }
 
 /** Recomputes the athlete's access to the program and stores it on the enrollment; without one, nothing is stored and it is `blocked`. */
