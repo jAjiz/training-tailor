@@ -29,7 +29,9 @@ export function getStripeAccount(db: Db, coachId: string) {
 export async function connectStripe(db: Db, gw: StripeGateway, coachId: string, country: string): Promise<string> {
   const existing = await getStripeAccount(db, coachId);
   if (existing) return existing.stripeAccountId;
-  const stripeAccountId = await gw.createAccount(country);
+  // Stripe requires a contact email on new connected accounts: the coach's sign-in email.
+  const coach = await db.coachAccount.findUniqueOrThrow({ where: { id: coachId }, include: { user: true } });
+  const stripeAccountId = await gw.createAccount(country, coach.user.email);
   try {
     await db.stripeAccount.create({ data: { coachId, stripeAccountId } });
     return stripeAccountId;

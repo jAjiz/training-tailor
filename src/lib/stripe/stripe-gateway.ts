@@ -35,9 +35,10 @@ function snapshot(sub: Stripe.Subscription): SubscriptionSnapshot {
 /** The real gateway over the Stripe SDK. Calls on a connected account pass it as the request's `stripeAccount`. */
 export function stripeGateway(stripe: Stripe): StripeGateway {
   return {
-    async createAccount(country) {
+    async createAccount(country, email) {
       const account = await stripe.accounts.create({
         country,
+        email,
         capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
         controller: {
           stripe_dashboard: { type: "full" },

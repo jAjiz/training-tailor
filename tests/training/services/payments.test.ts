@@ -18,13 +18,14 @@ afterAll(async () => { await tdb.close(); });
 beforeEach(async () => { await tdb.reset(); });
 
 describe("coach Stripe account", () => {
-  it("connectStripe creates the account with the given country once", async () => {
+  it("connectStripe creates the account with the given country and the coach's email once", async () => {
     const coach = await makeCoach(tdb.prisma);
+    const user = await tdb.prisma.user.findUniqueOrThrow({ where: { id: coach.userId } });
     const { gateway, calls } = fakeStripe();
     const first = await connectStripe(tdb.prisma, gateway, coach.id, "ES");
     const second = await connectStripe(tdb.prisma, gateway, coach.id, "FR");
     expect(second).toBe(first);
-    expect(calls.filter((c) => c.method === "createAccount")).toEqual([{ method: "createAccount", args: ["ES"] }]);
+    expect(calls.filter((c) => c.method === "createAccount")).toEqual([{ method: "createAccount", args: ["ES", user.email] }]);
     expect(await getStripeAccount(tdb.prisma, coach.id)).toMatchObject({ stripeAccountId: first, chargesEnabled: false });
   });
 

@@ -72,7 +72,7 @@ export class DiscountInvalid extends Error {
 }
 
 export interface StripeGateway {
-  createAccount(country: string): Promise<string>;
+  createAccount(country: string, email: string): Promise<string>;
   retrieveAccount(acct: string): Promise<AccountSnapshot>;
   /** Embedded-components session; returns the client secret. */
   createAccountSession(acct: string): Promise<string>;

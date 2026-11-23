@@ -48,8 +48,8 @@ export function fakeStripe() {
   };
 
   const gateway: StripeGateway = {
-    async createAccount(country) {
-      record("createAccount", [country]);
+    async createAccount(country, email) {
+      record("createAccount", [country, email]);
       const id = nextId("acct");
       state.accounts.set(id, { chargesEnabled: false, payoutsEnabled: false, detailsSubmitted: false, defaultCurrency: null });
       return id;
