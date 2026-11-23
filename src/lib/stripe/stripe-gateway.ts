@@ -30,6 +30,7 @@ export function stripeGateway(stripe: Stripe): StripeGateway {
     async createAccount(country) {
       const account = await stripe.accounts.create({
         country,
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
         controller: {
           stripe_dashboard: { type: "full" },
           fees: { payer: "account" },
@@ -97,6 +98,8 @@ export function stripeGateway(stripe: Stripe): StripeGateway {
       const session = await stripe.checkout.sessions.create(
         {
           mode: input.mode,
+          // SDK 23 dropped `payment_method_types` from create params; this is its filter equivalent.
+          allowed_payment_method_types: ["card"],
           customer: input.customerId,
           line_items: [{ price: input.priceId, quantity: 1 }],
           success_url: input.successUrl,
