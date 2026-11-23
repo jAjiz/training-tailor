@@ -71,6 +71,8 @@ function connectInstance(): StripeConnectInstance {
     publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string,
     fetchClientSecret,
     appearance: appearance(),
+    // The app's locale (set on <html lang>), so the embedded UI speaks the coach's language.
+    locale: document.documentElement.lang || undefined,
   });
   return connect;
 }
