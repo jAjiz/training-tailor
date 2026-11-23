@@ -4,10 +4,11 @@ import { orNotFound } from "@/lib/actions";
 import { prisma } from "@/lib/db";
 import { paymentsEnabled } from "@/lib/stripe/client";
 import { fromDbDate } from "@/lib/training/dates";
-import { countLiveSubscriptions, countPendingCancellations, getStripeAccount } from "@/lib/training/services/payments";
+import { countLiveSubscriptions, countPendingCancellations, countPendingPriceSync, getStripeAccount } from "@/lib/training/services/payments";
 import { getOwnedProgram, publishedWeeks } from "@/lib/training/services/programs";
 import { CancellationRetry } from "../CancellationRetry";
 import { ProgramHeader } from "../ProgramHeader";
+import { PriceSyncRetry } from "./PriceSyncRetry";
 import { PriceSection } from "./PriceSection";
 import { ProgramSettingsForm } from "./ProgramSettingsForm";
 
@@ -20,10 +21,12 @@ export default async function ProgramSettingsPage({ params }: { params: Promise<
   const account = payments ? await getStripeAccount(prisma, coach.id) : null;
   const liveSubscriptions = payments ? await countLiveSubscriptions(prisma, program.id) : 0;
   const pendingCancellations = payments ? await countPendingCancellations(prisma, program.id, ["archived", "made_free"]) : 0;
+  const pendingPriceSync = payments ? await countPendingPriceSync(prisma, program.id) : 0;
   return (
     <section className="flex flex-col gap-6">
       <ProgramHeader name={program.name} />
       {pendingCancellations > 0 && <CancellationRetry programId={program.id} count={pendingCancellations} />}
+      {pendingPriceSync > 0 && <PriceSyncRetry programId={program.id} count={pendingPriceSync} />}
       <Card className="p-6">
         <ProgramSettingsForm
           programId={program.id}

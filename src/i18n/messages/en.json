@@ -235,7 +235,9 @@
       "freeConfirmTitle": "Make this program free?",
       "freeConfirm": "{count, plural, =0 {Everyone keeps access.} one {# subscription will be cancelled.} other {# subscriptions will be cancelled.}}",
       "freeConfirmLabel": "Make free",
-      "locked": "The price of a paid program cannot be changed yet."
+      "renewalConfirmTitle": "Change the price?",
+      "renewalConfirm": "Existing subscribers will pay the new price from their next renewal.",
+      "syncPending": "{count, plural, one {# subscription is still on the old price} other {# subscriptions are still on the old price}}"
     }
   },
   "block": {

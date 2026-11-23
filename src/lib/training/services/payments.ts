@@ -187,17 +187,60 @@ export async function athleteSubscriptions(
   return new Map(live.map(({ programId, ...rest }) => [programId, rest]));
 }
 
+/** Subscriptions still on a price other than the program's current one. */
+const pendingPriceSync = (programId: string, priceId: string) =>
+  liveSubscriptions({ programId, stripePriceId: { not: priceId } });
+
+/** How many live subscriptions of the program are still on the old price (a price change that did not reach Stripe). */
+export async function countPendingPriceSync(db: Db, programId: string): Promise<number> {
+  const program = await db.program.findUnique({ where: { id: programId }, select: { stripePriceId: true } });
+  if (!program?.stripePriceId) return 0;
+  return db.programPurchase.count({ where: pendingPriceSync(programId, program.stripePriceId) });
+}
+
 /**
- * Makes a program paid or free. Going free ends every live subscription: the database is updated first, then
- * Stripe is asked to cancel each one; a cancellation that fails is returned (subscription ids), never thrown.
- * Changing the amount of a paid program is not supported yet.
+ * Moves every live subscription of the program to its current price, effective at the next renewal (no
+ * proration). Stripe's item id is read again each time, as it may have changed. A failure is logged and its
+ * subscription id returned in `failed`, never thrown; running it again moves only what is left.
+ */
+export async function syncSubscriptionPrices(
+  db: Db, gw: StripeGateway, programId: string,
+): Promise<{ moved: number; failed: string[] }> {
+  const program = await db.program.findUnique({ where: { id: programId }, select: { stripePriceId: true } });
+  const failed: string[] = [];
+  let moved = 0;
+  if (!program?.stripePriceId) return { moved, failed };
+  const priceId = program.stripePriceId;
+  const pending = await db.programPurchase.findMany({ where: pendingPriceSync(programId, priceId), orderBy: { createdAt: "asc" } });
+  for (const purchase of pending) {
+    const id = purchase.stripeSubscriptionId;
+    if (!id) continue;
+    try {
+      const subscription = await gw.retrieveSubscription(purchase.stripeAccountId, id);
+      if (subscription.priceId !== priceId) await gw.updateSubscriptionPrice(purchase.stripeAccountId, id, subscription.itemId, priceId);
+    } catch (e) {
+      console.error("stripe: could not move subscription to the new price", id, e);
+      failed.push(id);
+      continue;
+    }
+    await db.programPurchase.update({ where: { id: purchase.id }, data: { stripePriceId: priceId } });
+    moved++;
+  }
+  return { moved, failed };
+}
+
+/**
+ * Makes a program paid or free, or changes the amount of a paid one. Going free ends every live subscription: the
+ * database is updated first, then Stripe is asked to cancel each one. A new amount creates a new Stripe price, stores
+ * it, and (continuous programs) moves the live subscriptions to it from their next renewal. Stripe failures after the
+ * database change are returned (subscription ids), never thrown.
  */
 export async function setProgramPrice(
   db: Db, gw: StripeGateway, coachId: string, programId: string, input: ProgramPrice,
-): Promise<{ cancelled: number; failed: string[] }> {
+): Promise<{ cancelled: number; moved: number; failed: string[] }> {
   const program = await getOwnedProgram(db, coachId, programId);
   assertWritable(program);
-  const none = { cancelled: 0, failed: [] as string[] };
+  const none = { cancelled: 0, moved: 0, failed: [] as string[] };
 
   if (!input.paid) {
     if (program.priceAmount === null) return none;
@@ -205,14 +248,11 @@ export async function setProgramPrice(
       db.program.update({ where: { id: programId }, data: { priceAmount: null, stripePriceId: null, paidSince: null } }),
     ]);
     await refreshProgramAccess(db, programId);
-    return ended;
+    return { ...none, ...ended };
   }
 
   if (input.amount === null) throw new TrainingError("invalid_request");
-  if (program.priceAmount !== null) {
-    if (program.priceAmount === input.amount) return none;
-    throw new TrainingError("invalid_request"); // changing the amount arrives with price changes
-  }
+  if (program.priceAmount === input.amount) return none;
   const account = await getStripeAccount(db, coachId);
   if (!account?.chargesEnabled || !account.defaultCurrency) throw new TrainingError("stripe_not_ready");
   const currency = program.currency ?? account.defaultCurrency;
@@ -228,12 +268,15 @@ export async function setProgramPrice(
   const priceId = await gw.createPrice(acct, {
     productId, amount: input.amount, currency, monthly: program.kind === "continuous",
   });
+  const wasPaid = program.priceAmount !== null;
   await db.program.update({
     where: { id: programId },
-    data: { priceAmount: input.amount, currency, stripePriceId: priceId, paidSince: new Date() },
+    data: { priceAmount: input.amount, currency, stripePriceId: priceId, ...(wasPaid ? {} : { paidSince: new Date() }) },
   });
-  await refreshProgramAccess(db, programId);
-  return none;
+  if (!wasPaid) await refreshProgramAccess(db, programId);
+  // Closed programs charge once: their purchases keep the price they paid.
+  if (!wasPaid || program.kind !== "continuous") return none;
+  return { ...none, ...(await syncSubscriptionPrices(db, gw, programId)) };
 }
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";

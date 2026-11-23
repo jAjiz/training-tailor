@@ -35,9 +35,10 @@ export function PriceSection({ programId, kind, priceAmount, currency, canCharge
   const [amount, setAmount] = useState(priceAmount === null ? "" : toMajor(priceAmount));
   const [state, setState] = useState<"idle" | "saving" | "saved" | ErrorCode>("idle");
 
-  // A paid program's amount cannot change yet, so only the switch to free is offered; free → paid needs charges.
+  // Free → paid needs charges; a paid program's amount can be edited.
   const disabled = archived || state === "saving" || (!canCharge && !isPaid);
-  const dirty = paid !== isPaid;
+  const amountChanged = isPaid && paid && amount.trim() !== toMajor(priceAmount);
+  const dirty = paid !== isPaid || amountChanged;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +46,11 @@ export function PriceSection({ programId, kind, priceAmount, currency, canCharge
       title: t("programs.price.freeConfirmTitle"),
       message: t("programs.price.freeConfirm", { count: liveSubscriptions }),
       confirmLabel: t("programs.price.freeConfirmLabel"),
+    }))) return;
+    if (amountChanged && kind === "continuous" && liveSubscriptions > 0 && !(await confirm({
+      title: t("programs.price.renewalConfirmTitle"),
+      message: t("programs.price.renewalConfirm"),
+      confirmLabel: t("programs.price.save"),
     }))) return;
     setState("saving");
     const r = await setProgramPriceAction({ programId, paid, amount: paid ? amount : null });
@@ -70,8 +76,8 @@ export function PriceSection({ programId, kind, priceAmount, currency, canCharge
       {paid && (
         <div className="grid max-w-md gap-4 sm:grid-cols-2">
           <Field label={t("programs.price.amount")}
-            hint={isPaid ? t("programs.price.locked") : kind === "continuous" ? t("programs.price.perMonth") : t("programs.price.oneTime")}>
-            <Input inputMode="decimal" required value={amount} disabled={disabled || isPaid}
+            hint={kind === "continuous" ? t("programs.price.perMonth") : t("programs.price.oneTime")}>
+            <Input inputMode="decimal" required value={amount} disabled={disabled}
               onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Field label={t("programs.price.currency")}>
@@ -82,7 +88,7 @@ export function PriceSection({ programId, kind, priceAmount, currency, canCharge
       <Button type="submit" variant="primary" className="justify-self-start" disabled={disabled || !dirty}>
         {t("programs.price.save")}
       </Button>
-      {/* Cancellations Stripe refused are shown, with a retry, at the top of the settings page. */}
+      {/* Cancellations and price moves Stripe refused are shown, with a retry, at the top of the settings page. */}
       {state === "saved" && <p role="status" className="text-sm text-success">{t("me.saved")}</p>}
       {state !== "idle" && state !== "saving" && state !== "saved" && <p role="alert" className="text-sm text-danger">{t(`errors.${state}`)}</p>}
       {dialog}

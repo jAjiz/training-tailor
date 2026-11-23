@@ -6,7 +6,7 @@ import {
 } from "../../helpers/factories";
 import {
   cancellableSubscribers, connectStripe, countLiveSubscriptions, countPendingCancellations, createCoachAccountSession,
-  getStripeAccount, retryCancellations, setAccessGranted, setProgramPrice, startCheckout, syncStripeAccount,
+  countPendingPriceSync, getStripeAccount, retryCancellations, setAccessGranted, setProgramPrice, startCheckout, syncStripeAccount, syncSubscriptionPrices,
 } from "@/lib/training/services/payments";
 import { archiveProgram } from "@/lib/training/services/programs";
 
@@ -118,7 +118,7 @@ describe("setProgramPrice", () => {
     expect((await tdb.prisma.enrollment.findUniqueOrThrow({ where: { id: b.id } })).access).toBe("free");
   });
 
-  it("rejects an out-of-range amount and a paid → paid change", async () => {
+  it("rejects an out-of-range amount and a missing one", async () => {
     const gw = fakeStripe();
     const { coach } = await chargingCoach(gw);
     const program = await makeContinuous(tdb.prisma, coach.id);
@@ -126,9 +126,95 @@ describe("setProgramPrice", () => {
       .rejects.toMatchObject({ code: "price_invalid" });
     await expect(setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: null }))
       .rejects.toMatchObject({ code: "invalid_request" });
-    await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 });
-    await expect(setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 2000 }))
-      .rejects.toMatchObject({ code: "invalid_request" });
+  });
+
+  describe("price changes", () => {
+    async function subscribed(gw: ReturnType<typeof fakeStripe>, kind: "continuous" | "closed" = "continuous") {
+      const { coach, acct } = await chargingCoach(gw);
+      const program = kind === "continuous" ? await makeContinuous(tdb.prisma, coach.id) : await makeClosed(tdb.prisma, coach.id);
+      await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 });
+      const oldPrice = (await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).stripePriceId!;
+      const athletes = [await makeAthlete(tdb.prisma), await makeAthlete(tdb.prisma), await makeAthlete(tdb.prisma)];
+      for (const [i, athlete] of athletes.entries()) {
+        await enroll(tdb.prisma, program.id, athlete.id);
+        await tdb.prisma.programPurchase.create({
+          data: {
+            programId: program.id, athleteId: athlete.id, kind: kind === "continuous" ? "subscription" : "payment",
+            stripeAccountId: acct, checkoutSessionId: `cs_${i + 1}`, stripeSubscriptionId: `sub_${i + 1}`,
+            status: i === 2 ? "canceled" : i === 1 ? "past_due" : "active", stripePriceId: oldPrice, amount: 1500, currency: "eur",
+          },
+        });
+        gw.addSubscription(`sub_${i + 1}`, { priceId: oldPrice, itemId: `si_${i + 1}` });
+      }
+      return { coach, acct, program };
+    }
+    const updates = (gw: ReturnType<typeof fakeStripe>) => gw.calls.filter((c) => c.method === "updateSubscriptionPrice");
+    const storedPrices = async () =>
+      (await tdb.prisma.programPurchase.findMany({ orderBy: { checkoutSessionId: "asc" } })).map((p) => p.stripePriceId);
+
+    it("a new amount creates a new price and calls updateSubscriptionPrice once per live subscription", async () => {
+      const gw = fakeStripe();
+      const { coach, acct, program } = await subscribed(gw);
+      const result = await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 2000 });
+      expect(result).toEqual({ cancelled: 0, moved: 2, failed: [] });
+      expect(gw.state.prices.get("price_2")).toMatchObject({ amount: 2000, monthly: true, currency: "eur" });
+      expect(await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).toMatchObject({
+        priceAmount: 2000, stripePriceId: "price_2",
+      });
+      expect(updates(gw)).toEqual([
+        { method: "updateSubscriptionPrice", args: [acct, "sub_1", "si_1", "price_2"] },
+        { method: "updateSubscriptionPrice", args: [acct, "sub_2", "si_2", "price_2"] },
+      ]);
+      expect(await storedPrices()).toEqual(["price_2", "price_2", "price_1"]);
+    });
+
+    it("uses the subscription item Stripe has now, not a stored one", async () => {
+      const gw = fakeStripe();
+      const { coach, acct, program } = await subscribed(gw);
+      gw.state.subscriptions.get("sub_1")!.itemId = "si_new";
+      await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 2000 });
+      expect(updates(gw)[0].args).toEqual([acct, "sub_1", "si_new", "price_2"]);
+    });
+
+    it("a second run moves nothing", async () => {
+      const gw = fakeStripe();
+      const { coach, program } = await subscribed(gw);
+      await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 2000 });
+      expect(await syncSubscriptionPrices(tdb.prisma, gw.gateway, program.id)).toEqual({ moved: 0, failed: [] });
+      expect(updates(gw)).toHaveLength(2);
+    });
+
+    it("a failure is reported and a retry moves it", async () => {
+      const gw = fakeStripe();
+      const { coach, program } = await subscribed(gw);
+      gw.state.failing.add("updateSubscriptionPrice");
+      const result = await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 2000 });
+      expect(result).toEqual({ cancelled: 0, moved: 0, failed: ["sub_1", "sub_2"] });
+      expect(await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).toMatchObject({ priceAmount: 2000 });
+      expect(await countPendingPriceSync(tdb.prisma, program.id)).toBe(2);
+      gw.state.failing.delete("updateSubscriptionPrice");
+      expect(await syncSubscriptionPrices(tdb.prisma, gw.gateway, program.id)).toEqual({ moved: 2, failed: [] });
+      expect(await countPendingPriceSync(tdb.prisma, program.id)).toBe(0);
+    });
+
+    it("a closed program's price change touches no purchase", async () => {
+      const gw = fakeStripe();
+      const { coach, program } = await subscribed(gw, "closed");
+      const result = await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 5000 });
+      expect(result).toEqual({ cancelled: 0, moved: 0, failed: [] });
+      expect(await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).toMatchObject({ priceAmount: 5000 });
+      expect(updates(gw)).toEqual([]);
+      expect(await storedPrices()).toEqual(["price_1", "price_1", "price_1"]);
+    });
+
+    it("the same amount is a no-op", async () => {
+      const gw = fakeStripe();
+      const { coach, program } = await subscribed(gw);
+      expect(await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: true, amount: 1500 }))
+        .toEqual({ cancelled: 0, moved: 0, failed: [] });
+      expect(gw.state.prices.size).toBe(1);
+      expect(updates(gw)).toEqual([]);
+    });
   });
 
   it("paid → free cancels live subscriptions with made_free and frees everyone", async () => {
@@ -145,7 +231,7 @@ describe("setProgramPrice", () => {
     expect(await countLiveSubscriptions(tdb.prisma, program.id)).toBe(2);
 
     const result = await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: false, amount: null });
-    expect(result).toEqual({ cancelled: 2, failed: [] });
+    expect(result).toEqual({ cancelled: 2, moved: 0, failed: [] });
     expect(gw.calls.filter((c) => c.method === "cancelSubscription")).toEqual([
       { method: "cancelSubscription", args: [acct, "sub_1"] },
       { method: "cancelSubscription", args: [acct, "sub_2"] },
@@ -168,7 +254,7 @@ describe("setProgramPrice", () => {
     await subscribe(program.id, athlete.id, acct, "1");
     gw.state.failing.add("cancelSubscription");
     const result = await setProgramPrice(tdb.prisma, gw.gateway, coach.id, program.id, { paid: false, amount: null });
-    expect(result).toEqual({ cancelled: 0, failed: ["sub_1"] });
+    expect(result).toEqual({ cancelled: 0, moved: 0, failed: ["sub_1"] });
     expect((await tdb.prisma.program.findUniqueOrThrow({ where: { id: program.id } })).priceAmount).toBeNull();
     expect((await tdb.prisma.enrollment.findFirstOrThrow()).access).toBe("free");
   });

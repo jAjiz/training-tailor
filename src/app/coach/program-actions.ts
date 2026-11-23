@@ -9,7 +9,7 @@ import { dispatch } from "@/lib/notifications/dispatch";
 import { getStripeGateway, stripeGatewayIfEnabled } from "@/lib/stripe/client";
 import { TrainingError, type ActionResult } from "@/lib/training/errors";
 import { ProgramCreateInput, ProgramUpdateInput, parse, parseMajorAmount } from "@/lib/training/schemas";
-import { retryCancellations, setProgramPrice } from "@/lib/training/services/payments";
+import { retryCancellations, setProgramPrice, syncSubscriptionPrices } from "@/lib/training/services/payments";
 import {
   archiveProgram, createProgram, getOwnedProgram, regenerateInvite, setProgramPublished, setWeekPublished, updateProgram,
 } from "@/lib/training/services/programs";
@@ -51,6 +51,17 @@ export async function retryCancellationsAction(programId: unknown): Promise<Acti
     const coach = await requireCoach();
     const program = await getOwnedProgram(prisma, coach.id, parse(Id, programId));
     const failed = await retryCancellations(prisma, stripeGatewayIfEnabled(), program.id);
+    revalidatePath(`/coach/programs/${program.id}`, "layout");
+    return { failed: failed.length };
+  });
+}
+
+/** Moves the subscriptions still on an old price to the program's current one. */
+export async function syncSubscriptionPricesAction(programId: unknown): Promise<ActionResult<{ failed: number }>> {
+  return runAction("syncSubscriptionPricesAction", async () => {
+    const coach = await requireCoach();
+    const program = await getOwnedProgram(prisma, coach.id, parse(Id, programId));
+    const { failed } = await syncSubscriptionPrices(prisma, getStripeGateway(), program.id);
     revalidatePath(`/coach/programs/${program.id}`, "layout");
     return { failed: failed.length };
   });
